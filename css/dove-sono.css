@@ -1,0 +1,366 @@
+/* ===== Dove Siamo Page ===== */
+
+/* Hero */
+.ds-hero {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #111 50%, #0a1a1a 100%);
+    padding: 5rem 0 4rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.ds-hero::before {
+    content: '';
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
+    top: -150px;
+    right: -100px;
+    pointer-events: none;
+}
+
+.ds-hero-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-8px); }
+}
+
+.ds-hero-title {
+    color: #fff;
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin: 0 0 0.6rem;
+    letter-spacing: -0.5px;
+}
+
+.ds-accent {
+    color: var(--primary-purple);
+}
+
+.ds-hero-address {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 1.15rem;
+    margin: 0 0 2.2rem;
+    letter-spacing: 0.3px;
+}
+
+.ds-hero-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.ds-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, var(--primary-purple) 0%, var(--primary-purple-dark) 100%);
+    color: #fff;
+    text-decoration: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
+}
+
+.ds-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.5);
+}
+
+.ds-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    text-decoration: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    transition: background 0.2s, transform 0.2s;
+}
+
+.ds-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.14);
+    transform: translateY(-2px);
+}
+
+/* Map */
+.ds-map-section {
+    background: #fff;
+}
+
+.ds-map-wrapper {
+    width: 100%;
+    line-height: 0;
+}
+
+.ds-map-wrapper iframe {
+    display: block;
+    width: 100%;
+    height: 420px;
+    border: none;
+}
+
+/* Sections */
+.ds-section {
+    padding: 5rem 0;
+    background: #fff;
+}
+
+.ds-section--dark {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #111 100%);
+}
+
+.ds-section-title {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--dark-bg);
+    text-align: center;
+    margin: 0 0 0.5rem;
+}
+
+.ds-section-title--light {
+    color: #fff;
+}
+
+.ds-section-sub {
+    text-align: center;
+    color: #666;
+    font-size: 1rem;
+    margin: 0 0 3rem;
+}
+
+.ds-section-sub--light {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* Info cards grid */
+.ds-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+}
+
+.ds-info-card {
+    background: #f8f9fa;
+    border-radius: 16px;
+    padding: 2rem 1.75rem;
+    border: 1px solid #eee;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.ds-info-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.ds-info-icon {
+    font-size: 2rem;
+    margin-bottom: 0.85rem;
+}
+
+.ds-info-card h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--dark-bg);
+    margin: 0 0 0.6rem;
+}
+
+.ds-info-card p {
+    font-size: 0.92rem;
+    color: #555;
+    line-height: 1.65;
+    margin: 0;
+}
+
+.ds-info-card a {
+    color: var(--primary-purple);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.ds-info-card a:hover {
+    text-decoration: underline;
+}
+
+/* Contacts & Hours */
+.ds-contact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2.5rem;
+}
+
+.ds-contact-block h3 {
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0 0 1.25rem;
+}
+
+.ds-contact-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.ds-contact-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.ds-contact-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.45);
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+
+.ds-contact-list a,
+.ds-contact-list span:not(.ds-contact-label) {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    font-size: 0.97rem;
+}
+
+.ds-contact-list a:hover {
+    color: var(--primary-purple);
+}
+
+.ds-hours-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.ds-hours-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.95rem;
+}
+
+.ds-hours-list li span:first-child {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.ds-hours-list li span:last-child {
+    color: var(--primary-purple);
+    font-weight: 600;
+}
+
+.ds-hours-note {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.35);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* CTA */
+.ds-cta {
+    background: linear-gradient(135deg, var(--primary-purple) 0%, var(--primary-purple-dark) 100%);
+    padding: 4rem 0;
+    text-align: center;
+}
+
+.ds-cta h2 {
+    color: #fff;
+    font-size: 2rem;
+    font-weight: 800;
+    margin: 0 0 0.75rem;
+}
+
+.ds-cta p {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.05rem;
+    margin: 0 0 2rem;
+}
+
+.ds-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #fff;
+    color: var(--primary-purple-dark);
+    text-decoration: none;
+    padding: 0.85rem 2rem;
+    border-radius: 50px;
+    font-weight: 700;
+    font-size: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.ds-cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .ds-hero {
+        padding: 2rem 0 1.5rem;
+    }
+
+    .ds-hero-title {
+        font-size: 2rem;
+    }
+
+    .ds-hero-icon {
+        font-size: 2.2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .ds-hero-address {
+        font-size: 0.95rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .ds-map-wrapper iframe {
+        height: 280px;
+    }
+
+    .ds-section {
+        padding: 3.5rem 0;
+    }
+
+    .ds-section-title {
+        font-size: 1.6rem;
+    }
+
+    .ds-info-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .ds-contact-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+
+    .ds-cta h2 {
+        font-size: 1.6rem;
+    }
+}

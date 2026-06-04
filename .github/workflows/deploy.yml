@@ -1,0 +1,127 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# DEPLOY — PalestrIA SaaS
+#
+# Trigger: push su main (+ avvio manuale). L'intero deploy è gated dall'environment
+# "production": configura eventuali reviewer/branch protection su GitHub →
+# Settings → Environments → production.
+#
+# Cosa fa:
+#   1. pages    → pubblica il sito statico (zero-build) su GitHub Pages.
+#   2. supabase → (condizionale) `supabase db push` + `supabase functions deploy`
+#                 sul progetto remoto, solo se i secret sono configurati.
+#
+# ── SECRET RICHIESTI (Settings → Environments → production → Secrets) ──────────
+#   SUPABASE_ACCESS_TOKEN   Personal Access Token Supabase (Account → Access Tokens).
+#                           Necessario per `supabase login`/link/push/deploy.
+#   SUPABASE_PROJECT_REF    Project ref del progetto remoto (es. abcdefghijklmno),
+#                           dalla URL del dashboard o `supabase projects list`.
+#
+#   Se i due secret NON sono presenti, il job supabase viene SALTATO (lo step
+#   "guard" lo segnala) e il deploy del sito su Pages procede comunque.
+#
+#   Le secret di RUNTIME delle Edge Function (STRIPE_SECRET_KEY,
+#   STRIPE_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY, SITE_URL, VAPID, ...) si
+#   gestiscono lato Supabase (`supabase secrets set ...`), NON qui.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permessi minimi: il job Pages alza i propri permessi localmente.
+permissions:
+  contents: read
+
+# Una sola deploy alla volta; non annullare in corso (un deploy a metà è peggio).
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1) Sito statico → GitHub Pages (zero-build: si pubblica la root del repo).
+  # ────────────────────────────────────────────────────────────────────────────
+  pages:
+    name: Deploy sito statico (GitHub Pages)
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write       # pubblicare su Pages
+      id-token: write    # OIDC richiesto da deploy-pages
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        # Zero-build: carichiamo la repo così com'è. supabase/ e .github/ non
+        # vengono serviti come pagine, ma li escludiamo per non gonfiare l'artifact.
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2) Supabase remoto → migration (db push) + edge functions (functions deploy).
+  #    Condizionale: gira solo se i secret SUPABASE_* sono configurati.
+  # ────────────────────────────────────────────────────────────────────────────
+  supabase:
+    name: Deploy Supabase (DB + functions)
+    runs-on: ubuntu-latest
+    needs: pages
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Guard — verifica presenza secret Supabase
+        id: guard
+        # I secret non sono leggibili in `if:` a livello di step in modo affidabile,
+        # quindi li promuoviamo a output e saltiamo gli step successivi se mancano.
+        run: |
+          set -euo pipefail
+          if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] && [ -n "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Secret Supabase presenti: procedo con db push + functions deploy."
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_ACCESS_TOKEN/SUPABASE_PROJECT_REF mancanti — deploy Supabase saltato."
+          fi
+
+      - name: Checkout
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        if: steps.guard.outputs.configured == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link al progetto remoto
+        if: steps.guard.outputs.configured == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Applica le migration (db push)
+        if: steps.guard.outputs.configured == 'true'
+        # Su un progetto greenfield la baseline è l'unica migration "vera"; lo
+        # storico single-tenant non va spinto. `db push` applica solo le migration
+        # non ancora registrate in schema_migrations sul remoto: assicurarsi che il
+        # remoto NON abbia mai registrato le vecchie migration single-tenant.
+        run: supabase db push
+
+      - name: Deploy delle Edge Function
+        if: steps.guard.outputs.configured == 'true'
+        # Deploy di tutte le function in supabase/functions/*. La config di
+        # verify_jwt (false per stripe-webhook, ecc.) è letta da supabase/config.toml.
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"

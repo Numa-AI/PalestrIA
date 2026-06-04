@@ -1,0 +1,186 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CI — PalestrIA SaaS (zero-build: HTML/JS vanilla + Supabase)
+#
+# Gira su ogni push e pull_request. Tre job indipendenti:
+#   1. db-baseline   → valida la migration consolidata (00000000000000_baseline.sql)
+#                      avviando lo stack Supabase locale e applicando SOLO la baseline.
+#   2. functions     → `deno check` su tutte le supabase/functions/**/index.ts (Deno 2).
+#   3. lint-web      → lint leggero/opzionale dell'HTML/JS statico (non blocca il build).
+#
+# Niente build frontend: il sito è servito così com'è (zero-build).
+# I test RLS cross-tenant sono descritti come placeholder dentro il job db-baseline.
+# ──────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Annulla run obsolete sullo stesso ref (risparmia minuti CI).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1) Validazione schema DB: applica la baseline su uno stack Supabase locale.
+  #
+  # NB: la cartella supabase/migrations/ contiene la baseline SaaS
+  #     (00000000000000_baseline.sql) PIÙ lo storico delle ~125 migration
+  #     single-tenant, tenute solo come riferimento. Sul progetto greenfield va
+  #     applicata SOLO la baseline, quindi qui isoliamo la baseline prima del reset.
+  #     La baseline dipende dallo schema `auth` (auth.users, auth.uid(), auth.jwt()),
+  #     perciò serve lo stack Supabase (Postgres ephemeral "nudo" non basterebbe).
+  # ────────────────────────────────────────────────────────────────────────────
+  db-baseline:
+    name: Validate baseline migration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Isola la baseline (escludi lo storico single-tenant)
+        # Spostiamo fuori tutte le migration tranne la baseline, così `db reset`
+        # applica esclusivamente lo schema SaaS consolidato come accadrebbe su un
+        # progetto Supabase greenfield.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/legacy-migrations
+          find supabase/migrations -maxdepth 1 -name '*.sql' \
+            ! -name '00000000000000_baseline.sql' \
+            -exec mv {} /tmp/legacy-migrations/ \;
+          echo "Migration applicate in CI:"
+          ls -1 supabase/migrations
+
+      - name: Avvia il database locale (fornisce lo schema auth)
+        run: supabase db start
+
+      - name: Applica la baseline + seed (valida la migration)
+        # `db reset` ricrea il DB applicando le migration presenti + il seed.
+        # Se la baseline ha errori di sintassi/dipendenze il job fallisce qui.
+        run: supabase db reset --debug
+
+      # ──────────────────────────────────────────────────────────────────────
+      # PLACEHOLDER — TEST RLS CROSS-TENANT (da implementare)
+      #
+      # Obiettivo: dimostrare l'isolamento multi-tenant garantito da RLS +
+      # current_org_id(). Tutte le tabelle business hanno org_id NOT NULL e
+      # policy org-scoped: un membro della org A NON deve mai leggere/scrivere
+      # dati della org B.
+      #
+      # Setup suggerito (via psql contro lo stack locale, connessione su
+      #   postgresql://postgres:postgres@127.0.0.1:54322/postgres):
+      #
+      #   1. Crea 2 utenti in auth.users (org A e org B), es.:
+      #        insert into auth.users (id, email, ...) values (:uid_a, 'a@test.dev', ...);
+      #        insert into auth.users (id, email, ...) values (:uid_b, 'b@test.dev', ...);
+      #
+      #   2. Crea 2 org con i rispettivi owner. Si può chiamare la RPC
+      #      create_organization(name, slug) impersonando ciascun utente
+      #      (set request.jwt.claims con sub = uid + app_metadata.org_id), oppure
+      #      inserire direttamente in organizations + org_members(role='owner').
+      #
+      #   3. Inserisci dati org-scoped in entrambe (es. una riga in client_packages
+      #      o payments per org A e una per org B).
+      #
+      #   4. Simula la sessione dell'utente A impostando i claim JWT che
+      #      current_org_id()/is_org_admin() leggono:
+      #        set local role authenticated;
+      #        set local request.jwt.claims = '{"sub":"<uid_a>",
+      #            "app_metadata":{"org_id":"<org_a>","org_role":"owner"}}';
+      #
+      #   5. ASSERZIONI di isolamento:
+      #        - select count(*) from profiles;            -- vede SOLO org A (>=1, mai righe di B)
+      #        - select count(*) from payments where org_id = '<org_b>';  -- atteso 0
+      #        - update profiles set name='x' where org_id='<org_b>';     -- 0 righe toccate
+      #        - insert con org_id della org B            -- deve violare la WITH CHECK
+      #      Ripeti speculare impersonando l'utente B verso la org A.
+      #
+      #   6. Verifica che NESSUNA policy usi USING(true) e che le RPC
+      #      SECURITY DEFINER filtrino sempre su current_org_id().
+      #
+      # Implementazione consigliata: uno script tests/rls/cross_tenant.sql con
+      # `do $$ ... raise exception ... $$;` sulle asserzioni, eseguito con
+      #   psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/rls/cross_tenant.sql
+      # (exit code != 0 ⇒ il job fallisce). In alternativa pgTAP.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: RLS cross-tenant isolation tests (placeholder)
+        run: |
+          echo "TODO: implementare tests/rls/cross_tenant.sql ed eseguirlo qui."
+          echo "DB locale disponibile su postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2) Type-check delle Edge Function (Deno 2). Risolve gli import npm:.
+  # ────────────────────────────────────────────────────────────────────────────
+  functions:
+    name: Deno check edge functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          # Allineato a config.toml → [edge_runtime] deno_version = 2
+          deno-version: v2.x
+
+      - name: Type-check tutte le functions
+        # `deno check` scarica e valida i tipi degli import (npm:stripe,
+        # npm:@supabase/supabase-js, npm:web-push). Niente lock file nel repo,
+        # quindi --no-lock evita falsi negativi su CI.
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(supabase/functions/*/index.ts)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Nessuna edge function trovata."; exit 0
+          fi
+          printf 'Controllo %d function:\n' "${#files[@]}"
+          printf '  - %s\n' "${files[@]}"
+          deno check --no-lock "${files[@]}"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3) Lint leggero HTML/JS statico (opzionale, non blocca: continue-on-error).
+  #    Niente bundler: controlliamo solo la sintassi JS dei file alla radice.
+  # ────────────────────────────────────────────────────────────────────────────
+  lint-web:
+    name: Lint web (leggero, opzionale)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Sanity-check sintassi JS
+        # Parsing rapido con `node --check` su tutti i .js (no dipendenze, no build).
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          fail=0
+          for f in js/**/*.js **/*.js; do
+            case "$f" in
+              node_modules/*|sw.js) ;;  # sw.js usa API service worker: salta
+            esac
+            node --check "$f" || { echo "::warning file=$f::sintassi JS non valida"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] && echo "JS OK" || echo "Trovati warning di sintassi (non bloccanti)."
+
+      - name: Validazione HTML (opzionale)
+        run: |
+          npx --yes html-validate "**/*.html" || \
+            echo "::warning::html-validate ha segnalato problemi (non bloccanti)."

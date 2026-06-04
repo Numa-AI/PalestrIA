@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; form-action 'self'">
+    <title>Crea il tuo studio — PalestrIA</title>
+    <style>
+        :root { --primary-purple: #8B5CF6; --primary-dark: #7C3AED; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #7C3AED 130%);
+            display: flex; align-items: center; justify-content: center; padding: 24px; color: #1a1a1a;
+        }
+        .card {
+            background: #fff; border-radius: 20px; padding: 32px; width: 100%; max-width: 460px;
+            box-shadow: 0 24px 60px rgba(0,0,0,.35);
+        }
+        .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; color: var(--primary-purple); font-weight: 700; }
+        h1 { font-size: 24px; margin: 6px 0 4px; }
+        .sub { color: #64748b; font-size: 14px; margin-bottom: 22px; }
+        label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
+        input {
+            width: 100%; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 12px;
+            font-size: 15px; font-family: inherit; transition: border-color .15s;
+        }
+        input:focus { outline: none; border-color: var(--primary-purple); }
+        .hint { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+        .slug-preview { font-size: 12px; color: var(--primary-purple); margin-top: 4px; font-weight: 600; }
+        button {
+            width: 100%; margin-top: 22px; padding: 14px; border: 0; border-radius: 12px; cursor: pointer;
+            background: linear-gradient(135deg, var(--primary-purple), var(--primary-dark)); color: #fff;
+            font-size: 16px; font-weight: 700; font-family: inherit;
+        }
+        button:disabled { opacity: .6; cursor: default; }
+        .msg { margin-top: 16px; padding: 12px 14px; border-radius: 10px; font-size: 14px; display: none; }
+        .msg.err { background: #fef2f2; color: #b91c1c; display: block; }
+        .msg.ok  { background: #f0fdf4; color: #15803d; display: block; }
+        .trial { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 10px 14px; font-size: 13px; color: var(--primary-dark); margin-bottom: 18px; }
+        .foot { text-align: center; margin-top: 18px; font-size: 13px; color: #64748b; }
+        .foot a { color: var(--primary-purple); font-weight: 600; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="eyebrow">PalestrIA SaaS</div>
+        <h1>Crea il tuo studio</h1>
+        <p class="sub">Inizia con <strong>30 giorni di prova gratuita</strong>. Nessuna carta richiesta ora.</p>
+        <div class="trial">✨ Prova gratuita 30 giorni · poi da €39,99/mese · disdici quando vuoi</div>
+
+        <form id="signupForm" autocomplete="on">
+            <label for="studioName">Nome dello studio / palestra</label>
+            <input id="studioName" name="studioName" type="text" required placeholder="Es. Studio Fitness Rossi">
+            <div class="slug-preview" id="slugPreview"></div>
+
+            <label for="trainerName">Il tuo nome</label>
+            <input id="trainerName" name="trainerName" type="text" required autocomplete="name" placeholder="Mario Rossi">
+
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" required autocomplete="email" placeholder="tu@esempio.it">
+
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" required autocomplete="new-password" minlength="8" placeholder="Almeno 8 caratteri">
+
+            <button id="submitBtn" type="submit">Crea studio e inizia la prova</button>
+        </form>
+
+        <div class="msg" id="msg"></div>
+        <div class="foot">Hai già un account? <a href="login.html">Accedi</a></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+    (function () {
+        const $ = (id) => document.getElementById(id);
+        const form = $('signupForm'), btn = $('submitBtn'), msg = $('msg');
+
+        function slugify(s) {
+            return (s || '').toLowerCase().trim()
+                .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+        }
+        function showMsg(text, kind) { msg.textContent = text; msg.className = 'msg ' + kind; }
+
+        $('studioName').addEventListener('input', (e) => {
+            const slug = slugify(e.target.value);
+            $('slugPreview').textContent = slug ? `Il tuo indirizzo: ${slug}.palestria.app` : '';
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const studioName = $('studioName').value.trim();
+            const trainerName = $('trainerName').value.trim();
+            const email = $('email').value.trim().toLowerCase();
+            const password = $('password').value;
+            const slug = slugify(studioName);
+
+            if (slug.length < 3) { showMsg('Il nome dello studio è troppo corto.', 'err'); return; }
+
+            btn.disabled = true; btn.textContent = 'Creazione in corso…';
+            try {
+                // 1) registra l'utente come TRAINER (signup_type evita la creazione del profilo cliente)
+                const { data: signUpData, error: signUpErr } = await supabaseClient.auth.signUp({
+                    email, password,
+                    options: {
+                        emailRedirectTo: new URL('login.html', window.location.href).href,
+                        data: { full_name: trainerName, signup_type: 'trainer' }
+                    }
+                });
+                if (signUpErr) throw signUpErr;
+
+                // 2) assicura una sessione attiva (se la conferma email è disattivata, signUp non logga)
+                let hasSession = !!signUpData.session;
+                if (!hasSession) {
+                    const { data: signInData, error: signInErr } =
+                        await supabaseClient.auth.signInWithPassword({ email, password });
+                    if (signInErr) {
+                        // conferma email richiesta → l'org si crea al primo login (gestito in auth.js)
+                        showMsg('Ti abbiamo inviato una email di conferma. Conferma l\'indirizzo, poi accedi per completare la creazione dello studio.', 'ok');
+                        sessionStorage.setItem('pendingOrg', JSON.stringify({ name: studioName, slug }));
+                        btn.disabled = false; btn.textContent = 'Crea studio e inizia la prova';
+                        return;
+                    }
+                    hasSession = !!signInData.session;
+                }
+
+                // 3) crea l'organizzazione (owner + settings + trial 30gg)
+                const { error: orgErr } = await supabaseClient.rpc('create_organization', {
+                    p_name: studioName, p_slug: slug
+                });
+                if (orgErr) {
+                    if (/slug_taken/.test(orgErr.message)) { showMsg('Questo nome studio è già in uso. Provane un altro.', 'err'); }
+                    else if (/invalid_slug/.test(orgErr.message)) { showMsg('Nome studio non valido (usa lettere e numeri).', 'err'); }
+                    else { showMsg('Errore nella creazione dello studio: ' + orgErr.message, 'err'); }
+                    btn.disabled = false; btn.textContent = 'Crea studio e inizia la prova';
+                    return;
+                }
+
+                // 4) refresh della sessione per ottenere il claim org_id, poi vai all'admin
+                await supabaseClient.auth.refreshSession();
+                sessionStorage.removeItem('pendingOrg');
+                showMsg('Studio creato! Ti stiamo portando alla dashboard…', 'ok');
+                setTimeout(() => { window.location.href = 'admin.html'; }, 800);
+
+            } catch (err) {
+                const m = (err && err.message) || 'Errore imprevisto.';
+                if (/already registered|already exists/i.test(m)) showMsg('Esiste già un account con questa email. Accedi.', 'err');
+                else showMsg(m, 'err');
+                btn.disabled = false; btn.textContent = 'Crea studio e inizia la prova';
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

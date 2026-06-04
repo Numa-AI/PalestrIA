@@ -1,0 +1,23 @@
+# ── Voci esistenti ────────────────────────────────────────────────
+.env
+.env.local
+.claude/
+.vapid-keys.txt
+supabase/.temp/
+node_modules/
+__pycache__/
+*.pyc
+
+# ── Segreti / file di ambiente ────────────────────────────────────
+.env*
+*.local
+
+# ── Supabase locale (mai committare stati locali e chiavi) ────────
+supabase/.branches/
+supabase/signing_keys.json
+
+# ── Build / artefatti ─────────────────────────────────────────────
+dist/
+
+# ── OS ────────────────────────────────────────────────────────────
+.DS_Store

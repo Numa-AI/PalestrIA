@@ -1,0 +1,828 @@
+// Auth — Supabase Auth
+// Sostituisce il vecchio sistema localStorage.
+// Mantiene le stesse firme di funzione per compatibilità con il resto dell'app.
+
+// Utente corrente in memoria — popolato da initAuth() all'avvio di ogni pagina
+window._currentUser = null;
+// Flag per distinguere logout manuale da SIGNED_OUT spurio di Supabase (token scaduto in background PWA)
+let _isManualLogout = false;
+
+// ── Phone normalization ───────────────────────────────────────────────────────
+// Returns E.164 format (+39XXXXXXXXXX) for WhatsApp API compatibility.
+// La regola "starts with 39" considera il prefisso paese SOLO se la lunghezza
+// totale è 12 (39 + 10 cifre cellulare). Senza questo controllo, un cellulare
+// 10-digit che inizia per 39X (es. 392, 393, 395...) verrebbe interpretato come
+// "ha già il +39" e perderebbe le prime 2 cifre.
+function normalizePhone(raw) {
+    if (!raw) return '';
+    let n = raw.replace(/[\s\-().]/g, '');
+    if      (n.startsWith('0039'))                                      n = '+39' + n.slice(4);
+    else if (n.startsWith('39') && n.length === 12 && n[0] !== '+')     n = '+' + n;
+    else if (n.startsWith('0'))                                         n = '+39' + n.slice(1);
+    else if (!n.startsWith('+'))                                        n = '+39' + n;
+    return n;
+}
+
+function isAnagraficaComplete(user) {
+    return !!(
+        user &&
+        String(user.whatsapp || '').trim() &&
+        String(user.codice_fiscale || '').trim() &&
+        String(user.indirizzo_via || '').trim() &&
+        String(user.indirizzo_paese || '').trim() &&
+        String(user.indirizzo_cap || '').trim()
+    );
+}
+
+window.isAnagraficaComplete = isAnagraficaComplete;
+
+// ── Error message mapping ─────────────────────────────────────────────────────
+function _authError(error) {
+    const msg = error?.message || '';
+    if (msg.includes('already registered') || msg.includes('already been registered'))
+        return 'Email già registrata.';
+    if (msg.includes('Invalid login credentials') || msg.includes('invalid_credentials'))
+        return 'Email o password errata.';
+    if (msg.includes('Email not confirmed'))
+        return 'Controlla la tua email per confermare la registrazione.';
+    if (msg.includes('Password should be at least'))
+        return 'La password deve essere di almeno 6 caratteri.';
+    if (msg.includes('User not found'))
+        return 'Email non trovata.';
+    return msg || 'Errore sconosciuto. Riprova.';
+}
+
+// ── Org context dai claim JWT ─────────────────────────────────────────────────
+// Imposta window._orgId / window._orgRole dai claim app_metadata (org_id/org_role)
+// e propaga adminAuth a sessionStorage se il ruolo è owner/admin.
+// Risoluzione org lato client: window._orgId (autenticato), window._orgSlug (slug pubblico).
+function _applyOrgContext(sessionUser) {
+    const meta = sessionUser?.app_metadata || {};
+    window._orgId   = meta.org_id   || null;
+    window._orgRole = meta.org_role || null;
+    const isOrgAdmin = window._orgRole === 'owner' || window._orgRole === 'admin';
+    if (isOrgAdmin) {
+        sessionStorage.setItem('adminAuth', 'true');
+    } else {
+        // Utente loggato ma non admin: pulisce eventuali flag legacy
+        sessionStorage.removeItem('adminAuth');
+    }
+    return isOrgAdmin;
+}
+
+// ── Load profile from Supabase ────────────────────────────────────────────────
+// Returns true on success, false on error (does NOT null out _currentUser on error
+// to prevent false logouts on transient network failures in PWA).
+async function _loadProfile(userId) {
+    const { data: profile, error } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email, whatsapp, medical_cert_expiry, medical_cert_history, insurance_expiry, insurance_history, codice_fiscale, indirizzo_via, indirizzo_paese, indirizzo_cap, documento_firmato, privacy_prenotazioni, stripe_enabled, created_at')
+        .eq('id', userId)
+        .single();
+
+    if (profile && !error) {
+        window._currentUser = profile;
+        // Auto-fix: capitalizza nomi esistenti con lettere minuscole (es. utenti Gmail)
+        if (profile.name) {
+            const capitalized = profile.name.trim().replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+            if (capitalized !== profile.name) {
+                supabaseClient.from('profiles').update({ name: capitalized }).eq('id', userId)
+                    .then(() => { window._currentUser.name = capitalized; });
+            }
+        }
+        return true;
+    }
+    if (error) console.error('[Auth] _loadProfile error:', error.message);
+    return false;
+}
+
+// ── Refresh centralizzato della sessione ──────────────────────────────────────
+// Un solo refresh per volta nella tab: chi arriva mentre è in corso aspetta la
+// stessa Promise invece di lanciare refresh paralleli che lasciano la sessione
+// in stato incoerente (access_token stale in memoria mentre un altro handler
+// scrive il nuovo in storage → PostgREST risponde 401 al prossimo call).
+//
+// Se la sessione in cache è ancora fresca (>30s al limite), evitiamo del tutto
+// la network call.
+//
+// Ritorna la session o null (refresh fallito/timeout/nessun refresh_token).
+let _refreshInFlight = null;
+
+// Strategia fail-closed:
+//   1. getSession() (storage, no lock contention) → se fresco, return
+//   2. Se c'è un refresh in-flight, attendi con CAP separato; se supera il cap,
+//      non rimanere in limbo → leggi storage e se non valido ritorna null.
+//   3. Avvia refresh manuale con timeout.
+//   4. Se timeout, polla getSession (auto-refresh interno può aver completato).
+//   5. Se ancora niente → sessione persa: signOut locale, evento auth:session-lost,
+//      ritorna null. Il chiamante chiede un relogin.
+async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
+    const readSession = async () => {
+        try {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            return session || null;
+        } catch (_) { return null; }
+    };
+    const isFresh = (s, minLeftSec = 30) => {
+        if (!s?.access_token || !s.expires_at) return false;
+        return s.expires_at - Math.floor(Date.now() / 1000) > minLeftSec;
+    };
+
+    // Step 1 — storage
+    const stored = await readSession();
+    if (!force && isFresh(stored)) {
+        console.log(`[Auth] ensureValidSession: storage OK (expires in ${stored.expires_at - Math.floor(Date.now()/1000)}s)`);
+        return stored;
+    }
+
+    // Pre-check: se non c'è proprio una sessione in storage, NON è una "scadenza"
+    // — è un utente non autenticato (es. su /login.html). Non ha senso tentare un
+    // refresh (non c'è refresh_token) né scatenare il fail-closed che mostra il
+    // toast "Sessione scaduta". Bail silenzioso.
+    if (!stored) {
+        console.log('[Auth] ensureValidSession: nessuna sessione in storage → null silenzioso');
+        return null;
+    }
+
+    // Step 2 — in-flight: attendi con cap, poi fallback getSession
+    if (_refreshInFlight) {
+        console.log('[Auth] ensureValidSession: refresh già in corso, attendo (cap)');
+        const TIMEOUT = Symbol('wait-timeout');
+        const r = await Promise.race([
+            _refreshInFlight,
+            new Promise(resolve => setTimeout(() => resolve(TIMEOUT), timeoutMs)),
+        ]);
+        if (r !== TIMEOUT) {
+            console.log(r?.access_token
+                ? '[Auth] ensureValidSession: in-flight completato con sessione'
+                : '[Auth] ensureValidSession: in-flight completato senza sessione');
+            return r;
+        }
+        console.warn('[Auth] ensureValidSession: attesa in-flight oltre cap, provo getSession');
+        const s = await readSession();
+        if (isFresh(s, 0)) {
+            console.log('[Auth] ensureValidSession: recuperato via getSession dopo cap');
+            return s;
+        }
+        console.warn('[Auth] ensureValidSession: nessuna sessione dopo cap → null');
+        return null;
+    }
+
+    // Step 3 — nuovo refresh manuale
+    _refreshInFlight = (async () => {
+        const t0 = performance.now();
+        console.log(`[Auth] ensureValidSession: refresh manuale avviato (force=${force}, timeout=${timeoutMs}ms)`);
+        try {
+            const refreshP = supabaseClient.auth.refreshSession();
+            const timeoutP = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('refresh timeout')), timeoutMs)
+            );
+            const { data, error } = await Promise.race([refreshP, timeoutP]);
+            if (error) throw error;
+            if (data?.session?.access_token) {
+                console.log(`[Auth] ensureValidSession: refresh OK in ${Math.round(performance.now() - t0)}ms`);
+                return data.session;
+            }
+            console.warn('[Auth] ensureValidSession: refresh completato senza sessione');
+        } catch (e) {
+            console.warn(`[Auth] ensureValidSession: refresh fallito (${Math.round(performance.now() - t0)}ms): ${e.message}`);
+        } finally {
+            _refreshInFlight = null;
+        }
+
+        // Step 4 — polling storage (auto-refresh interno può essere arrivato)
+        for (let i = 1; i <= 3; i++) {
+            await new Promise(r => setTimeout(r, 400));
+            const s = await readSession();
+            if (isFresh(s, 0)) {
+                console.log(`[Auth] ensureValidSession: recuperato via getSession (poll ${i})`);
+                return s;
+            }
+        }
+
+        // Step 5 — FAIL-CLOSED: sessione persa, forza relogin
+        console.warn('[Auth] ensureValidSession: FAIL-CLOSED — signOut locale, relogin richiesto');
+        _isManualLogout = true; // previene loop di "SIGNED_OUT spurio → recovery"
+        try { await supabaseClient.auth.signOut({ scope: 'local' }); } catch (_) {}
+        window._currentUser = null;
+        sessionStorage.removeItem('adminAuth');
+        try { window.dispatchEvent(new CustomEvent('auth:session-lost')); } catch (_) {}
+        try { if (typeof updateNavAuth === 'function') updateNavAuth(); } catch (_) {}
+        return null;
+    })();
+
+    return _refreshInFlight;
+}
+
+window.ensureValidSession = ensureValidSession;
+
+// Handler globale per fail-closed: mostra messaggio chiaro all'utente invece
+// di lasciare la pagina in stato ambiguo. Registrato una sola volta.
+if (!window._authSessionLostHandlerActive) {
+    window._authSessionLostHandlerActive = true;
+    window.addEventListener('auth:session-lost', () => {
+        if (window._authSessionLostNotified) return;
+        window._authSessionLostNotified = true;
+        try {
+            if (typeof showToast === 'function') {
+                showToast('Sessione scaduta. Effettua di nuovo l\'accesso.', 'error', 5000);
+            }
+        } catch (_) {}
+        // Redirect al login dopo breve delay (lascia leggere il toast).
+        setTimeout(() => {
+            const onLogin = location.pathname.endsWith('/login.html') || location.pathname.endsWith('/') || location.pathname.endsWith('/index.html');
+            if (!onLogin) location.href = 'login.html';
+        }, 1500);
+    });
+}
+
+// ── Init: recupera la sessione e carica il profilo ────────────────────────────
+// Chiamata su ogni pagina prima di qualsiasi operazione auth.
+// Ritorna la sessione Supabase (o null).
+// Usa INITIAL_SESSION invece di getSession() per evitare la race condition
+// in PWA: getSession() può tornare null mentre il refresh del token è in corso,
+// INITIAL_SESSION si risolve solo dopo che il refresh è completato.
+let _authListenerActive = false;
+async function initAuth() {
+    const session = await new Promise((resolve) => {
+        let resolved = false;
+        const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (event === 'INITIAL_SESSION' && !resolved) {
+                resolved = true;
+                subscription.unsubscribe();
+                resolve(session);
+            }
+        });
+        // Fallback: se INITIAL_SESSION non arriva entro 6s, risolviamo tramite
+        // ensureValidSession — unica fonte di verità, valida il token e
+        // all'occorrenza forza un refresh (evita di accettare sessioni stale da
+        // getSession diretto con expires_at futuro ma token revocato).
+        setTimeout(async () => {
+            if (!resolved) {
+                resolved = true;
+                subscription.unsubscribe();
+                const recovered = await ensureValidSession().catch(() => null);
+                resolve(recovered || null);
+            }
+        }, 6000);
+    });
+
+    if (session) {
+        const ok = await _loadProfile(session.user.id);
+        if (!ok && !window._currentUser) {
+            // Fallback: profilo non trovato (trigger fallito) — usa user_metadata
+            const meta = session.user.user_metadata || {};
+            window._currentUser = {
+                id:              session.user.id,
+                email:           session.user.email || meta.email || '',
+                name:            meta.full_name || meta.name || session.user.email || '',
+                whatsapp:        meta.whatsapp || '',
+                codice_fiscale:  meta.codice_fiscale || null,
+                indirizzo_via:   meta.indirizzo_via || null,
+                indirizzo_paese: meta.indirizzo_paese || null,
+                indirizzo_cap:   meta.indirizzo_cap || null,
+                medical_cert_expiry: null,
+                insurance_expiry:    null,
+            };
+        }
+        // Imposta org context (org_id/org_role dai claim) e propaga adminAuth
+        _applyOrgContext(session.user);
+    } else {
+        window._currentUser = null;
+        window._orgId = null;
+        window._orgRole = null;
+        sessionStorage.removeItem('adminAuth');
+    }
+    // Rimuovi sempre il vecchio flag localStorage (era persistente a vita, causa di falsi positivi)
+    localStorage.removeItem('adminAuthenticated');
+
+    // Registra il listener persistente una sola volta (evita duplicati su bfcache restore)
+    if (!_authListenerActive) {
+        _authListenerActive = true;
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                // Reset del flag: se un precedente fail-closed l'aveva alzato,
+                // un login/refresh riuscito lo riabbassa così futuri SIGNED_OUT
+                // spuri potranno di nuovo tentare la recovery.
+                _isManualLogout = false;
+                if (session) {
+                    await _loadProfile(session.user.id);
+                    _applyOrgContext(session.user);
+                }
+            } else if (event === 'SIGNED_OUT') {
+                if (_isManualLogout) {
+                    // Logout esplicito: pulisci tutto
+                    window._currentUser = null;
+                    window._orgId = null;
+                    window._orgRole = null;
+                    sessionStorage.removeItem('adminAuth');
+                } else {
+                    // SIGNED_OUT spurio (token refresh fallito, race condition Supabase)
+                    // NON nullificare _currentUser — tenta il recupero della sessione
+                    console.warn('[Auth] SIGNED_OUT spurio — tentativo di recupero sessione');
+                    (async () => {
+                        const recovered = await ensureValidSession();
+                        if (recovered) {
+                            await _loadProfile(recovered.user.id);
+                            _applyOrgContext(recovered.user);
+                            console.log('[Auth] Sessione recuperata dopo SIGNED_OUT spurio');
+                        } else {
+                            // Refresh fallito definitivamente — sessione realmente persa
+                            window._currentUser = null;
+                            window._orgId = null;
+                            window._orgRole = null;
+                            sessionStorage.removeItem('adminAuth');
+                        }
+                        updateNavAuth();
+                    })();
+                    return; // Non chiamare updateNavAuth() qui — lo fa l'async sopra
+                }
+            }
+            updateNavAuth();
+        });
+    }
+
+    // Quando l'app PWA torna in foreground dopo un periodo in background,
+    // ri-valida la sessione e ri-sincronizza i dati se è passato abbastanza tempo.
+    if (!window._visibilityAuthActive) {
+        window._visibilityAuthActive = true;
+        let _lastHiddenAt = 0;
+        document.addEventListener('visibilitychange', async () => {
+            if (document.hidden) { _lastHiddenAt = Date.now(); return; }
+            // Ri-sincronizza solo se l'app è stata in background per almeno 30 secondi
+            const bgSeconds = _lastHiddenAt ? (Date.now() - _lastHiddenAt) / 1000 : 0;
+            // Attendi che il lock Supabase si liberi prima di tentare il refresh
+            await new Promise(r => setTimeout(r, 500));
+            const session = await ensureValidSession();
+            if (session) {
+                await _loadProfile(session.user.id);
+                _applyOrgContext(session.user);
+            }
+            updateNavAuth();
+
+            // Ri-sincronizza dati dopo background prolungato (≥2min)
+            if (bgSeconds >= 120 && typeof BookingStorage !== 'undefined') {
+                console.log(`[Auth] App in foreground dopo ${Math.round(bgSeconds)}s — re-sync dati`);
+                try {
+                    await BookingStorage.syncFromSupabase();
+                } catch (e) {
+                    console.warn('[Auth] re-sync foreground fallito:', e.message);
+                }
+            }
+        });
+    }
+
+    updateNavAuth();
+    return session;
+}
+
+// ── Session accessors (sync — usa il valore cached da initAuth) ───────────────
+function getCurrentUser() {
+    return window._currentUser;
+}
+
+// ── Login event tracking (device fingerprint) ────────────────────────────────
+// Scrive una riga in login_events a ogni login/signup esplicito. Fail-silent:
+// qualsiasi errore (RLS, rete, tabella mancante) non deve bloccare il login.
+async function _trackLoginEvent(userId, eventType) {
+    if (!userId) return;
+    try {
+        const ua = navigator.userAgent || '';
+        const platform =
+            /iPad|iPhone|iPod/.test(ua) ? 'ios' :
+            /Android/i.test(ua) ? 'android' :
+            /Windows/i.test(ua) ? 'windows' :
+            /Macintosh|Mac OS X/.test(ua) ? 'mac' :
+            /Linux/i.test(ua) ? 'linux' : 'other';
+        const browser =
+            /Edg\//.test(ua) ? 'edge' :
+            /OPR\/|Opera/.test(ua) ? 'opera' :
+            /Chrome\//.test(ua) ? 'chrome' :
+            /Firefox\//.test(ua) ? 'firefox' :
+            /Safari\//.test(ua) ? 'safari' : 'other';
+        const screen_size = `${screen.width}x${screen.height}`;
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        const language = navigator.language || '';
+        const is_pwa = window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+        // Hash stabile del device: ua + screen + timezone + language
+        const fpData = new TextEncoder().encode(`${ua}|${screen_size}|${timezone}|${language}`);
+        const hashBuf = await crypto.subtle.digest('SHA-256', fpData);
+        const device_hash = Array.from(new Uint8Array(hashBuf))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+
+        await supabaseClient.from('login_events').insert({
+            user_id: userId,
+            event_type: eventType || 'login',
+            device_hash,
+            user_agent: ua.slice(0, 500),
+            platform,
+            browser,
+            screen_size,
+            timezone,
+            language,
+            is_pwa,
+        });
+    } catch (e) {
+        console.warn('[Auth] trackLoginEvent skipped:', e?.message || e);
+    }
+}
+
+// ── Register ──────────────────────────────────────────────────────────────────
+// Il profilo viene creato automaticamente dal trigger handle_new_user su auth.users.
+// Passiamo nome e whatsapp come user_metadata così il trigger li riceve.
+async function registerUser(name, email, whatsapp, password, codiceFiscale, indirizzo) {
+    // Controlla se il numero WhatsApp è già usato da un altro utente
+    if (whatsapp) {
+        const { data: taken } = await supabaseClient.rpc('is_whatsapp_taken', { phone: whatsapp });
+        if (taken) return { ok: false, error: 'Questo numero WhatsApp è già associato a un altro account.' };
+    }
+
+    const capitalized = (name || '').trim().replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+    const addr = indirizzo || {};
+    const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+            emailRedirectTo: new URL('login.html', window.location.href).href,
+            data: {
+                full_name: capitalized,
+                whatsapp,
+                codice_fiscale: (codiceFiscale || '').toUpperCase() || null,
+                indirizzo_via: addr.via || null,
+                indirizzo_paese: addr.paese || null,
+                indirizzo_cap: addr.cap || null,
+            }
+        }
+    });
+    if (error) return { ok: false, error: _authError(error) };
+    if (!data.user?.id) return { ok: false, error: 'Errore durante la registrazione.' };
+
+    // Il trigger handle_new_user crea il profilo lato server in modo sincrono.
+    // onAuthStateChange (SIGNED_IN) caricherà il profilo non appena la sessione è pronta.
+    _trackLoginEvent(data.user.id, 'signup');
+    return { ok: true };
+}
+
+// ── Login con email + password ────────────────────────────────────────────────
+async function loginWithPassword(email, password) {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) return { ok: false, error: _authError(error) };
+    await _loadProfile(data.user.id);
+    _applyOrgContext(data.user);
+    _trackLoginEvent(data.user.id, 'login');
+    return { ok: true };
+}
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+async function logoutUser() {
+    // Pulisce stato locale PRIMA di attendere Supabase — così l'UX non si blocca
+    // se il token è scaduto o la rete è lenta
+    _isManualLogout = true;
+    window._currentUser = null;
+    localStorage.removeItem('adminAuthenticated');
+    sessionStorage.removeItem('adminAuth');
+    // Svuota cache in memoria
+    BookingStorage._cache = [];
+    UserStorage._cache = [];
+    // Pulisce il contesto org (claim app_metadata)
+    window._orgId = null;
+    window._orgRole = null;
+    // signOut con timeout: se Supabase non risponde entro 3s, procedi comunque
+    try {
+        await Promise.race([
+            supabaseClient.auth.signOut({ scope: 'local' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+    } catch { /* sessione locale già pulita, il token scadrà da solo */ }
+}
+
+// ── Aggiorna profilo ──────────────────────────────────────────────────────────
+// updates: { name?, email?, whatsapp?, certificatoMedicoScadenza?, assicurazioneScadenza? }
+// newPassword: stringa opzionale
+async function updateUserProfile(currentEmail, updates, newPassword) {
+    const user = getCurrentUser();
+    if (!user) return { ok: false, error: 'Non autenticato.' };
+
+    const profileUpdate = {};
+    let emailPendingConfirmation = false;
+
+    if (updates.name     !== undefined) profileUpdate.name     = (updates.name || '').trim().replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+    if (updates.whatsapp !== undefined) {
+        profileUpdate.whatsapp = updates.whatsapp;
+        // Controlla che il numero non sia già usato da un altro utente
+        if (updates.whatsapp && updates.whatsapp !== (user.whatsapp || '')) {
+            const { data: taken } = await supabaseClient.rpc('is_whatsapp_taken', { phone: updates.whatsapp, exclude_user_id: user.id });
+            if (taken) return { ok: false, error: 'Questo numero WhatsApp è già associato a un altro account.' };
+        }
+    }
+    // Email: aggiorna nel profilo SOLO se non è cambiata (altrimenti aspettiamo la conferma)
+    if (updates.email !== undefined && updates.email.toLowerCase() === currentEmail.toLowerCase()) {
+        profileUpdate.email = updates.email.toLowerCase();
+    }
+
+    // Codice fiscale
+    if (updates.codiceFiscale !== undefined) {
+        profileUpdate.codice_fiscale = (updates.codiceFiscale || '').toUpperCase() || null;
+    }
+
+    // Indirizzo di residenza
+    if (updates.indirizzoVia !== undefined)   profileUpdate.indirizzo_via   = updates.indirizzoVia || null;
+    if (updates.indirizzoPaese !== undefined) profileUpdate.indirizzo_paese = updates.indirizzoPaese || null;
+    if (updates.indirizzoCap !== undefined)   profileUpdate.indirizzo_cap   = updates.indirizzoCap || null;
+
+    // Certificato medico: aggiorna scadenza e mantieni storico
+    if (updates.certificatoMedicoScadenza !== undefined) {
+        const newScad = updates.certificatoMedicoScadenza || null;
+        if (newScad !== (user.medical_cert_expiry || null)) {
+            profileUpdate.medical_cert_expiry = newScad;
+            const history = Array.isArray(user.medical_cert_history) ? [...user.medical_cert_history] : [];
+            history.push({ scadenza: newScad, aggiornatoIl: new Date().toISOString() });
+            profileUpdate.medical_cert_history = history;
+        }
+    }
+
+    // Assicurazione: aggiorna scadenza e mantieni storico
+    if (updates.assicurazioneScadenza !== undefined) {
+        const newScad = updates.assicurazioneScadenza || null;
+        if (newScad !== (user.insurance_expiry || null)) {
+            profileUpdate.insurance_expiry = newScad;
+            const history = Array.isArray(user.insurance_history) ? [...user.insurance_history] : [];
+            history.push({ scadenza: newScad, aggiornatoIl: new Date().toISOString() });
+            profileUpdate.insurance_history = history;
+        }
+    }
+
+    // Privacy prenotazioni
+    if (updates.privacyPrenotazioni !== undefined) {
+        profileUpdate.privacy_prenotazioni = updates.privacyPrenotazioni;
+    }
+
+    // Aggiorna profilo su Supabase (upsert: crea il profilo se il trigger handle_new_user non l'ha fatto)
+    if (Object.keys(profileUpdate).length > 0) {
+        // Garantisci che name e email siano sempre presenti per l'upsert (colonne NOT NULL)
+        const upsertData = {
+            id: user.id,
+            name: user.name || updates.name || '',
+            email: (user.email || updates.email || '').toLowerCase(),
+            ...profileUpdate
+        };
+        const { error } = await supabaseClient
+            .from('profiles')
+            .upsert(upsertData);
+        if (error) return { ok: false, error: error.message };
+    }
+
+    // Cambio email su Supabase Auth (richiede conferma via email — NON aggiorniamo il profilo subito)
+    if (updates.email && updates.email.toLowerCase() !== currentEmail.toLowerCase()) {
+        const { error } = await supabaseClient.auth.updateUser({ email: updates.email });
+        if (error) return { ok: false, error: error.message };
+        emailPendingConfirmation = true;
+    }
+
+    // Cambio password su Supabase Auth
+    if (newPassword) {
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) return { ok: false, error: error.message };
+    }
+
+    // Aggiorna subito in memoria così i dati sono disponibili anche se _loadProfile fallisce
+    if (window._currentUser) {
+        Object.assign(window._currentUser, profileUpdate);
+    }
+    // Ricarica profilo dal server (sovrascrive con dati autorevoli)
+    await _loadProfile(user.id);
+
+    // Sincronizza cert/assic nella cache UserStorage (letto da admin.js)
+    if (profileUpdate.medical_cert_expiry !== undefined || profileUpdate.insurance_expiry !== undefined) {
+        try {
+            const gymUsers = UserStorage._cache;
+            const email = (updates.email || user.email || '').toLowerCase();
+            let idx = gymUsers.findIndex(u => u.email?.toLowerCase() === email);
+            if (idx === -1 && user.whatsapp) {
+                const normWa = user.whatsapp;
+                idx = gymUsers.findIndex(u => u.whatsapp === normWa);
+            }
+            if (idx !== -1) {
+                if (profileUpdate.medical_cert_expiry !== undefined)
+                    gymUsers[idx].certificatoMedicoScadenza = profileUpdate.medical_cert_expiry;
+                if (profileUpdate.insurance_expiry !== undefined)
+                    gymUsers[idx].assicurazioneScadenza = profileUpdate.insurance_expiry;
+            }
+        } catch {}
+    }
+
+    return { ok: true, emailPendingConfirmation };
+}
+
+// ── Lookup per email (usato nell'OAuth callback) ──────────────────────────────
+async function getUserByEmail(email) {
+    const { data } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email, whatsapp')
+        .eq('email', email.toLowerCase())
+        .single();
+    return data || null;
+}
+
+// ── Le mie prenotazioni ───────────────────────────────────────────────────────
+// Legge ancora da localStorage finché non migriamo bookings (Fase 3).
+function getUserBookings() {
+    const user = getCurrentUser();
+    if (!user) return { upcoming: [], past: [] };
+
+    const allBookings = BookingStorage.getAllBookings();
+    const now   = new Date();
+    const today = _localDateStr();
+
+    const myPhone = user.whatsapp ? normalizePhone(user.whatsapp) : '';
+    const mine = allBookings.filter(b => {
+        if (b.id && b.id.startsWith('demo-')) return false;
+        // Match primario: user_id (più affidabile, non cambia con nome/email/telefono)
+        if (b.userId && user.id && b.userId === user.id) return true;
+        // Fallback: email (per prenotazioni vecchie senza user_id)
+        if (!user.email || !b.email) return false;
+        if (b.email.toLowerCase() !== user.email.toLowerCase()) return false;
+        if (myPhone && b.whatsapp && normalizePhone(b.whatsapp) !== myPhone) return false;
+        return true;
+    });
+
+    function isBookingPast(b) {
+        if (b.date < today) return true;
+        if (b.date > today) return false;
+        const endTimeStr = b.time ? b.time.split(' - ')[1]?.trim() : null;
+        if (!endTimeStr) return false;
+        const [h, m] = endTimeStr.split(':').map(Number);
+        const endDt = new Date(`${b.date}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+        return endDt <= now;
+    }
+
+    return {
+        upcoming: mine.filter(b => !isBookingPast(b)).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)),
+        past:     mine.filter(b =>  isBookingPast(b)).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time))
+    };
+}
+
+// ── Navbar ────────────────────────────────────────────────────────────────────
+function updateNavAuth() {
+    document.body.classList.add('auth-loaded');
+    const user    = getCurrentUser();
+    const isAdmin = sessionStorage.getItem('adminAuth') === 'true';
+    const loginLink = document.getElementById('navLoginLink');
+    const userMenu  = document.getElementById('navUserMenu');
+    const userName  = document.getElementById('navUserName');
+
+    _removeDynamicNavLinks();
+
+    if (user || isAdmin) {
+        if (loginLink) loginLink.style.display = 'none';
+        if (userMenu)  userMenu.style.display  = 'flex';
+        if (userName)  userName.textContent    = user ? (user.name || user.email).split(' ')[0] : 'PT';
+        if (user) _injectNavLinkFirst('prenotazioni.html', 'Le mie prenotazioni', 'nav-prenotazioni-link');
+        if (isAdmin) {
+            _injectNavLinkLast('admin.html', 'Amministrazione', 'nav-admin-link');
+            // Mostra voce Allenamento nella sidebar per tutti gli admin
+            const _navAll = document.getElementById('navAllenamento');
+            if (_navAll) _navAll.style.display = '';
+        } else if (user && typeof supabaseClient !== 'undefined') {
+            // Utente non admin: mostra Allenamento solo se ha almeno una scheda attiva
+            supabaseClient.from('workout_plans').select('id', { count: 'exact', head: true })
+                .eq('user_id', user.id).eq('active', true)
+                .then(({ count }) => {
+                    if (count > 0) {
+                        const _navAll = document.getElementById('navAllenamento');
+                        if (_navAll) _navAll.style.display = '';
+                    }
+                });
+        }
+        _injectSidebarLogout();
+    } else {
+        if (loginLink) loginLink.style.display = 'flex';
+        if (userMenu)  userMenu.style.display  = 'none';
+    }
+}
+
+function _injectNavLinkFirst(href, label, cssClass) {
+    ['.nav-desktop-links', '.nav-sidebar-links'].forEach(sel => {
+        const nav = document.querySelector(sel);
+        if (!nav || nav.querySelector('.' + cssClass)) return;
+        const li = document.createElement('li');
+        li.setAttribute('data-nav-dynamic', '');
+        li.innerHTML = `<a href="${href}" class="${cssClass}">${label}</a>`;
+        nav.prepend(li);
+    });
+}
+
+function _injectNavLinkLast(href, label, cssClass) {
+    ['.nav-desktop-links', '.nav-sidebar-links'].forEach(sel => {
+        const nav = document.querySelector(sel);
+        if (!nav || nav.querySelector('.' + cssClass)) return;
+        const li = document.createElement('li');
+        li.setAttribute('data-nav-dynamic', '');
+        li.innerHTML = `<a href="${href}" class="${cssClass}">${label}</a>`;
+        nav.append(li);
+    });
+}
+
+function _removeDynamicNavLinks() {
+    document.querySelectorAll('[data-nav-dynamic]').forEach(el => el.remove());
+    // Nascondi invece di rimuovere — preserva l'event listener del bottone Esci
+    document.querySelectorAll('.nav-sidebar-logout-item').forEach(el => el.style.display = 'none');
+}
+
+function _injectSidebarLogout() {
+    const sidebar = document.querySelector('.nav-sidebar-links');
+    if (!sidebar) return;
+    // Riusa il bottone esistente invece di ricrearlo (evita perdita event listener)
+    const existing = sidebar.querySelector('.nav-sidebar-logout');
+    if (existing) {
+        const li = existing.closest('.nav-sidebar-logout-item');
+        li.style.display = '';
+        // Sposta in fondo per garantire che sia sempre l'ultimo elemento
+        sidebar.append(li);
+        return;
+    }
+    const li = document.createElement('li');
+    li.className = 'nav-sidebar-logout-item';
+    const btn = document.createElement('button');
+    btn.className = 'nav-sidebar-logout';
+    btn.textContent = 'Esci';
+    btn.addEventListener('click', async () => {
+        await logoutUser();
+        window.location.href = 'index.html';
+    });
+    li.appendChild(btn);
+    sidebar.append(li);
+}
+
+// ── Hamburger sidebar ─────────────────────────────────────────────────────────
+function toggleNavMenu() {
+    const sidebar = document.getElementById('navSidebar');
+    const overlay = document.getElementById('navSidebarOverlay');
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.toggle('open');
+    if (overlay) overlay.classList.toggle('open', isOpen);
+    document.body.classList.toggle('nav-open', isOpen);
+}
+
+// ── Profile modal ─────────────────────────────────────────────────────────────
+function openProfileModal() {
+    const user = getCurrentUser();
+    if (!user) return;
+    const modal = document.getElementById('profileModal');
+    if (!modal) return;
+    document.getElementById('profileUserName').textContent = user.name;
+    renderProfileTab('upcoming');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeProfileModal() {
+    const modal = document.getElementById('profileModal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function renderProfileTab(tab) {
+    const { upcoming, past } = getUserBookings();
+    const list = tab === 'upcoming' ? upcoming : past;
+
+    document.querySelectorAll('.profile-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+
+    const container = document.getElementById('profileBookingsList');
+    if (!container) return;
+    if (!list.length) {
+        container.innerHTML = `<p class="profile-empty">${tab === 'upcoming' ? 'Nessuna prenotazione futura.' : 'Nessuna prenotazione passata.'}</p>`;
+        return;
+    }
+
+    container.innerHTML = list.map(b => `
+        <div class="profile-booking-card ${b.slotType}">
+            <div class="profile-booking-date">📅 ${b.dateDisplay || b.date}</div>
+            <div class="profile-booking-time">🕐 ${b.time}</div>
+            <div class="profile-booking-type">${(window.SLOT_NAMES && window.SLOT_NAMES[b.slotType]) || b.slotType}</div>
+        </div>
+    `).join('');
+}
+
+// ── Init on DOM ready ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    const hamburger = document.getElementById('navHamburger');
+    if (hamburger) hamburger.addEventListener('click', toggleNavMenu);
+
+    const logoutBtn = document.getElementById('navLogoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await logoutUser();
+            window.location.href = 'index.html';
+        });
+    }
+
+    const profileBtn = document.getElementById('navUserName');
+    if (profileBtn) {
+        profileBtn.style.cursor = 'pointer';
+        profileBtn.addEventListener('click', () => {
+            window.location.href = 'prenotazioni.html';
+        });
+    }
+});

@@ -1,0 +1,20 @@
+{
+    "name": "Tablet Allenamento – PalestrIA",
+    "short_name": "Tablet Gym",
+    "description": "Scansiona il QR e registra il tuo allenamento dal tablet in palestra",
+    "start_url": "tablet.html",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a",
+    "lang": "it",
+    "icons": [
+        {
+            "src": "images/logo-palestria.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}

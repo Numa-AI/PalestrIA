@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; media-src 'self' https://apilyfta.com; font-src 'self'; frame-src 'self'; form-action 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="manifest" href="manifest-tablet.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tablet Gym">
+    <title>Tablet Allenamento – PalestrIA</title>
+    <link rel="icon" type="image/png" href="images/logo-palestria.png">
+    <link rel="stylesheet" href="css/tablet.css?v=5">
+</head>
+<body class="tab-body">
+
+    <!-- ═══ SCAN SCREEN ═══ -->
+    <div id="scanScreen" class="tab-screen tab-screen--active">
+        <div class="tab-scan-container">
+            <div class="tab-scan-logo">
+                <img src="images/logo-palestria-light.png" alt="PalestrIA" class="tab-scan-logo-img">
+            </div>
+            <h1 class="tab-scan-title">Scansiona il tuo QR</h1>
+            <p class="tab-scan-subtitle">Inquadra il codice QR con la fotocamera per aprire la tua scheda di allenamento</p>
+            <div class="tab-scan-box">
+                <div id="qrReader"></div>
+                <div class="tab-scan-corners">
+                    <span class="corner tl"></span><span class="corner tr"></span>
+                    <span class="corner bl"></span><span class="corner br"></span>
+                </div>
+            </div>
+            <p class="tab-scan-hint" id="scanStatus">In attesa della fotocamera...</p>
+            <button class="tab-scan-manual-btn" onclick="showManualEntry()">Inserisci codice manualmente</button>
+        </div>
+        <!-- Manual entry modal -->
+        <div id="manualModal" class="tab-modal-overlay" style="display:none;" onclick="if(event.target===this)hideManualEntry()">
+            <div class="tab-modal-box">
+                <h3 class="tab-modal-title">Inserisci link o codice</h3>
+                <input type="text" id="manualInput" class="tab-modal-input" placeholder="Incolla il link tablet o UUID...">
+                <div class="tab-modal-actions">
+                    <button class="tab-btn tab-btn--secondary" onclick="hideManualEntry()">Annulla</button>
+                    <button class="tab-btn tab-btn--primary" onclick="submitManualEntry()">Apri scheda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ WORKOUT SCREEN ═══ -->
+    <div id="workoutScreen" class="tab-screen">
+        <!-- Top bar -->
+        <div class="tab-topbar">
+            <button class="tab-topbar-btn" onclick="resetToScan()" title="Torna allo scanner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div class="tab-topbar-user">
+                <span id="tabUserName" class="tab-topbar-name"></span>
+                <span class="tab-topbar-plan-row">
+                    <span id="tabPlanName" class="tab-topbar-plan"></span>
+                    <button id="tabPlanRenameBtn" class="tab-topbar-plan-rename" onclick="renameTabPlan()" title="Rinomina scheda" aria-label="Rinomina scheda" style="display:none;">&#9998;</button>
+                </span>
+            </div>
+            <div class="tab-topbar-right">
+                <span id="tabTimer" class="tab-topbar-timer" title="Reset inattivita"></span>
+                <div class="tab-topbar-logo">
+                    <img src="images/logo-palestria-light.png" alt="" class="tab-topbar-logo-img">
+                </div>
+            </div>
+        </div>
+
+        <!-- Nav pills -->
+        <div class="tab-nav" role="tablist">
+            <button class="tab-nav-pill active" id="tabPillScheda" onclick="switchTabView('scheda')">Scheda</button>
+            <button class="tab-nav-pill" id="tabPillProgressi" onclick="switchTabView('progressi')">Progressi</button>
+        </div>
+
+        <!-- Content -->
+        <div id="tabContent" class="tab-content">
+            <div class="tab-loading">Caricamento...</div>
+        </div>
+    </div>
+
+    <!-- FAB: aggiungi esercizio -->
+    <button class="tab-fab" id="tabFabAdd" onclick="tabFabAction()" title="Aggiungi esercizio" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="24" height="24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+
+    <!-- Toast container -->
+    <div id="tabToastContainer" class="tab-toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/supabase-client.js?v=4"></script>
+    <script>
+    /* ═══════════════════════════════════════════════════════════════════════════
+       TABLET ALLENAMENTO — Standalone kiosk mode
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let _userId = null;
+    let _userName = '';
+    let _plan = null;
+    let _exercises = [];
+    let _logs = [];
+    let _activeDay = null;
+    let _tabView = 'scheda';
+    let _exDB = [];
+    let _exDBLoaded = false;
+    let _inactivityTimer = null;
+    let _inactivityCountdown = null;
+    let _secondsLeft = 0;
+    // Guard contro chiamate concorrenti di loadUserWorkout: senza, lo scanner
+    // QR (fps: 10) puo' invocare il callback piu' volte prima che stop() completi,
+    // triggerando loadUserWorkout multiple volte in parallelo -> UI bloccata
+    // su "Caricamento..." per race condition tra promise interlacciate.
+    let _loadingInProgress = false;
+    const INACTIVITY_MS = 20 * 60 * 1000; // 20 minutes
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function _esc(str) {
+        return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _localDate(d = new Date()) {
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function _fmtDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso + 'T00:00:00');
+        return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
+    }
+
+    // tablet.html non include data.js: piccolo helper inline equivalente a
+    // _queryWithTimeout di data.js. Senza timeout, le query Supabase restavano
+    // appese indefinitamente quando l'auth e' in stato impallato.
+    function _queryWithTimeout(promise, ms = 15000) {
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('rpc_timeout')), ms))
+        ]);
+    }
+
+    function _toast(msg, type = 'success') {
+        const c = document.getElementById('tabToastContainer');
+        const t = document.createElement('div');
+        t.className = `tab-toast tab-toast--${type}`;
+        t.textContent = msg;
+        c.appendChild(t);
+        requestAnimationFrame(() => t.classList.add('visible'));
+        setTimeout(() => { t.classList.remove('visible'); setTimeout(() => t.remove(), 300); }, 3000);
+    }
+
+    // ── Inactivity timer ──────────────────────────────────────────────────
+    function _resetInactivity() {
+        clearTimeout(_inactivityTimer);
+        clearInterval(_inactivityCountdown);
+        _secondsLeft = INACTIVITY_MS / 1000;
+        _updateTimerDisplay();
+        _inactivityCountdown = setInterval(() => {
+            _secondsLeft--;
+            _updateTimerDisplay();
+        }, 1000);
+        _inactivityTimer = setTimeout(() => {
+            clearInterval(_inactivityCountdown);
+            resetToScan();
+            _toast('Sessione scaduta per inattivita', 'info');
+        }, INACTIVITY_MS);
+    }
+
+    function _updateTimerDisplay() {
+        const el = document.getElementById('tabTimer');
+        if (!el) return;
+        const m = Math.floor(_secondsLeft / 60);
+        const s = _secondsLeft % 60;
+        el.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function _stopInactivity() {
+        clearTimeout(_inactivityTimer);
+        clearInterval(_inactivityCountdown);
+        const el = document.getElementById('tabTimer');
+        if (el) el.textContent = '';
+    }
+
+    // Touch/click resets inactivity
+    document.addEventListener('touchstart', () => { if (_userId) _resetInactivity(); }, { passive: true });
+    document.addEventListener('click', () => { if (_userId) _resetInactivity(); });
+
+    // ── Screen switching ──────────────────────────────────────────────────
+    function showScreen(id) {
+        document.querySelectorAll('.tab-screen').forEach(s => s.classList.remove('tab-screen--active'));
+        document.getElementById(id).classList.add('tab-screen--active');
+    }
+
+    function resetToScan() {
+        _userId = null;
+        _userName = '';
+        _plan = null;
+        _exercises = [];
+        _logs = [];
+        _activeDay = null;
+        _tabView = 'scheda';
+        // Azzera l'URL: senza, un refresh dopo back riaprirebbe la vecchia scheda
+        // (quella di una persona diversa). Il tablet e' condiviso quindi va pulito.
+        try {
+            const url = new URL(window.location);
+            if (url.searchParams.has('uid')) {
+                url.searchParams.delete('uid');
+                history.replaceState(null, '', url);
+            }
+        } catch(e) {}
+        // Reset placeholder per prossimo caricamento
+        const tc = document.getElementById('tabContent');
+        if (tc) tc.innerHTML = '<div class="tab-loading">Caricamento...</div>';
+        _stopInactivity();
+        const fab = document.getElementById('tabFabAdd');
+        if (fab) fab.style.display = 'none';
+        const renameBtn = document.getElementById('tabPlanRenameBtn');
+        if (renameBtn) renameBtn.style.display = 'none';
+        showScreen('scanScreen');
+        // Restart scanner if it was stopped
+        _startScanner();
+    }
+
+    // ── QR Scanner ────────────────────────────────────────────────────────
+    let _html5QrCode = null;
+
+    function _startScanner() {
+        const statusEl = document.getElementById('scanStatus');
+        if (statusEl) statusEl.textContent = 'Avvio fotocamera...';
+
+        // Load html5-qrcode library
+        if (window.Html5Qrcode) {
+            _initScanner();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        script.onload = _initScanner;
+        script.onerror = () => {
+            if (statusEl) statusEl.textContent = 'Errore caricamento scanner. Usa "Inserisci codice manualmente".';
+        };
+        document.head.appendChild(script);
+    }
+
+    function _initScanner() {
+        const statusEl = document.getElementById('scanStatus');
+        if (_html5QrCode) {
+            try { _html5QrCode.stop().catch(() => {}); } catch(e) {}
+        }
+        _html5QrCode = new Html5Qrcode('qrReader');
+        _html5QrCode.start(
+            { facingMode: 'environment' },
+            { fps: 10, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0 },
+            (decodedText) => _onQrScanned(decodedText),
+            () => {} // ignore scan failures
+        ).then(() => {
+            if (statusEl) statusEl.textContent = 'Inquadra il QR code della tua scheda';
+        }).catch((err) => {
+            console.warn('[Tablet] Camera error:', err);
+            if (statusEl) statusEl.textContent = 'Fotocamera non disponibile. Usa "Inserisci codice manualmente".';
+        });
+    }
+
+    function _stopScanner() {
+        if (!_html5QrCode) return;
+        try {
+            const state = _html5QrCode.getState && _html5QrCode.getState();
+            // 2 = SCANNING, 3 = PAUSED — stop() throws se chiamato in altri stati
+            if (state === 2 || state === 3) {
+                _html5QrCode.stop().catch(() => {});
+            }
+        } catch(e) { /* scanner non avviato: ignora */ }
+    }
+
+    function _onQrScanned(text) {
+        // Guard: lo scanner puo' triggerare il callback piu' volte con lo stesso
+        // uid prima che _stopScanner() (async) abbia effetto. Senza questo check
+        // lanciamo loadUserWorkout in parallelo e la UI resta "Caricamento...".
+        if (_loadingInProgress || _userId) return;
+        // Extract uid from URL or raw UUID
+        let uid = null;
+        try {
+            const url = new URL(text);
+            uid = url.searchParams.get('uid');
+        } catch(e) {
+            // Check if it's a raw UUID
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)) {
+                uid = text;
+            }
+        }
+        if (uid) {
+            _stopScanner();
+            loadUserWorkout(uid);
+        }
+    }
+
+    // Manual entry
+    function showManualEntry() {
+        document.getElementById('manualModal').style.display = 'flex';
+        document.getElementById('manualInput').focus();
+    }
+    function hideManualEntry() {
+        document.getElementById('manualModal').style.display = 'none';
+    }
+    function submitManualEntry() {
+        const val = document.getElementById('manualInput').value.trim();
+        if (!val) return;
+        hideManualEntry();
+        _onQrScanned(val);
+    }
+
+    // ── Check URL for uid param (auto-load) ───────────────────────────────
+    (function() {
+        const params = new URLSearchParams(window.location.search);
+        const uid = params.get('uid');
+        if (uid) {
+            loadUserWorkout(uid);
+        } else {
+            _startScanner();
+        }
+    })();
+
+    // ── Load user workout data ────────────────────────────────────────────
+    async function loadUserWorkout(userId) {
+        // Re-entrancy guard: se un caricamento e' gia' in corso, ignora. Lo
+        // scanner QR puo' triggerare il callback multiple volte prima di stoppare.
+        if (_loadingInProgress) return;
+        _loadingInProgress = true;
+        _userId = userId;
+        const statusEl = document.getElementById('scanStatus');
+        if (statusEl) statusEl.textContent = 'Caricamento scheda...';
+
+        // Helper: se l'utente ha premuto Indietro durante un await, _userId e'
+        // stato azzerato da resetToScan(). In quel caso aborta senza toccare UI.
+        const aborted = () => _userId !== userId;
+
+        try {
+            // Step 1: plan (critico) + profile (best-effort, solo per nome display).
+            // profile e plan in Promise.allSettled perche' un timeout/errore sulla
+            // tabella profiles non deve bloccare il caricamento della scheda.
+            const [profileRes, plansRes] = await Promise.allSettled([
+                _queryWithTimeout(supabaseClient.from('profiles').select('name, email').eq('id', userId).single()),
+                _queryWithTimeout(supabaseClient.from('workout_plans').select('*, workout_exercises(*)').eq('user_id', userId).eq('active', true).order('updated_at', { ascending: false }).limit(1))
+            ]);
+
+            if (aborted()) return;
+
+            _userName = profileRes.status === 'fulfilled'
+                ? (profileRes.value.data?.name || profileRes.value.data?.email || 'Utente')
+                : 'Utente';
+
+            if (plansRes.status === 'rejected') throw plansRes.reason;
+            const plansData = plansRes.value;
+            if (plansData.error) throw plansData.error;
+            if (!plansData.data?.length) {
+                if (statusEl) statusEl.textContent = 'Nessuna scheda attiva trovata per questo utente.';
+                _userId = null;
+                _startScanner();
+                return;
+            }
+
+            _plan = plansData.data[0];
+            _exercises = (_plan.workout_exercises || []).sort((a, b) => a.sort_order - b.sort_order);
+
+            // Step 2: exercise catalog (only needed names) + logs (last 30 days) in parallel
+            const exIds = _exercises.map(e => e.id);
+            const exNames = [...new Set(_exercises.map(e => e.exercise_name))];
+            const cutoff = _localDate(new Date(Date.now() - 30 * 86400000));
+            const logsPromise = exIds.length
+                ? _queryWithTimeout(supabaseClient.from('workout_logs')
+                    .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rpe')
+                    .in('exercise_id', exIds).eq('user_id', userId)
+                    .gte('log_date', cutoff)
+                    .order('log_date', { ascending: false })
+                    .order('set_number', { ascending: true }))
+                : Promise.resolve({ data: [] });
+
+            const [, logsRes] = await Promise.all([
+                _loadExDB(exNames),
+                logsPromise
+            ]);
+
+            if (aborted()) return;
+            _logs = logsRes.data || [];
+
+            // Persist uid in URL so refresh keeps the session
+            const url = new URL(window.location);
+            if (url.searchParams.get('uid') !== userId) {
+                url.searchParams.set('uid', userId);
+                history.replaceState(null, '', url);
+            }
+
+            // Show workout screen
+            document.getElementById('tabUserName').textContent = _userName;
+            document.getElementById('tabPlanName').textContent = _plan.name;
+            const renameBtn = document.getElementById('tabPlanRenameBtn');
+            if (renameBtn) renameBtn.style.display = '';
+            // Reset del placeholder "Caricamento..." iniziale prima del render,
+            // cosi' se renderTabScheda dovesse uscire early non resta appeso.
+            const tc = document.getElementById('tabContent');
+            if (tc) tc.innerHTML = '';
+            showScreen('workoutScreen');
+            const fab = document.getElementById('tabFabAdd');
+            if (fab) fab.style.display = '';
+            _resetInactivity();
+            renderTabScheda();
+
+        } catch (e) {
+            console.error('[Tablet] load error:', e);
+            if (aborted()) return;
+            if (statusEl) statusEl.textContent = 'Errore caricamento. Riprovo tra 2s...';
+            _userId = null;
+            setTimeout(() => _startScanner(), 2000);
+        } finally {
+            _loadingInProgress = false;
+        }
+    }
+
+    async function _loadExDB(exerciseNames) {
+        if (_exDBLoaded) return;
+        try {
+            // Load ALL exercises for picker support
+            const { data } = await _queryWithTimeout(supabaseClient.from('imported_exercises')
+                .select('nome_it, nome_en, categoria, slug, immagine, immagine_thumbnail, video'));
+            _exDB = (data || []).map(e => ({
+                nome_it: e.nome_it, nome_en: e.nome_en || '', categoria: e.categoria,
+                slug: e.slug, img: e.immagine_thumbnail || e.immagine || '',
+                video: e.video || ''
+            }));
+            _exDBLoaded = true;
+        } catch(e) { console.warn('[Tablet] exDB load failed', e); }
+    }
+
+    function _findEx(name) { return _exDB.find(e => e.nome_it === name) || null; }
+
+    // ── View switching ────────────────────────────────────────────────────
+    function switchTabView(view) {
+        _tabView = view;
+        document.getElementById('tabPillScheda').classList.toggle('active', view === 'scheda');
+        document.getElementById('tabPillProgressi').classList.toggle('active', view === 'progressi');
+        const fab = document.getElementById('tabFabAdd');
+        if (fab) fab.style.display = (view === 'scheda' && _userId) ? '' : 'none';
+        if (view === 'scheda') renderTabScheda();
+        else renderTabProgressi();
+    }
+
+    // ── Scheda helpers ────────────────────────────────────────────────────
+    function _dayLastDone(dayLabel) {
+        const dayExIds = new Set(_exercises.filter(e => e.day_label === dayLabel).map(e => e.id));
+        let latest = null;
+        for (const l of _logs) {
+            if (dayExIds.has(l.exercise_id) && (!latest || l.log_date > latest)) latest = l.log_date;
+        }
+        return latest;
+    }
+
+    function _dayDoneToday(dayLabel) {
+        const today = _localDate();
+        const dayExIds = new Set(_exercises.filter(e => e.day_label === dayLabel).map(e => e.id));
+        return _logs.some(l => dayExIds.has(l.exercise_id) && l.log_date === today);
+    }
+
+    function _prevSession(exerciseId) {
+        const today = _localDate();
+        const prev = _logs.filter(l => l.exercise_id === exerciseId && l.log_date < today);
+        if (!prev.length) return [];
+        const latestDate = prev.reduce((m, l) => l.log_date > m ? l.log_date : m, prev[0].log_date);
+        return prev.filter(l => l.log_date === latestDate).sort((a, b) => a.set_number - b.set_number);
+    }
+
+    function _suggestDay(days) {
+        let best = null, bestDate = 'zzzz';
+        for (const day of days) {
+            const last = _dayLastDone(day);
+            if (!last) return day;
+            if (last < bestDate) { bestDate = last; best = day; }
+        }
+        return best || days[0];
+    }
+
+    // ── Render Scheda ─────────────────────────────────────────────────────
+    function renderTabScheda() {
+        const c = document.getElementById('tabContent');
+        if (!c) return;
+        // Fallback: se arriviamo qui senza _plan il placeholder "Caricamento..."
+        // iniziale resterebbe visibile. Mostra invece un errore azionabile.
+        if (!_plan) {
+            c.innerHTML = '<div class="tab-empty">Scheda non disponibile. <button class="tab-btn tab-btn--primary" onclick="resetToScan()">Torna allo scanner</button></div>';
+            return;
+        }
+
+        const today = _localDate();
+        const todayLogs = _logs.filter(l => l.log_date === today);
+
+        // Days sorted by min sort_order
+        const dayMin = {};
+        for (const e of _exercises) {
+            if (!(e.day_label in dayMin) || e.sort_order < dayMin[e.day_label])
+                dayMin[e.day_label] = e.sort_order;
+        }
+        const days = [...new Set(_exercises.map(e => e.day_label))].sort((a, b) => dayMin[a] - dayMin[b]);
+
+        if (!_activeDay || !days.includes(_activeDay)) _activeDay = _suggestDay(days);
+
+        let html = '';
+
+        // Day tabs
+        html += '<div class="tab-day-tabs">';
+        for (const day of days) {
+            const active = day === _activeDay;
+            const done = _dayDoneToday(day);
+            const last = _dayLastDone(day);
+            const lastStr = done ? 'oggi' : last ? _fmtDate(last) : 'mai';
+            html += `<button class="tab-day-tab ${active ? 'active' : ''} ${done ? 'done' : ''}" onclick="switchTabDay('${_esc(day)}')">
+                <span class="tab-day-name">${_esc(day)}${done ? ' &#10003;' : ''}</span>
+                <span class="tab-day-last">ultimo: ${lastStr}</span>
+            </button>`;
+        }
+        html += '</div>';
+
+        // Exercises for active day
+        const dayEx = _exercises.filter(e => e.day_label === _activeDay).sort((a, b) => a.sort_order - b.sort_order);
+        const doneCount = dayEx.filter(ex => todayLogs.some(l => l.exercise_id === ex.id)).length;
+
+        html += `<div class="tab-day-header">
+            <span class="tab-day-label">${_esc(_activeDay)}</span>
+            <span class="tab-day-count">${doneCount}/${dayEx.length} completati</span>
+        </div>`;
+
+        html += '<div class="tab-exercises">';
+
+        // Build superset group map
+        const _tssRendered = new Set();
+        const _tssMap = {};
+        for (const e of dayEx) { if (e.superset_group) { if (!_tssMap[e.superset_group]) _tssMap[e.superset_group]=[]; _tssMap[e.superset_group].push(e); } }
+
+        for (const ex of dayEx) {
+            // ── Superset card ────────────────────────────────────────
+            if (ex.superset_group && !_tssRendered.has(ex.superset_group)) {
+                _tssRendered.add(ex.superset_group);
+                const pair = _tssMap[ex.superset_group] || [ex];
+                const allDone = pair.every(e => todayLogs.some(l => l.exercise_id === e.id));
+                const db1 = _findEx(pair[0].exercise_name), db2 = pair[1] ? _findEx(pair[1].exercise_name) : null;
+                const th1 = db1?db1.img:'', th2 = db2?db2.img:'';
+                const sl1 = db1?db1.slug:'', sl2 = db2?db2.slug:'';
+                const ssId = ex.superset_group;
+                const t1 = `${pair[0].sets}\u00d7${pair[0].reps}`, t2 = pair[1] ? `${pair[1].sets}\u00d7${pair[1].reps}` : '';
+
+                html += `<div class="all-ss-card ${allDone?'all-ss-done':''}" id="tss-${ssId}" data-ss-id="${ssId}" data-sort="${pair[0].sort_order}">
+                    <div class="tab-ex-delete-action" onclick="deleteSupersetFromTabPlan('${ssId}')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        <span>Elimina</span>
+                    </div>
+                    <div class="tab-ex-swipe-content">
+                    <div class="all-ss-header" onclick="toggleTabSs('${ssId}')">
+                        <div class="all-ss-thumbs">
+                            <span class="all-ss-badge">SS</span>
+                            ${th1?`<img src="${th1}" class="all-ss-thumb" alt="" loading="lazy" onclick="event.stopPropagation();showTabExDetail('${_esc(sl1)}')">` :''}
+                            ${th2?`<img src="${th2}" class="all-ss-thumb" alt="" loading="lazy" onclick="event.stopPropagation();showTabExDetail('${_esc(sl2)}')">` :''}
+                        </div>
+                        <div class="all-ss-info">
+                            <div class="all-ss-names">
+                                <span class="all-ss-ex-name">${_esc(pair[0].exercise_name)}</span>
+                                ${pair[1]?`<span class="all-ss-ex-name">${_esc(pair[1].exercise_name)}</span>`:''}
+                            </div>
+                            <div class="all-ss-target">${t1} + ${t2}${pair[1]&&pair[1].rest_seconds?' \u00b7 '+pair[1].rest_seconds+'s pausa':''}</div>
+                        </div>
+                        <div class="all-ss-status">${allDone?'<span class="tab-ex-check">&#10003;</span>':'<span class="all-ss-chevron">&#9662;</span>'}</div>
+                    </div>
+                    <div class="all-ss-body">`;
+
+                pair.forEach((ssEx, idx) => {
+                    const _c = (ssEx.muscle_group||'').toLowerCase()==='cardio';
+                    const sH = todayLogs.some(l=>l.exercise_id===ssEx.id);
+                    const sP = _prevSession(ssEx.id);
+                    const sD = _findEx(ssEx.exercise_name);
+                    const sT = sD?sD.img:'', sS = sD?sD.slug:'';
+
+                    html += `<div class="all-ss-divider">Esercizio ${idx+1}</div>`;
+                    html += `<div class="all-ss-ex-header">
+                        ${sT?`<img src="${sT}" alt="" loading="lazy" onclick="showTabExDetail('${_esc(sS)}')">`:''}
+                        <div class="all-ss-ex-header-info">
+                            <div class="all-ss-ex-header-name">${_esc(ssEx.exercise_name)}<button class="tab-ex-edit-btn" onclick="showTabEditExercise('${ssEx.id}')" title="Modifica">&#9998;</button></div>
+                            <div class="all-ss-ex-header-target">${ssEx.sets} \u00d7 ${ssEx.reps}${ssEx.rest_seconds?' \u00b7 '+ssEx.rest_seconds+'s pausa':' \u00b7 no pausa'}</div>
+                        </div>
+                    </div>`;
+
+                    if (sP.length) {
+                        html += `<div class="tab-prev-session"><span class="tab-prev-label">Precedente \u2014 ${_fmtDate(sP[0].log_date)}</span><div class="tab-prev-sets">`;
+                        for (const pl of sP) html += _c?`<span class="tab-prev-set">${pl.reps_done||'\u2014'} min</span>`:`<span class="tab-prev-set">${pl.set_number}. ${pl.reps_done||'\u2014'}x${pl.weight_done!=null?pl.weight_done+'kg':'\u2014'}</span>`;
+                        html += '</div></div>';
+                    }
+
+                    html += `<div class="tab-log-section" data-ex-id="${ssEx.id}">
+                        <div class="tab-log-grid${_c?' tab-log-grid-cardio':''}"><div class="tab-log-grid-header">${_c?'<span>Min</span>':'<span>Serie</span><span>Reps</span><span>Kg</span>'}</div>`;
+                    if (_c) {
+                        const e0=todayLogs.find(l=>l.exercise_id===ssEx.id&&l.set_number===1);
+                        const p0=sP.find(l=>l.set_number===1);
+                        html += `<div class="tab-log-row tab-log-row-cardio"><input type="number" inputmode="numeric" min="0" value="${e0?.reps_done??p0?.reps_done??(parseInt(ssEx.reps)||'')}" class="tab-log-input" data-field="reps" data-set="1"></div>`;
+                    } else {
+                        const tM=todayLogs.filter(l=>l.exercise_id===ssEx.id).reduce((m,l)=>Math.max(m,l.set_number),0);
+                        const pM=sP.reduce((m,l)=>Math.max(m,l.set_number),0);
+                        const rows=Math.max(ssEx.sets,tM,pM);
+                        for (let s=1;s<=rows;s++){
+                            const e0=todayLogs.find(l=>l.exercise_id===ssEx.id&&l.set_number===s);
+                            const p0=sP.find(l=>l.set_number===s);
+                            const ext=s>ssEx.sets;
+                            html += `<div class="tab-log-row"><span class="tab-log-set">${s}</span>
+                                <input type="number" inputmode="numeric" min="0" value="${e0?.reps_done??p0?.reps_done??(ext?'':(parseInt(ssEx.reps)||''))}" class="tab-log-input" data-field="reps" data-set="${s}">
+                                <input type="number" inputmode="decimal" min="0" step="0.5" value="${e0?.weight_done??p0?.weight_done??(ext?'':(ssEx.weight_kg??''))}" class="tab-log-input" data-field="weight" data-set="${s}">
+                            </div>`;
+                        }
+                    }
+                    html += `</div>${_c?'':`<button class="tab-log-add-set" onclick="tabAddSet('${ssEx.id}', this)">+ Serie</button>`}
+                        <div class="tab-log-actions">
+                            <button class="tab-log-save" onclick="tabSaveLog('${ssEx.id}', this)">Salva</button>
+                            ${sH?`<button class="tab-log-delete" onclick="tabDeleteLog('${ssEx.id}', this)">Elimina log</button>`:''}
+                        </div>
+                    </div>`;
+                });
+                html += '</div></div></div>';
+                continue;
+            }
+            if (ex.superset_group && _tssRendered.has(ex.superset_group)) continue;
+
+            // ── Normal single exercise card ─────────────────────────
+            const isCardio = (ex.muscle_group || '').toLowerCase() === 'cardio';
+            const target = isCardio
+                ? `${ex.reps} min`
+                : `${ex.sets} x ${ex.reps}${ex.weight_kg != null ? ' @ ' + ex.weight_kg + ' kg' : ''}`;
+            const hasLogs = todayLogs.some(l => l.exercise_id === ex.id);
+            const prevLogs = _prevSession(ex.id);
+            const dbEx = _findEx(ex.exercise_name);
+            const thumb = dbEx ? dbEx.img : '';
+
+            html += `<div class="tab-ex-card ${hasLogs ? 'tab-ex-done' : ''}" id="tex-${ex.id}" data-ex-id="${ex.id}" data-sort="${ex.sort_order}">
+                <div class="tab-ex-delete-action" onclick="deleteExerciseFromTabPlan('${ex.id}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    <span>Elimina</span>
+                </div>
+                <div class="tab-ex-swipe-content">
+                <div class="tab-ex-header" onclick="toggleTabEx('${ex.id}')">
+                    ${thumb ? `<img src="${thumb}" class="tab-ex-thumb" alt="" loading="lazy"${dbEx?.slug ? ` onclick="event.stopPropagation();showTabExDetail('${_esc(dbEx.slug)}')"` : ''}>` : '<div class="tab-ex-thumb-placeholder"></div>'}
+                    <div class="tab-ex-info">
+                        <div class="tab-ex-name">${_esc(ex.exercise_name)}<button class="tab-ex-edit-btn" onclick="event.stopPropagation();showTabEditExercise('${ex.id}')" title="Modifica esercizio">&#9998;</button></div>
+                        <div class="tab-ex-target">${target}${!isCardio && ex.rest_seconds ? ' &middot; rec. ' + ex.rest_seconds + 's' : ''}</div>
+                    </div>
+                    <div class="tab-ex-status">${hasLogs ? '<span class="tab-ex-check">&#10003;</span>' : '<span class="tab-ex-chevron">&#9662;</span>'}</div>
+                </div>
+                <div class="tab-ex-body">
+                    ${ex.notes ? `<div class="tab-ex-note">${_esc(ex.notes)}</div>` : ''}`;
+
+            if (prevLogs.length) {
+                html += `<div class="tab-prev-session">
+                    <span class="tab-prev-label">Sessione precedente &mdash; ${_fmtDate(prevLogs[0].log_date)}</span>
+                    <div class="tab-prev-sets">`;
+                for (const pl of prevLogs) {
+                    html += isCardio
+                        ? `<span class="tab-prev-set">${pl.reps_done || '\u2014'} min</span>`
+                        : `<span class="tab-prev-set">${pl.set_number}. ${pl.reps_done || '\u2014'}x${pl.weight_done != null ? pl.weight_done + 'kg' : '\u2014'}</span>`;
+                }
+                html += '</div></div>';
+            }
+
+            html += `<div class="tab-log-section" data-ex-id="${ex.id}">
+                <div class="tab-log-header">Registra per oggi &mdash; ${_fmtDate(today)}</div>
+                <div class="tab-log-grid${isCardio ? ' tab-log-grid-cardio' : ''}">
+                    <div class="tab-log-grid-header">
+                        ${isCardio ? '<span>Min</span>' : '<span>Serie</span><span>Reps</span><span>Kg</span>'}
+                    </div>`;
+
+            if (isCardio) {
+                const existing = todayLogs.find(l => l.exercise_id === ex.id && l.set_number === 1);
+                const prev = prevLogs.find(l => l.set_number === 1);
+                const mVal = existing?.reps_done ?? prev?.reps_done ?? (parseInt(ex.reps) || '');
+                html += `<div class="tab-log-row tab-log-row-cardio">
+                    <input type="number" inputmode="numeric" min="0" value="${mVal}" class="tab-log-input" data-field="reps" data-set="1">
+                </div>`;
+            } else {
+                const todayMax = todayLogs.filter(l => l.exercise_id === ex.id).reduce((m, l) => Math.max(m, l.set_number), 0);
+                const prevMax = prevLogs.reduce((m, l) => Math.max(m, l.set_number), 0);
+                const totalRows = Math.max(ex.sets, todayMax);
+                for (let s = 1; s <= totalRows; s++) {
+                    const existing = todayLogs.find(l => l.exercise_id === ex.id && l.set_number === s);
+                    const prev = prevLogs.find(l => l.set_number === s);
+                    const isExtra = s > ex.sets;
+                    const rVal = existing?.reps_done ?? prev?.reps_done ?? (isExtra ? '' : (parseInt(ex.reps) || ''));
+                    const wVal = existing?.weight_done ?? prev?.weight_done ?? (isExtra ? '' : (ex.weight_kg ?? ''));
+                    html += `<div class="tab-log-row">
+                        <span class="tab-log-set">${s}</span>
+                        <input type="number" inputmode="numeric" min="0" value="${rVal}" class="tab-log-input" data-field="reps" data-set="${s}">
+                        <input type="number" inputmode="decimal" min="0" step="0.5" value="${wVal}" class="tab-log-input" data-field="weight" data-set="${s}">
+                    </div>`;
+                }
+            }
+
+            html += `</div>
+                ${isCardio ? '' : `<button class="tab-log-add-set" onclick="tabAddSet('${ex.id}', this)">+ Serie</button>`}
+                <div class="tab-log-actions">
+                    <button class="tab-log-save" onclick="tabSaveLog('${ex.id}', this)">Salva</button>
+                    ${hasLogs ? `<button class="tab-log-delete" onclick="tabDeleteLog('${ex.id}', this)">Elimina log</button>` : ''}
+                </div>
+            </div></div></div></div>`;
+        }
+        html += '</div>';
+
+        c.innerHTML = html;
+
+        // Auto-scroll active day tab
+        const activeTab = c.querySelector('.tab-day-tab.active');
+        if (activeTab) activeTab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+
+        _initTabSwipeAndDrag();
+    }
+
+    function switchTabDay(day) {
+        _activeDay = day;
+        renderTabScheda();
+    }
+
+    function toggleTabEx(exId) {
+        const card = document.getElementById('tex-' + exId);
+        if (card) card.classList.toggle('open');
+    }
+
+    function showTabExDetail(slug) {
+        const ex = _exDB.find(e => e.slug === slug);
+        if (!ex) return;
+        const old = document.getElementById('tabExDetailOverlay');
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'tabExDetailOverlay';
+        overlay.className = 'tab-ex-detail-overlay';
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = `
+        <div class="tab-ex-detail-panel">
+            <div class="tab-ex-detail-header">
+                <div>
+                    <h3>${_esc(ex.nome_it)}</h3>
+                    <span class="tab-ex-detail-cat">${_esc(ex.categoria)}</span>
+                    ${ex.nome_en ? `<span class="tab-ex-detail-en">${_esc(ex.nome_en)}</span>` : ''}
+                </div>
+                <button class="tab-ex-detail-close" onclick="document.getElementById('tabExDetailOverlay').remove()">&times;</button>
+            </div>
+            <div class="tab-ex-detail-body" id="tabExDetailMedia"></div>
+        </div>`;
+        document.body.appendChild(overlay);
+
+        const mc = document.getElementById('tabExDetailMedia');
+        if (ex.video && mc) {
+            const v = document.createElement('video');
+            v.className = 'tab-ex-detail-video';
+            v.controls = true; v.autoplay = true; v.loop = true;
+            v.muted = true; v.playsInline = true; v.preload = 'auto';
+            v.src = ex.video;
+            mc.appendChild(v);
+            v.load(); v.play().catch(() => {});
+        } else if (mc && ex.img) {
+            const img = document.createElement('img');
+            img.className = 'tab-ex-detail-img';
+            img.src = ex.img; img.alt = ex.nome_it;
+            mc.appendChild(img);
+        }
+        requestAnimationFrame(() => overlay.classList.add('visible'));
+    }
+
+    async function renameTabPlan() {
+        if (!_plan) return;
+        const current = _plan.name || '';
+        const next = prompt('Nuovo nome scheda:', current);
+        if (next == null) return;
+        const trimmed = next.trim();
+        if (!trimmed || trimmed === current) return;
+        try {
+            const { error } = await _queryWithTimeout(
+                supabaseClient.from('workout_plans').update({ name: trimmed }).eq('id', _plan.id)
+            );
+            if (error) throw error;
+            _plan.name = trimmed;
+            document.getElementById('tabPlanName').textContent = trimmed;
+            _toast('Scheda rinominata');
+        } catch (e) {
+            console.error('[Tablet] rename plan error:', e);
+            _toast('Errore rinomina: ' + (e.message || ''), 'error');
+        }
+    }
+
+    function showTabEditExercise(exId) {
+        const ex = (_plan?.workout_exercises || []).find(e => e.id === exId);
+        if (!ex) return;
+        const old = document.getElementById('tabEditExOverlay');
+        if (old) old.remove();
+
+        const isCardio = (ex.muscle_group || '').toLowerCase() === 'cardio';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'tabEditExOverlay';
+        overlay.className = 'tab-edit-overlay';
+        overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); document.body.style.overflow = ''; } };
+
+        let setsHtml = '';
+        if (!isCardio) {
+            setsHtml = `
+            <label class="tab-edit-label">Serie</label>
+            <div class="tab-edit-field">
+                <button class="tab-edit-stepper" onclick="tabEditStepper('tabEditSets', -1)">−</button>
+                <input type="number" id="tabEditSets" class="tab-edit-input" value="${ex.sets || 3}" min="1" inputmode="numeric">
+                <button class="tab-edit-stepper" onclick="tabEditStepper('tabEditSets', 1)">+</button>
+            </div>
+
+            <label class="tab-edit-label">Ripetizioni</label>
+            <div class="tab-edit-field">
+                <input type="text" id="tabEditReps" class="tab-edit-input tab-edit-input-wide" value="${_esc(ex.reps || '')}" inputmode="text" placeholder="es. 10 o 8-12">
+            </div>
+
+            <label class="tab-edit-label">Peso (kg)</label>
+            <div class="tab-edit-field">
+                <input type="number" id="tabEditWeight" class="tab-edit-input tab-edit-input-wide" value="${ex.weight_kg ?? ''}" min="0" step="0.5" inputmode="decimal" placeholder="Opzionale">
+            </div>
+
+            <label class="tab-edit-label">Recupero (secondi)</label>
+            <div class="tab-edit-field">
+                <input type="number" id="tabEditRest" class="tab-edit-input tab-edit-input-wide" value="${ex.rest_seconds ?? ''}" min="0" inputmode="numeric" placeholder="es. 90">
+            </div>`;
+        } else {
+            setsHtml = `
+            <label class="tab-edit-label">Durata (minuti)</label>
+            <div class="tab-edit-field">
+                <input type="text" id="tabEditReps" class="tab-edit-input tab-edit-input-wide" value="${_esc(ex.reps || '')}" inputmode="text" placeholder="es. 20">
+            </div>`;
+        }
+
+        overlay.innerHTML = `
+        <div class="tab-edit-panel">
+            <div class="tab-edit-header">
+                <h3>Modifica esercizio</h3>
+                <button class="tab-edit-close" onclick="document.getElementById('tabEditExOverlay').remove();document.body.style.overflow=''">&times;</button>
+            </div>
+            <div class="tab-edit-body">
+                <div class="tab-edit-ex-name">${_esc(ex.exercise_name)}</div>
+                ${setsHtml}
+                <label class="tab-edit-label">Note</label>
+                <textarea id="tabEditNotes" class="tab-edit-textarea" rows="3" placeholder="Aggiungi note...">${_esc(ex.notes || '')}</textarea>
+                <div class="tab-edit-actions">
+                    <button class="tab-edit-save" onclick="tabSaveEditExercise('${exId}', ${isCardio})">Salva modifiche</button>
+                    <button class="tab-edit-cancel" onclick="document.getElementById('tabEditExOverlay').remove();document.body.style.overflow=''">Annulla</button>
+                </div>
+            </div>
+        </div>`;
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+        requestAnimationFrame(() => overlay.classList.add('visible'));
+    }
+
+    function tabEditStepper(inputId, delta) {
+        const inp = document.getElementById(inputId);
+        if (!inp) return;
+        inp.value = Math.max(1, (parseInt(inp.value) || 0) + delta);
+    }
+
+    async function tabSaveEditExercise(exId, isCardio) {
+        const btn = document.querySelector('.tab-edit-save');
+        if (btn) { btn.disabled = true; btn.textContent = 'Salvataggio...'; }
+        try {
+            const updates = {};
+            updates.notes = document.getElementById('tabEditNotes')?.value.trim() || null;
+
+            if (!isCardio) {
+                updates.sets = parseInt(document.getElementById('tabEditSets')?.value) || 3;
+                updates.reps = document.getElementById('tabEditReps')?.value.trim() || '10';
+                const w = document.getElementById('tabEditWeight')?.value;
+                updates.weight_kg = w !== '' && w != null ? parseFloat(w) : null;
+                const r = document.getElementById('tabEditRest')?.value;
+                updates.rest_seconds = r !== '' && r != null ? parseInt(r) : null;
+            } else {
+                updates.reps = document.getElementById('tabEditReps')?.value.trim() || '10';
+            }
+
+            const { error: saveErr } = await _queryWithTimeout(
+                supabaseClient.from('workout_exercises').update(updates).eq('id', exId)
+            );
+            if (saveErr) throw saveErr;
+
+            const ex = (_plan?.workout_exercises || []).find(e => e.id === exId);
+            if (ex) Object.assign(ex, updates);
+
+            document.getElementById('tabEditExOverlay')?.remove();
+            document.body.style.overflow = '';
+            renderTabScheda();
+        } catch (err) {
+            console.error('Errore salvataggio:', err);
+            alert('Errore nel salvataggio');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Salva modifiche'; }
+        }
+    }
+
+    function tabAddSet(exId, btn) {
+        const section = btn.closest('.tab-log-section');
+        const grid = section.querySelector('.tab-log-grid');
+        const rows = grid.querySelectorAll('.tab-log-row');
+        const next = rows.length + 1;
+        const row = document.createElement('div');
+        row.className = 'tab-log-row';
+        row.innerHTML = `
+            <span class="tab-log-set">${next}</span>
+            <input type="number" inputmode="numeric" min="0" value="" class="tab-log-input" data-field="reps" data-set="${next}">
+            <input type="number" inputmode="decimal" min="0" step="0.5" value="" class="tab-log-input" data-field="weight" data-set="${next}">`;
+        grid.appendChild(row);
+        row.querySelector('input[data-field="reps"]').focus();
+    }
+
+    async function tabSaveLog(exId, btn) {
+        if (!_userId) return;
+        const section = btn.closest('.tab-log-section');
+        const rows = section.querySelectorAll('.tab-log-row');
+        const today = _localDate();
+        btn.disabled = true;
+        btn.textContent = 'Salvataggio...';
+        try {
+            // Batch all sets into a single upsert. Righe completamente vuote
+            // (reps e weight entrambi mancanti) vengono saltate: senza, premere
+            // "Salva" a vuoto crea record null/null che fanno apparire
+            // l'esercizio come completato pur senza dati reali.
+            const batch = [];
+            for (const row of rows) {
+                const setEl = row.querySelector('.tab-log-set');
+                const s = setEl ? parseInt(setEl.textContent) : 1;
+                const reps = row.querySelector('input[data-field="reps"]');
+                const weight = row.querySelector('input[data-field="weight"]');
+                const repsVal = reps?.value ? parseInt(reps.value) : null;
+                const weightVal = weight?.value ? parseFloat(weight.value) : null;
+                if (repsVal == null && weightVal == null) continue;
+                batch.push({
+                    exercise_id: exId,
+                    user_id: _userId,
+                    log_date: today,
+                    set_number: s,
+                    reps_done: repsVal,
+                    weight_done: weightVal,
+                    rpe: null, notes: null
+                });
+            }
+            if (!batch.length) {
+                btn.textContent = 'Salva';
+                btn.disabled = false;
+                _toast('Inserisci almeno una serie', 'info');
+                return;
+            }
+            const { data, error: logErr } = await _queryWithTimeout(
+                supabaseClient.from('workout_logs')
+                    .upsert(batch, { onConflict: 'exercise_id,user_id,log_date,set_number' })
+                    .select()
+            );
+            if (logErr) throw logErr;
+            if (data) {
+                _logs = _logs.filter(l => !(l.exercise_id === exId && l.log_date === today));
+                _logs.push(...data);
+            }
+            _toast('Log salvato!');
+            // Update card UI inline
+            const card = document.getElementById('tex-' + exId);
+            if (card) {
+                card.classList.add('tab-ex-done');
+                const st = card.querySelector('.tab-ex-status');
+                if (st) st.innerHTML = '<span class="tab-ex-check">&#10003;</span>';
+                const actions = card.querySelector('.tab-log-actions');
+                if (actions && !actions.querySelector('.tab-log-delete')) {
+                    const d = document.createElement('button');
+                    d.className = 'tab-log-delete';
+                    d.textContent = 'Elimina log';
+                    d.onclick = function() { tabDeleteLog(exId, d); };
+                    actions.appendChild(d);
+                }
+            }
+            // Update superset card if this exercise belongs to one
+            const dayEx = _exercises.filter(e => e.day_label === _activeDay);
+            const todayLogs = _logs.filter(l => l.log_date === today);
+            const thisEx = dayEx.find(e => e.id === exId);
+            if (thisEx && thisEx.superset_group) {
+                const ssCard = document.getElementById('tss-' + thisEx.superset_group);
+                if (ssCard) {
+                    const pair = dayEx.filter(e => e.superset_group === thisEx.superset_group);
+                    const allSsDone = pair.every(e => todayLogs.some(l => l.exercise_id === e.id));
+                    if (allSsDone) {
+                        ssCard.classList.add('all-ss-done');
+                        const ssStatus = ssCard.querySelector('.all-ss-status');
+                        if (ssStatus) ssStatus.innerHTML = '<span class="tab-ex-check">&#10003;</span>';
+                    }
+                }
+            }
+            // Update day count
+            const dc = dayEx.filter(e => todayLogs.some(l => l.exercise_id === e.id)).length;
+            const countEl = document.querySelector('.tab-day-count');
+            if (countEl) countEl.textContent = `${dc}/${dayEx.length} completati`;
+
+            btn.textContent = 'Salvato!';
+            btn.classList.add('tab-log-save--done');
+            setTimeout(() => { btn.textContent = 'Salva'; btn.disabled = false; btn.classList.remove('tab-log-save--done'); }, 2000);
+        } catch(e) {
+            console.error('[Tablet] save error:', e);
+            btn.textContent = 'Salva';
+            btn.disabled = false;
+            _toast('Errore salvataggio', 'error');
+        }
+    }
+
+    async function tabDeleteLog(exId, btn) {
+        if (!confirm('Eliminare il log di oggi per questo esercizio?')) return;
+        if (!_userId) return;
+        const today = _localDate();
+        btn.disabled = true;
+        try {
+            const todayForEx = _logs.filter(l => l.exercise_id === exId && l.log_date === today);
+            for (const log of todayForEx) {
+                const { error: delErr } = await _queryWithTimeout(
+                    supabaseClient.from('workout_logs').delete().eq('id', log.id)
+                );
+                if (delErr) throw delErr;
+            }
+            _logs = _logs.filter(l => !(l.exercise_id === exId && l.log_date === today));
+            _toast('Log eliminato');
+            renderTabScheda();
+        } catch(e) {
+            console.error('[Tablet] delete error:', e);
+            _toast('Errore eliminazione', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // ── Render Progressi ──────────────────────────────────────────────────
+    async function renderTabProgressi() {
+        const c = document.getElementById('tabContent');
+        if (!c) return;
+        if (!_userId) {
+            c.innerHTML = '<div class="tab-empty">Sessione non attiva. <button class="tab-btn tab-btn--primary" onclick="resetToScan()">Torna allo scanner</button></div>';
+            return;
+        }
+        c.innerHTML = '<div class="tab-loading">Caricamento progressi...</div>';
+
+        try {
+            // Fetch all plans + logs (last 90 days, only needed columns) in parallel.
+            // Timeout 15s su entrambe le query: senza, in caso di auth lock contention
+            // restavano appese e il tab Progressi era bloccato su "Caricamento progressi...".
+            const progCutoff = _localDate(new Date(Date.now() - 90 * 86400000));
+            const { data: allPlans, error: plansErr } = await _queryWithTimeout(supabaseClient
+                .from('workout_plans')
+                .select('id, workout_exercises(id, exercise_name, muscle_group, sets, reps, weight_kg)')
+                .eq('user_id', _userId), 15000);
+            if (plansErr) throw plansErr;
+
+            const allEx = (allPlans || []).flatMap(p => p.workout_exercises || []);
+            const allExIds = allEx.map(e => e.id);
+            if (!allExIds.length) {
+                c.innerHTML = '<div class="tab-empty">Nessun esercizio nelle schede.</div>';
+                return;
+            }
+
+            const { data: logs, error: logsErr } = await _queryWithTimeout(supabaseClient
+                .from('workout_logs')
+                .select('exercise_id,log_date,set_number,reps_done,weight_done')
+                .in('exercise_id', allExIds)
+                .eq('user_id', _userId)
+                .gte('log_date', progCutoff)
+                .order('log_date', { ascending: true }), 15000);
+            if (logsErr) throw logsErr;
+
+            if (!logs?.length) {
+                c.innerHTML = '<div class="tab-empty">Nessun log registrato. Inizia ad allenarti!</div>';
+                return;
+            }
+
+            const idToName = {}, nameToMuscle = {};
+            for (const ex of allEx) {
+                idToName[ex.id] = ex.exercise_name;
+                if (ex.muscle_group && !nameToMuscle[ex.exercise_name]) nameToMuscle[ex.exercise_name] = ex.muscle_group;
+            }
+
+            // Stats
+            const totalSessions = new Set(logs.map(l => l.exercise_id + '|' + l.log_date)).size;
+            const totalSets = logs.length;
+            const totalVolume = logs.reduce((s, l) => s + ((l.weight_done || 0) * (l.reps_done || 0)), 0);
+
+            let html = `<div class="tab-stats-row">
+                <div class="tab-stat-card"><div class="tab-stat-value">${totalSessions}</div><div class="tab-stat-label">Sessioni</div></div>
+                <div class="tab-stat-card"><div class="tab-stat-value">${totalSets}</div><div class="tab-stat-label">Serie totali</div></div>
+                <div class="tab-stat-card"><div class="tab-stat-value">${totalVolume >= 1000 ? (totalVolume/1000).toFixed(1) + 't' : totalVolume + 'kg'}</div><div class="tab-stat-label">Volume totale</div></div>
+            </div>`;
+
+            // Group by exercise name
+            const logsByName = {};
+            for (const l of logs) {
+                const name = idToName[l.exercise_id] || 'Sconosciuto';
+                if (!logsByName[name]) logsByName[name] = [];
+                logsByName[name].push(l);
+            }
+
+            // Active plan targets
+            const targetByName = {};
+            for (const ex of _exercises) {
+                targetByName[ex.exercise_name] = { sets: ex.sets, reps: ex.reps, weight_kg: ex.weight_kg };
+            }
+
+            let chartIdx = 0;
+            html += '<div class="tab-progress-grid">';
+            for (const exName of Object.keys(logsByName).sort()) {
+                const exLogs = logsByName[exName];
+                const isCardio = (nameToMuscle[exName] || '').toLowerCase() === 'cardio';
+                const unit = isCardio ? 'min' : 'kg';
+
+                const sessionMap = {};
+                for (const l of exLogs) {
+                    const val = isCardio ? l.reps_done : l.weight_done;
+                    if (val == null) continue;
+                    const key = l.exercise_id + '|' + l.log_date;
+                    if (!sessionMap[key] || val > sessionMap[key].value) {
+                        sessionMap[key] = { date: l.log_date, value: val };
+                    }
+                }
+                const sessions = Object.values(sessionMap).sort((a, b) => a.date.localeCompare(b.date));
+                if (!sessions.length) continue;
+
+                const values = sessions.map(s => s.value);
+                const labels = sessions.map(s => _fmtDate(s.date));
+                const maxW = Math.max(...values);
+                const lastW = values[values.length - 1];
+                const trend = values.length >= 2 ? lastW - values[0] : 0;
+                const trendSign = trend > 0 ? '+' : '';
+                const trendClass = trend > 0 ? 'tab-trend-up' : trend < 0 ? 'tab-trend-down' : '';
+                const target = targetByName[exName];
+                const targetStr = target
+                    ? (isCardio ? `Target: ${target.reps} min` : `Target: ${target.sets}x${target.reps}${target.weight_kg != null ? ' @ ' + target.weight_kg + 'kg' : ''}`)
+                    : '';
+
+                const canvasId = 'tc-' + (chartIdx++);
+                html += `<div class="tab-progress-card">
+                    <div class="tab-progress-header">
+                        <div class="tab-progress-name">${_esc(exName)}</div>
+                        ${targetStr ? `<div class="tab-progress-meta">${targetStr}</div>` : ''}
+                    </div>
+                    <canvas id="${canvasId}" width="400" height="160"></canvas>
+                    <div class="tab-progress-stats">
+                        <span>Max <strong>${maxW}${unit}</strong></span>
+                        <span>Ultimo <strong>${lastW}${unit}</strong></span>
+                        <span class="${trendClass}">Trend <strong>${trendSign}${trend.toFixed(1)}${unit}</strong></span>
+                        <span>${sessions.length} sessioni</span>
+                    </div>
+                </div>`;
+
+                setTimeout(((cid, lbl, val) => () => {
+                    const canvas = document.getElementById(cid);
+                    if (canvas) _drawChart(canvas, lbl, val, '#8B5CF6');
+                })(canvasId, labels, values), 50);
+            }
+            html += '</div>';
+
+            c.innerHTML = html;
+        } catch(e) {
+            console.error('[Tablet] progressi error:', e);
+            c.innerHTML = '<div class="tab-empty">Errore caricamento progressi.</div>';
+        }
+    }
+
+    // ── Chart drawing (same as allenamento.html) ──────────────────────────
+    function _drawChart(canvas, labels, values, color) {
+        const ctx = canvas.getContext('2d');
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width > 0 ? rect.width : 400;
+        const h = 160;
+        canvas.width = Math.round(w * 2);
+        canvas.height = Math.round(h * 2);
+        ctx.scale(2, 2);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        const r = 10;
+        ctx.moveTo(r, 0); ctx.lineTo(w-r, 0); ctx.quadraticCurveTo(w, 0, w, r);
+        ctx.lineTo(w, h-r); ctx.quadraticCurveTo(w, h, w-r, h);
+        ctx.lineTo(r, h); ctx.quadraticCurveTo(0, h, 0, h-r);
+        ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.closePath(); ctx.fill();
+
+        const pad = { top: 22, right: 14, bottom: 30, left: 42 };
+        const cw = w - pad.left - pad.right;
+        const ch = h - pad.top - pad.bottom;
+        if (!values.length) return;
+
+        const minV = Math.min(...values), maxV = Math.max(...values);
+        const range = maxV - minV || 1;
+        const yMin = Math.max(0, minV - range * 0.1), yMax = maxV + range * 0.1;
+        const yRange = yMax - yMin || 1;
+
+        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 0.8; ctx.setLineDash([3,3]);
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.top + ch - (ch * i / 4);
+            ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+            ctx.fillStyle = '#94a3b8'; ctx.font = '500 9px system-ui'; ctx.textAlign = 'right';
+            ctx.fillText(Math.round(yMin + yRange * i / 4), pad.left - 6, y + 3);
+        }
+        ctx.setLineDash([]);
+
+        const pts = values.map((v, i) => ({
+            x: pad.left + (values.length === 1 ? cw/2 : (i/(values.length-1))*cw),
+            y: pad.top + ch - ((v - yMin)/yRange)*ch, v
+        }));
+
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pad.top + ch);
+        pts.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.lineTo(pts[pts.length-1].x, pad.top + ch); ctx.closePath();
+        const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+        grad.addColorStop(0, color + '30'); grad.addColorStop(0.6, color + '10'); grad.addColorStop(1, color + '02');
+        ctx.fillStyle = grad; ctx.fill();
+
+        ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.beginPath();
+        pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+
+        pts.forEach((p, i) => {
+            const last = i === pts.length - 1;
+            ctx.beginPath(); ctx.arc(p.x, p.y, last ? 5 : 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = last ? color : '#fff'; ctx.fill();
+            ctx.strokeStyle = last ? '#fff' : color; ctx.lineWidth = last ? 2 : 1.5; ctx.stroke();
+            if (last) { ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI*2); ctx.strokeStyle = color+'25'; ctx.lineWidth = 2; ctx.stroke(); }
+        });
+
+        ctx.fillStyle = '#94a3b8'; ctx.font = '500 8px system-ui'; ctx.textAlign = 'center';
+        const step = Math.max(1, Math.floor(labels.length / 6));
+        labels.forEach((l, i) => { if (i % step === 0 || i === labels.length-1) ctx.fillText(l, pts[i].x, pad.top + ch + 14); });
+
+        const last = pts[pts.length-1];
+        const label = last.v + 'kg';
+        ctx.font = 'bold 10px system-ui';
+        const tw = ctx.measureText(label).width;
+        const bx = Math.min(last.x, w - pad.right - tw/2 - 6);
+        const by = last.y - 14;
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        const br = 4;
+        ctx.moveTo(bx-tw/2-5+br, by-8); ctx.lineTo(bx+tw/2+5-br, by-8);
+        ctx.quadraticCurveTo(bx+tw/2+5, by-8, bx+tw/2+5, by-8+br);
+        ctx.lineTo(bx+tw/2+5, by+2-br); ctx.quadraticCurveTo(bx+tw/2+5, by+2, bx+tw/2+5-br, by+2);
+        ctx.lineTo(bx-tw/2-5+br, by+2); ctx.quadraticCurveTo(bx-tw/2-5, by+2, bx-tw/2-5, by+2-br);
+        ctx.lineTo(bx-tw/2-5, by-8+br); ctx.quadraticCurveTo(bx-tw/2-5, by-8, bx-tw/2-5+br, by-8);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(label, bx, by-1);
+    }
+
+    // ── FAB action: aggiungi esercizio ──────────────────────────────────
+    function tabFabAction() {
+        if (!_plan) return;
+        _tabShowFabSheet();
+    }
+
+    function _tabShowFabSheet() {
+        const old = document.getElementById('tabFabSheetOverlay');
+        if (old) old.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'tabFabSheetOverlay';
+        overlay.className = 'all-fab-sheet-overlay';
+        overlay.innerHTML = `
+            <div class="all-fab-sheet">
+                <div class="all-fab-sheet-handle"></div>
+                <div class="all-fab-sheet-title">Aggiungi al ${_esc(_activeDay || 'Giorno A')}</div>
+                <div class="all-fab-sheet-options">
+                    <button class="all-fab-sheet-btn" onclick="_tabCloseFabSheet();_tabOpenExercisePicker()">
+                        <div class="all-fab-sheet-btn-icon all-fab-sheet-btn-icon--single">+</div>
+                        <div class="all-fab-sheet-btn-text">
+                            <span class="all-fab-sheet-btn-title">Esercizio singolo</span>
+                            <span class="all-fab-sheet-btn-desc">Aggiungi un esercizio con riposo</span>
+                        </div>
+                    </button>
+                    <button class="all-fab-sheet-btn all-fab-sheet-btn--ss" onclick="_tabCloseFabSheet();_tabOpenSupersetPicker()">
+                        <div class="all-fab-sheet-btn-icon all-fab-sheet-btn-icon--ss">SS</div>
+                        <div class="all-fab-sheet-btn-text">
+                            <span class="all-fab-sheet-btn-title">Super Serie</span>
+                            <span class="all-fab-sheet-btn-desc">Due esercizi senza pausa tra loro</span>
+                        </div>
+                    </button>
+                </div>
+            </div>`;
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) _tabCloseFabSheet(); });
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('visible'));
+    }
+
+    function _tabCloseFabSheet() {
+        const o = document.getElementById('tabFabSheetOverlay');
+        if (!o) return;
+        o.classList.remove('visible');
+        setTimeout(() => o.remove(), 300);
+    }
+
+    // ── Exercise picker (add exercise to current plan/day) ───────────────
+    let _tabPickerActiveCat = '';
+    let _tabPickerExByCat = {};
+    let _tabPickerCategories = [];
+    // Flag: abbiamo pushato uno stato in history per il picker?
+    // Serve per intercettare il tasto "Indietro" del device/browser e
+    // chiudere il picker invece di navigare via da tablet.html.
+    let _tabPickerHistoryPushed = false;
+
+    // Intercetta il tasto Indietro: se il picker è aperto, chiudilo
+    // (lo state che avevamo pushato è già stato consumato dal browser).
+    window.addEventListener('popstate', () => {
+        if (!_tabPickerHistoryPushed) return;
+        const overlay = document.getElementById('tabExPickerOverlay');
+        if (!overlay) { _tabPickerHistoryPushed = false; return; }
+        _tabPickerHistoryPushed = false;
+        overlay.remove();
+        document.body.style.overflow = '';
+        _tabSsMode = false;
+    });
+
+    function _tabBuildPickerData() {
+        if (_tabPickerCategories.length) return;
+        _tabPickerExByCat = {};
+        for (const ex of _exDB) {
+            if (!_tabPickerExByCat[ex.categoria]) _tabPickerExByCat[ex.categoria] = [];
+            _tabPickerExByCat[ex.categoria].push(ex);
+        }
+        _tabPickerCategories = Object.keys(_tabPickerExByCat).sort();
+    }
+
+    function _tabOpenExercisePicker() {
+        _tabBuildPickerData();
+        _tabPickerActiveCat = '';
+
+        const catSvg = {
+            'Petto': 'chest', 'Tricipiti': 'triceps', 'Bicipiti': 'biceps', 'Braccia': 'biceps',
+            'Spalle': 'shoulders', 'Schiena': 'back', 'Quadricipiti': 'quadriceps',
+            'Glutei e Femorali': 'hips', 'Femorali': 'hamstrings', 'Polpacci': 'calves',
+            'Addominali': 'waist_abs', 'Avambracci': 'forearms', 'Cardio': 'cardio'
+        };
+
+        const old = document.getElementById('tabExPickerOverlay');
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'tabExPickerOverlay';
+        overlay.className = 'tab-picker-overlay';
+        overlay.innerHTML = `
+            <div class="tab-picker-topbar">
+                <span class="tab-picker-title">Aggiungi esercizio — ${_esc(_activeDay || 'Giorno A')}</span>
+                <button type="button" class="tab-picker-close-btn" onclick="tabCloseExercisePicker()">&times;</button>
+            </div>
+            <div class="tab-picker-header">
+                <input type="text" class="tab-picker-search" id="tabPickerSearch" placeholder="Cerca esercizio..."
+                       oninput="tabFilterPicker(this.value)">
+            </div>
+            <div class="tab-picker-body">
+                <div class="tab-picker-cats" id="tabPickerCats">
+                    ${_tabPickerCategories.map(c => {
+                        const svg = catSvg[c] || 'chest';
+                        return `
+                        <button type="button" class="tab-picker-cat-chip" data-cat="${_esc(c)}" onclick="tabPickCategory('${_esc(c)}')">
+                            <img src="images/icone_muscoli/${svg}.svg" class="tab-picker-cat-icon" alt="" loading="lazy">
+                            <span class="tab-picker-cat-name">${_esc(c)}</span>
+                            <span class="tab-picker-cat-count">${(_tabPickerExByCat[c] || []).length}</span>
+                        </button>`;
+                    }).join('')}
+                </div>
+                <div class="tab-picker-list" id="tabPickerList" style="display:none;"></div>
+            </div>
+            <div class="tab-picker-footer">
+                <button type="button" class="tab-picker-custom-btn" onclick="tabPickCustom()">&#9998; Personalizzato</button>
+            </div>`;
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+
+        // Pusha uno stato in history così il tasto Indietro chiude
+        // il picker invece di tornare al calendario (vedi popstate).
+        if (!_tabPickerHistoryPushed) {
+            history.pushState({ tabPickerOpen: true }, '', location.href);
+            _tabPickerHistoryPushed = true;
+        }
+    }
+
+    function tabCloseExercisePicker() {
+        const overlay = document.getElementById('tabExPickerOverlay');
+        if (overlay) overlay.remove();
+        document.body.style.overflow = '';
+        _tabSsMode = false;
+        // Cleanup dello stato pushato in history. La popstate qui sopra
+        // si attiverà ma sarà no-op (overlay già rimosso).
+        if (_tabPickerHistoryPushed) {
+            _tabPickerHistoryPushed = false;
+            if (history.state && history.state.tabPickerOpen) {
+                history.back();
+            }
+        }
+    }
+
+    function tabPickCategory(cat) {
+        _tabPickerActiveCat = cat;
+        const overlay = document.getElementById('tabExPickerOverlay');
+        if (!overlay) return;
+        overlay.querySelectorAll('.tab-picker-cat-chip').forEach(ch => {
+            ch.classList.toggle('active', ch.dataset.cat === cat);
+        });
+        tabRenderPickerExercises(cat, '');
+    }
+
+    function tabFilterPicker(searchText) {
+        const search = (searchText || '').toLowerCase();
+        if (!search && !_tabPickerActiveCat) {
+            const catsEl = document.getElementById('tabPickerCats');
+            const listEl = document.getElementById('tabPickerList');
+            if (catsEl) catsEl.style.display = '';
+            if (listEl) listEl.style.display = 'none';
+            return;
+        }
+        tabRenderPickerExercises(_tabPickerActiveCat, search);
+    }
+
+    function tabRenderPickerExercises(cat, search) {
+        const catsEl = document.getElementById('tabPickerCats');
+        const listEl = document.getElementById('tabPickerList');
+        if (!listEl) return;
+        if (catsEl) catsEl.style.display = 'none';
+        listEl.style.display = '';
+
+        let exercises = _exDB;
+        if (cat) exercises = exercises.filter(e => e.categoria === cat);
+        if (search) exercises = exercises.filter(e =>
+            e.nome_it.toLowerCase().includes(search) || e.nome_en.toLowerCase().includes(search) || e.categoria.toLowerCase().includes(search)
+        );
+
+        if (!exercises.length) {
+            listEl.innerHTML = '<div class="tab-picker-empty">Nessun esercizio trovato</div>';
+            return;
+        }
+
+        const shown = exercises.slice(0, 50);
+        listEl.innerHTML = shown.map(ex => `
+            <div class="tab-picker-item">
+                <img src="${ex.img}" class="tab-picker-item-img" alt="" loading="lazy">
+                <div class="tab-picker-item-info" onclick="tabPickExercise('${_esc(ex.nome_it).replace(/'/g, "\\'")}')">
+                    <span class="tab-picker-item-name">${_esc(ex.nome_it)}</span>
+                    <span class="tab-picker-item-cat">${_esc(ex.categoria)}</span>
+                </div>
+                ${ex.video ? `<button class="tab-picker-item-video" onclick="event.stopPropagation();showTabExDetail('${_esc(ex.slug)}')" title="Video">&#9654;</button>` : ''}
+            </div>
+        `).join('') + (exercises.length > 50 ? `<div class="tab-picker-more">${exercises.length - 50} altri — affina la ricerca</div>` : '');
+    }
+
+    async function tabPickExercise(exerciseName) {
+        if (_tabSsMode) { _tabSsPickExercise(exerciseName); return; }
+
+        const ex = _findEx(exerciseName);
+        const isCardio = ex && (ex.categoria || '').toLowerCase() === 'cardio';
+
+        let sets = 1, reps = '20', rest = 0;
+        if (!isCardio) {
+            const setsVal = prompt('Numero di serie:', '3');
+            if (setsVal === null) return;
+            sets = parseInt(setsVal) || 3;
+
+            const repsVal = prompt('Numero di ripetizioni:', '10');
+            if (repsVal === null) return;
+            reps = repsVal || '10';
+
+            const restVal = prompt('Riposo tra le serie (secondi):', '90');
+            if (restVal === null) return;
+            rest = parseInt(restVal) || 90;
+        }
+
+        const dayLabel = _activeDay || 'Giorno A';
+        tabCloseExercisePicker();
+        try {
+            const maxOrder = _exercises.reduce((m, e) => Math.max(m, e.sort_order), -1);
+            const exerciseData = {
+                plan_id: _plan.id,
+                day_label: dayLabel,
+                exercise_name: exerciseName,
+                muscle_group: ex ? ex.categoria : null,
+                sort_order: maxOrder + 1,
+                sets,
+                reps,
+                weight_kg: null,
+                rest_seconds: rest,
+                notes: null,
+            };
+            const { data: newEx, error } = await _queryWithTimeout(
+                supabaseClient
+                    .from('workout_exercises')
+                    .insert(exerciseData)
+                    .select()
+                    .single()
+            );
+            if (error) throw error;
+            _exercises.push(newEx);
+            _plan.workout_exercises = _exercises;
+            renderTabScheda();
+            _toast('Esercizio aggiunto!');
+        } catch (e) {
+            console.error('[Tablet] add exercise error:', e);
+            _toast('Errore aggiunta esercizio', 'error');
+        }
+    }
+
+    async function tabPickCustom() {
+        const name = prompt('Nome esercizio personalizzato:');
+        if (!name || !name.trim()) return;
+        await tabPickExercise(name.trim());
+    }
+
+    // ── Superset picker flow (tablet) ────────────────────────────────────
+    let _tabSsMode = false;
+    let _tabSsStep = 0;
+    let _tabSsFirst = null;
+
+    function _tabOpenSupersetPicker() {
+        _tabSsMode = true;
+        _tabSsStep = 0;
+        _tabSsFirst = null;
+        _tabOpenExercisePicker();
+        setTimeout(() => {
+            const t = document.querySelector('#tabExPickerOverlay .tab-picker-title');
+            if (t) t.textContent = 'Super Serie \u2014 Esercizio 1 di 2';
+        }, 50);
+    }
+
+    function _tabSsPickExercise(exerciseName) {
+        const ex = _findEx(exerciseName);
+        const isCardio = ex && (ex.categoria || '').toLowerCase() === 'cardio';
+        let reps = '10';
+        if (!isCardio) {
+            const rv = prompt('Numero di ripetizioni:', '10');
+            if (rv === null) { _tabSsMode = false; tabCloseExercisePicker(); return; }
+            reps = rv || '10';
+        } else { reps = '20'; }
+
+        if (_tabSsStep === 0) {
+            _tabSsFirst = { name: exerciseName, ex, reps, muscle_group: ex ? ex.categoria : null };
+            _tabSsStep = 1;
+            _tabPickerActiveCat = '';
+            const c = document.getElementById('tabPickerCats'), l = document.getElementById('tabPickerList'), s = document.getElementById('tabPickerSearch');
+            if (c) c.style.display = ''; if (l) l.style.display = 'none'; if (s) s.value = '';
+            document.querySelectorAll('.tab-picker-cat-chip').forEach(ch => ch.classList.remove('active'));
+            const t = document.querySelector('#tabExPickerOverlay .tab-picker-title');
+            if (t) t.textContent = 'Super Serie \u2014 Esercizio 2 di 2';
+        } else {
+            const sv = prompt('Numero di serie (per entrambi):', '3');
+            if (sv === null) { _tabSsMode = false; tabCloseExercisePicker(); return; }
+            const sets = parseInt(sv) || 3;
+            const rv2 = prompt('Riposo dopo la super serie (secondi):', '90');
+            if (rv2 === null) { _tabSsMode = false; tabCloseExercisePicker(); return; }
+            const rest = parseInt(rv2) || 90;
+            _tabSsFirst.sets = sets;
+            _tabSsMode = false;
+            tabCloseExercisePicker();
+            _tabSaveSupersetPair(_tabSsFirst, { name: exerciseName, ex, sets, reps, muscle_group: ex ? ex.categoria : null }, rest);
+        }
+    }
+
+    async function _tabSaveSupersetPair(first, second, rest) {
+        const dayLabel = _activeDay || 'Giorno A';
+        try {
+            // tablet.html non carica js/data.js: insert diretti via supabaseClient
+            const maxOrder = _exercises.reduce((m, e) => Math.max(m, e.sort_order), -1);
+            const groupId = crypto.randomUUID();
+            const rows = [
+                {
+                    plan_id: _plan.id,
+                    day_label: dayLabel,
+                    exercise_name: first.name,
+                    muscle_group: first.muscle_group,
+                    sort_order: maxOrder + 1,
+                    sets: first.sets,
+                    reps: first.reps,
+                    weight_kg: null,
+                    rest_seconds: 0,
+                    notes: null,
+                    superset_group: groupId,
+                },
+                {
+                    plan_id: _plan.id,
+                    day_label: dayLabel,
+                    exercise_name: second.name,
+                    muscle_group: second.muscle_group,
+                    sort_order: maxOrder + 2,
+                    sets: second.sets,
+                    reps: second.reps,
+                    weight_kg: null,
+                    rest_seconds: rest,
+                    notes: null,
+                    superset_group: groupId,
+                },
+            ];
+            const { data, error } = await _queryWithTimeout(
+                supabaseClient
+                    .from('workout_exercises')
+                    .insert(rows)
+                    .select()
+            );
+            if (error) throw error;
+            _exercises.push(...data);
+            _plan.workout_exercises = _exercises;
+            renderTabScheda();
+            _toast('Super Serie aggiunta!');
+        } catch (e) {
+            console.error('[Tablet] add superset error:', e);
+            _toast('Errore aggiunta super serie', 'error');
+        }
+    }
+
+    function toggleTabSs(ssId) {
+        const card = document.getElementById('tss-' + ssId);
+        if (card) card.classList.toggle('open');
+    }
+
+    // ── Swipe-to-delete + long-press drag-to-reorder ─────────────────────
+    let _tabDragState = null;
+    let _tabSwipeState = null;
+
+    function _initTabSwipeAndDrag() {
+        const cards = document.querySelectorAll('.tab-ex-card[data-ex-id], .all-ss-card[data-ss-id]');
+        cards.forEach(card => {
+            const header = card.querySelector('.tab-ex-header') || card.querySelector('.all-ss-header');
+            if (!header) return;
+            header.addEventListener('touchstart', _onTabTouchStart, { passive: true });
+            header.addEventListener('touchmove', _onTabTouchMove, { passive: false });
+            header.addEventListener('touchend', _onTabTouchEnd, { passive: true });
+        });
+    }
+
+    function _onTabTouchStart(e) {
+        const touch = e.touches[0];
+        const card = e.currentTarget.closest('.tab-ex-card') || e.currentTarget.closest('.all-ss-card');
+        if (!card) return;
+        _resetAllTabSwipes(card);
+        _tabSwipeState = {
+            card,
+            startX: touch.clientX,
+            startY: touch.clientY,
+            currentX: 0,
+            swiping: false,
+            locked: false,
+        };
+        _tabSwipeState.longPressTimer = setTimeout(() => {
+            if (_tabSwipeState && _tabSwipeState.card === card && !_tabSwipeState.swiping) {
+                _startTabDrag(card, touch);
+            }
+        }, 500);
+    }
+
+    function _onTabTouchMove(e) {
+        if (!_tabSwipeState) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - _tabSwipeState.startX;
+        const dy = touch.clientY - _tabSwipeState.startY;
+
+        if (_tabDragState) {
+            e.preventDefault();
+            _handleTabDragMove(touch);
+            return;
+        }
+
+        if (!_tabSwipeState.locked) {
+            if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                _tabSwipeState.locked = true;
+                _tabSwipeState.swiping = Math.abs(dx) > Math.abs(dy);
+                clearTimeout(_tabSwipeState.longPressTimer);
+                if (!_tabSwipeState.swiping) { _tabSwipeState = null; return; }
+            } else { return; }
+        }
+
+        if (!_tabSwipeState.swiping) return;
+        e.preventDefault();
+        const clampedX = Math.min(0, Math.max(dx, -100));
+        _tabSwipeState.currentX = clampedX;
+        const content = _tabSwipeState.card.querySelector('.tab-ex-swipe-content');
+        if (content) content.style.transform = `translateX(${clampedX}px)`;
+    }
+
+    function _onTabTouchEnd() {
+        clearTimeout(_tabSwipeState?.longPressTimer);
+        if (_tabDragState) {
+            _endTabDrag();
+            _tabSwipeState = null;
+            return;
+        }
+        if (!_tabSwipeState || !_tabSwipeState.swiping) { _tabSwipeState = null; return; }
+        const content = _tabSwipeState.card.querySelector('.tab-ex-swipe-content');
+        if (_tabSwipeState.currentX < -60) {
+            if (content) { content.style.transition = 'transform 0.2s ease'; content.style.transform = 'translateX(-85px)'; }
+            _tabSwipeState.card.classList.add('tab-ex-swiped');
+        } else {
+            if (content) { content.style.transition = 'transform 0.2s ease'; content.style.transform = ''; }
+            _tabSwipeState.card.classList.remove('tab-ex-swiped');
+        }
+        setTimeout(() => { if (content) content.style.transition = ''; }, 200);
+        _tabSwipeState = null;
+    }
+
+    function _resetAllTabSwipes(exceptCard) {
+        document.querySelectorAll('.tab-ex-card.tab-ex-swiped, .all-ss-card.tab-ex-swiped').forEach(card => {
+            if (card === exceptCard) return;
+            const content = card.querySelector('.tab-ex-swipe-content');
+            if (content) { content.style.transition = 'transform 0.2s ease'; content.style.transform = ''; }
+            card.classList.remove('tab-ex-swiped');
+            setTimeout(() => { if (content) content.style.transition = ''; }, 200);
+        });
+    }
+
+    // ── Long-press drag to reorder ──────────────────────────────────────
+    function _startTabDrag(card, touch) {
+        if (navigator.vibrate) navigator.vibrate(30);
+        const container = card.parentElement;
+        const cards = [...container.querySelectorAll('.tab-ex-card[data-ex-id], .all-ss-card[data-ss-id]')];
+        const idx = cards.indexOf(card);
+        _tabDragState = {
+            card,
+            container,
+            cards,
+            startIdx: idx,
+            currentIdx: idx,
+            startY: touch.clientY,
+            cardHeight: card.offsetHeight + parseInt(getComputedStyle(card).marginBottom || '0'),
+        };
+        card.classList.add('tab-ex-dragging');
+        container.classList.add('tab-reordering');
+        const header = card.querySelector('.tab-ex-header') || card.querySelector('.all-ss-header');
+        if (header) header.removeAttribute('onclick');
+    }
+
+    function _handleTabDragMove(touch) {
+        if (!_tabDragState) return;
+        const dy = touch.clientY - _tabDragState.startY;
+        _tabDragState.card.style.transform = `translateY(${dy}px) scale(1.02)`;
+        const offsetSteps = Math.round(dy / _tabDragState.cardHeight);
+        const newIdx = Math.max(0, Math.min(_tabDragState.cards.length - 1, _tabDragState.startIdx + offsetSteps));
+        if (newIdx !== _tabDragState.currentIdx) {
+            _tabDragState.cards.forEach((c, i) => {
+                if (c === _tabDragState.card) return;
+                if (_tabDragState.startIdx < newIdx) {
+                    c.style.transform = (i > _tabDragState.startIdx && i <= newIdx) ? `translateY(-${_tabDragState.cardHeight}px)` : '';
+                } else {
+                    c.style.transform = (i >= newIdx && i < _tabDragState.startIdx) ? `translateY(${_tabDragState.cardHeight}px)` : '';
+                }
+                c.style.transition = 'transform 0.2s ease';
+            });
+            _tabDragState.currentIdx = newIdx;
+        }
+    }
+
+    async function _endTabDrag() {
+        if (!_tabDragState) return;
+        const { card, cards, startIdx, currentIdx } = _tabDragState;
+
+        card.classList.remove('tab-ex-dragging');
+        _tabDragState.container.classList.remove('tab-reordering');
+        card.style.transform = '';
+        card.style.transition = '';
+        cards.forEach(c => { c.style.transform = ''; c.style.transition = ''; });
+        window.getSelection()?.removeAllRanges();
+
+        // Restore onclick
+        const exId = card.dataset.exId;
+        const ssId = card.dataset.ssId;
+        const header = card.querySelector('.tab-ex-header') || card.querySelector('.all-ss-header');
+        if (header) {
+            if (ssId) header.setAttribute('onclick', `toggleTabSs('${ssId}')`);
+            else if (exId) header.setAttribute('onclick', `toggleTabEx('${exId}')`);
+        }
+
+        _tabDragState = null;
+
+        if (startIdx === currentIdx) return;
+
+        const reordered = [...cards];
+        const [moved] = reordered.splice(startIdx, 1);
+        reordered.splice(currentIdx, 0, moved);
+
+        const allDayEx = _exercises.filter(e => e.day_label === _activeDay);
+        const newOrder = [];
+        for (const c of reordered) {
+            if (c.dataset.ssId) {
+                const pair = allDayEx.filter(e => e.superset_group === c.dataset.ssId)
+                    .sort((a, b) => a.sort_order - b.sort_order);
+                newOrder.push(...pair);
+            } else if (c.dataset.exId) {
+                const ex = allDayEx.find(e => e.id === c.dataset.exId);
+                if (ex) newOrder.push(ex);
+            }
+        }
+
+        // Compute base offset to keep other days untouched
+        const minSort = allDayEx.reduce((m, e) => Math.min(m, e.sort_order), Infinity);
+        const base = Number.isFinite(minSort) ? minSort : 0;
+
+        try {
+            for (let i = 0; i < newOrder.length; i++) {
+                const newSort = base + i;
+                if (newOrder[i].sort_order !== newSort) {
+                    const { error } = await _queryWithTimeout(
+                        supabaseClient
+                            .from('workout_exercises')
+                            .update({ sort_order: newSort })
+                            .eq('id', newOrder[i].id)
+                    );
+                    if (error) throw error;
+                    newOrder[i].sort_order = newSort;
+                }
+            }
+            _exercises = (_plan.workout_exercises || []).sort((a, b) => a.sort_order - b.sort_order);
+            renderTabScheda();
+        } catch (e) {
+            console.error('[Tablet] reorder error:', e);
+            _toast('Errore riordino', 'error');
+            renderTabScheda();
+        }
+    }
+
+    // ── Delete from plan ─────────────────────────────────────────────────
+    async function deleteExerciseFromTabPlan(exId) {
+        if (!confirm('Eliminare questo esercizio dalla scheda?')) return;
+        try {
+            const { error } = await _queryWithTimeout(
+                supabaseClient
+                    .from('workout_exercises')
+                    .delete()
+                    .eq('id', exId)
+            );
+            if (error) throw error;
+            _exercises = _exercises.filter(e => e.id !== exId);
+            if (_plan) _plan.workout_exercises = _exercises;
+            renderTabScheda();
+            _toast('Esercizio eliminato');
+        } catch (e) {
+            console.error('[Tablet] delete exercise error:', e);
+            _toast('Errore eliminazione', 'error');
+        }
+    }
+
+    async function deleteSupersetFromTabPlan(groupId) {
+        if (!confirm('Eliminare questa super serie dalla scheda?')) return;
+        try {
+            const { error } = await _queryWithTimeout(
+                supabaseClient
+                    .from('workout_exercises')
+                    .delete()
+                    .eq('superset_group', groupId)
+            );
+            if (error) throw error;
+            _exercises = _exercises.filter(e => e.superset_group !== groupId);
+            if (_plan) _plan.workout_exercises = _exercises;
+            renderTabScheda();
+            _toast('Super Serie eliminata');
+        } catch (e) {
+            console.error('[Tablet] delete superset error:', e);
+            _toast('Errore eliminazione', 'error');
+        }
+    }
+
+    // ── PWA: register service worker ──────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    // ── Lifecycle: recovery da background/offline ─────────────────────────
+    // Quando il tablet torna in foreground (lock screen, multitasking) o
+    // riconnette la rete, aggiorniamo i log per evitare stati stantii che
+    // altrimenti richiedono un reload manuale.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && _userId) _refreshLogsFromBg();
+    });
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted && _userId) _refreshLogsFromBg();
+    });
+    window.addEventListener('online', () => {
+        if (_userId) _refreshLogsFromBg();
+    });
+
+    async function _refreshLogsFromBg() {
+        if (!_userId || !_plan) return;
+        // Evita di sovrapporsi al caricamento iniziale (se visibilitychange
+        // scatta mentre loadUserWorkout e' ancora in corso).
+        if (_loadingInProgress) return;
+        const uidAtStart = _userId;
+        try {
+            // Ricarica piano + esercizi (possono essere cambiati durante il background:
+            // edit, aggiunta, rimozione, riordino)
+            const { data: planData, error: planErr } = await _queryWithTimeout(
+                supabaseClient.from('workout_plans')
+                    .select('*, workout_exercises(*)')
+                    .eq('id', _plan.id)
+                    .single()
+            );
+            if (planErr) throw planErr;
+            // Se l'utente ha cambiato sessione mentre eravamo in background,
+            // abortisci prima di sovrascrivere lo stato della nuova sessione.
+            if (_userId !== uidAtStart) return;
+            if (planData) {
+                _plan = planData;
+                _exercises = (_plan.workout_exercises || []).sort((a, b) => a.sort_order - b.sort_order);
+            }
+
+            // Ricarica log (ultimi 30 gg) con gli exercise_id aggiornati
+            const exIds = _exercises.map(e => e.id);
+            if (exIds.length) {
+                const cutoff = _localDate(new Date(Date.now() - 30 * 86400000));
+                const { data: logsData, error: logsErr } = await _queryWithTimeout(
+                    supabaseClient.from('workout_logs')
+                        .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rpe')
+                        .in('exercise_id', exIds).eq('user_id', _userId)
+                        .gte('log_date', cutoff)
+                        .order('log_date', { ascending: false })
+                        .order('set_number', { ascending: true })
+                );
+                if (logsErr) throw logsErr;
+                if (_userId !== uidAtStart) return;
+                if (logsData) _logs = logsData;
+            } else {
+                _logs = [];
+            }
+
+            if (_userId !== uidAtStart) return;
+            if (_tabView === 'scheda') renderTabScheda();
+        } catch(e) {
+            console.warn('[Tablet] bg refresh failed', e);
+        }
+    }
+    </script>
+</body>
+</html>

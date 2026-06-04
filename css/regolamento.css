@@ -1,0 +1,346 @@
+/* ===== Regolamento Page ===== */
+
+/* Hero */
+.rg-hero {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #111 50%, #1a2a2a 100%);
+    color: white;
+    padding: 4rem 0 3.5rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.rg-hero::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(139, 92, 246,0.12) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.rg-hero-icon {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+}
+
+.rg-hero-title {
+    font-size: 2.8rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 0.5rem;
+    line-height: 1.1;
+}
+
+.rg-hero-sub {
+    font-size: 1.05rem;
+    color: var(--primary-purple);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+/* Sections */
+.rg-section {
+    padding: 4rem 0;
+}
+
+.rg-section-alt {
+    background: white;
+}
+
+.rg-section-title {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--dark-bg);
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.rg-section-sub {
+    text-align: center;
+    color: #777;
+    font-size: 0.95rem;
+    margin-bottom: 3rem;
+}
+
+.rg-accent {
+    color: var(--primary-purple);
+}
+
+/* Cards (app section) */
+.rg-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    max-width: 850px;
+    margin: 0 auto;
+}
+
+.rg-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.75rem 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid #f0f0f0;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.rg-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 28px rgba(139, 92, 246,0.12);
+}
+
+.rg-card-highlight {
+    border: 2px solid var(--primary-purple);
+    background: linear-gradient(135deg, #f0fbff 0%, #fff 100%);
+    grid-column: 1 / -1;
+}
+
+.rg-card-accent {
+    border: 2px solid var(--primary-purple);
+    background: linear-gradient(135deg, #f0fbff 0%, #fff 100%);
+}
+
+.rg-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+
+.rg-card-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.rg-card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--dark-bg);
+}
+
+.rg-card p {
+    color: #555;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    margin-bottom: 0.5rem;
+}
+
+.rg-card p:last-child {
+    margin-bottom: 0;
+}
+
+/* Slot list */
+.rg-slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+}
+
+.rg-slot-item {
+    background: rgba(0,0,0,0.03);
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+}
+
+.rg-slot-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--dark-bg);
+}
+
+.rg-slot-price {
+    margin-left: auto;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary-purple);
+    white-space: nowrap;
+}
+
+.rg-slot-desc {
+    font-size: 0.82rem;
+    color: #777;
+    margin-top: 0.2rem;
+    padding-left: 1.6rem;
+    line-height: 1.5;
+}
+
+/* Lists */
+.rg-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+}
+
+.rg-list li {
+    color: #555;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    padding: 0.3rem 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+/* Colored dots for slot types */
+.rg-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 0.3rem;
+}
+
+.rg-dot-green { background: #22c55e; }
+.rg-dot-yellow { background: #f59e0b; }
+.rg-dot-red { background: #ef4444; }
+
+/* Rules (regolamento section) */
+.rg-rules {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.rg-rule {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background: var(--light-gray, #f8f9fa);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    border-left: 4px solid var(--primary-purple);
+}
+
+.rg-rule-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+}
+
+.rg-rule-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--dark-bg);
+    margin-bottom: 0.25rem;
+}
+
+.rg-rule p {
+    color: #555;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    margin: 0;
+}
+
+/* CTA */
+.rg-cta {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #1a2a2a 100%);
+    color: white;
+    padding: 4rem 0;
+    text-align: center;
+}
+
+.rg-cta h2 {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 0.75rem;
+}
+
+.rg-cta p {
+    font-size: 1rem;
+    opacity: 0.8;
+    margin-bottom: 2rem;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.rg-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--primary-purple);
+    color: white;
+    text-decoration: none;
+    padding: 1rem 2rem;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 700;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(139, 92, 246,0.4);
+}
+
+.rg-cta-btn:hover {
+    background: var(--primary-purple-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(139, 92, 246,0.5);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .rg-hero {
+        padding: 2.5rem 0 2rem;
+    }
+
+    .rg-hero-icon {
+        font-size: 2.5rem;
+    }
+
+    .rg-hero-title {
+        font-size: 2rem;
+        letter-spacing: 1px;
+    }
+
+    .rg-hero-sub {
+        font-size: 0.82rem;
+        letter-spacing: 2px;
+    }
+
+    .rg-section {
+        padding: 2.5rem 0;
+    }
+
+    .rg-section-title {
+        font-size: 1.4rem;
+    }
+
+    .rg-section-sub {
+        margin-bottom: 1.75rem;
+    }
+
+    .rg-cards {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .rg-card-highlight {
+        grid-column: auto;
+    }
+
+    .rg-card {
+        padding: 1.5rem 1.25rem;
+    }
+
+    .rg-rule {
+        padding: 1rem 1.25rem;
+    }
+
+    .rg-cta h2 {
+        font-size: 1.5rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .rg-hero-title {
+        font-size: 2.4rem;
+    }
+}

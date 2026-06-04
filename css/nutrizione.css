@@ -1,0 +1,645 @@
+/* ===== Nutrizione Page ===== */
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes nt-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(139, 92, 246,0); }
+}
+
+@keyframes nt-glow {
+    0%, 100% { opacity: 0.12; }
+    50% { opacity: 0.22; }
+}
+
+/* ── Hero ───────────────────────────────────────────────────── */
+.nt-hero {
+    background: linear-gradient(135deg, #0f0f0f 0%, #111 40%, #0d1f2d 100%);
+    color: white;
+    padding: 5rem 0 4.5rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.nt-hero::before {
+    content: '';
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(circle, rgba(139, 92, 246,0.15) 0%, transparent 70%);
+    pointer-events: none;
+    animation: nt-glow 4s ease-in-out infinite;
+}
+
+.nt-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -80px;
+    left: -60px;
+    width: 320px;
+    height: 320px;
+    background: radial-gradient(circle, rgba(139, 92, 246,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    animation: nt-glow 4s ease-in-out infinite 2s;
+}
+
+.nt-hero-eyebrow {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    color: var(--primary-purple);
+    font-weight: 700;
+    margin-bottom: 1rem;
+    opacity: 0.85;
+}
+
+.nt-hero-title {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 3.2rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+    line-height: 1.05;
+}
+
+.nt-hero-sub {
+    font-size: 1rem;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 500;
+}
+
+.nt-hero-price {
+    display: inline-block;
+    margin-top: 2rem;
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 3rem;
+    font-weight: 900;
+    color: white;
+    background: linear-gradient(135deg, var(--primary-purple), var(--primary-purple-dark));
+    padding: 0.3rem 2rem;
+    border-radius: 50px;
+    box-shadow: 0 4px 30px rgba(139, 92, 246,0.45);
+    letter-spacing: 1px;
+}
+
+/* ── Sections ───────────────────────────────────────────────── */
+.nt-section {
+    padding: 4.5rem 0;
+}
+
+.nt-section-alt {
+    background: white;
+}
+
+.nt-section-title {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--dark-bg);
+    text-align: center;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nt-section-sub {
+    text-align: center;
+    color: #888;
+    font-size: 0.95rem;
+    margin-bottom: 3rem;
+}
+
+.nt-accent {
+    color: var(--primary-purple);
+}
+
+/* ── Intro ──────────────────────────────────────────────────── */
+.nt-intro {
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.nt-intro p {
+    color: #555;
+    line-height: 1.85;
+    margin-bottom: 1.25rem;
+    font-size: 1rem;
+}
+
+.nt-lead {
+    font-size: 1.15rem !important;
+    color: #333 !important;
+}
+
+.nt-highlight {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 1.6rem !important;
+    font-weight: 800;
+    color: var(--primary-purple) !important;
+    margin: 1.5rem 0 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Method ─────────────────────────────────────────────────── */
+.nt-method {
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.nt-method p {
+    color: #555;
+    line-height: 1.85;
+    margin-bottom: 1.25rem;
+    font-size: 1rem;
+}
+
+.nt-quote {
+    background: linear-gradient(135deg, var(--primary-purple), var(--primary-purple-dark));
+    color: white;
+    padding: 1.25rem 1.5rem;
+    border-radius: 14px;
+    font-size: 1.05rem;
+    font-style: italic;
+    line-height: 1.7;
+    margin-top: 1.5rem;
+    position: relative;
+    box-shadow: 0 4px 24px rgba(139, 92, 246,0.25);
+}
+
+.nt-quote::before {
+    content: '\201C';
+    font-size: 3.5rem;
+    line-height: 0;
+    vertical-align: -0.65rem;
+    margin-right: 0.25rem;
+    opacity: 0.4;
+    font-family: Georgia, serif;
+}
+
+/* ── Professionals ──────────────────────────────────────────── */
+.nt-professionals {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    max-width: 480px;
+    margin: 1.5rem auto;
+}
+
+.nt-professional {
+    background: #f8f9fa;
+    border-radius: 14px;
+    padding: 1.15rem 1.25rem;
+    border: 1px solid #eee;
+    border-top: 3px solid var(--primary-purple);
+    text-align: left;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.nt-professional:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 92, 246,0.1);
+}
+
+.nt-professional-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--dark-bg);
+    margin: 0 0 0.2rem;
+}
+
+.nt-professional-role {
+    font-size: 0.75rem;
+    color: var(--primary-purple);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+/* ── Timeline ───────────────────────────────────────────────── */
+.nt-timeline {
+    max-width: 600px;
+    margin: 0 auto;
+    position: relative;
+    padding-left: 40px;
+}
+
+.nt-timeline::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 24px;
+    bottom: 24px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--primary-purple), rgba(139, 92, 246,0.12));
+}
+
+.nt-timeline-item {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.nt-timeline-item:last-child {
+    margin-bottom: 0;
+}
+
+.nt-timeline-dot {
+    position: absolute;
+    left: -40px;
+    top: 1.5rem;
+    width: 32px;
+    height: 32px;
+    background: var(--primary-purple);
+    color: white;
+    border-radius: 50%;
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 12px rgba(139, 92, 246,0.4);
+    z-index: 1;
+    animation: nt-pulse 3s ease-in-out infinite;
+}
+
+.nt-timeline-dot svg {
+    display: block;
+}
+
+.nt-timeline-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+    border: 1px solid #f0f0f0;
+    border-left: 3px solid var(--primary-purple);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.nt-timeline-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(139, 92, 246,0.12);
+}
+
+.nt-timeline-card-highlight {
+    background: linear-gradient(135deg, rgba(139, 92, 246,0.06) 0%, rgba(139, 92, 246,0.02) 100%);
+    border-color: rgba(139, 92, 246,0.25);
+    border-left: 3px solid var(--primary-purple);
+}
+
+.nt-timeline-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.nt-timeline-title {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--dark-bg);
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.nt-timeline-with {
+    font-size: 0.78rem;
+    color: var(--primary-purple);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.75rem;
+}
+
+.nt-timeline-desc {
+    color: #666;
+    font-size: 0.92rem;
+    line-height: 1.65;
+    margin-bottom: 0;
+}
+
+.nt-timeline-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+}
+
+.nt-timeline-list li {
+    color: #666;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    padding: 0.3rem 0;
+    padding-left: 1.4rem;
+    position: relative;
+}
+
+.nt-timeline-list li::before {
+    content: '\2713';
+    position: absolute;
+    left: 0;
+    color: var(--primary-purple);
+    font-weight: 700;
+}
+
+/* ── Why section ────────────────────────────────────────────── */
+.nt-why {
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.nt-why > p {
+    color: #555;
+    line-height: 1.85;
+    font-size: 1.05rem;
+    margin-bottom: 2rem;
+}
+
+.nt-why-points {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+}
+
+.nt-why-point {
+    text-align: center;
+    background: #f8f9fa;
+    border-radius: 14px;
+    padding: 1.5rem 1rem;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.nt-why-point:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.06);
+}
+
+.nt-why-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.nt-why-check {
+    width: 40px;
+    height: 40px;
+    background: var(--primary-purple);
+    color: white;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 0.75rem;
+    flex-shrink: 0;
+    box-shadow: 0 2px 12px rgba(139, 92, 246,0.3);
+}
+
+.nt-why-point p {
+    color: #555;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    margin: 0;
+    font-weight: 500;
+}
+
+/* ── Results grid ───────────────────────────────────────────── */
+.nt-results-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    max-width: 640px;
+    margin: 2rem auto 0;
+}
+
+.nt-result-item {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.05);
+    border: 1px solid #f0f0f0;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.nt-result-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 28px rgba(139, 92, 246,0.1);
+}
+
+.nt-result-number {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 2.8rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, rgba(139, 92, 246,0.3), rgba(139, 92, 246,0.08));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.nt-result-item p {
+    color: #333;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    margin: 0;
+    font-weight: 600;
+}
+
+/* ── CTA ────────────────────────────────────────────────────── */
+.nt-cta {
+    background: linear-gradient(135deg, #0f0f0f 0%, #0d1f2d 100%);
+    color: white;
+    padding: 5rem 0;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.nt-cta::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(139, 92, 246,0.08) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.nt-cta h2 {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-bottom: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.nt-cta p {
+    font-size: 1rem;
+    opacity: 0.75;
+    margin-bottom: 0.5rem;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.nt-cta-price-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 1.5rem !important;
+    opacity: 1 !important;
+}
+
+.nt-cta-price-label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    opacity: 0.6;
+    font-weight: 600;
+}
+
+.nt-cta-price-value {
+    font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+    font-size: 3.5rem;
+    font-weight: 900;
+    color: var(--primary-purple);
+    letter-spacing: 1px;
+    text-shadow: 0 0 30px rgba(139, 92, 246,0.3);
+}
+
+.nt-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #25D366;
+    color: white;
+    text-decoration: none;
+    padding: 1rem 2.25rem;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 700;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 24px rgba(37,211,102,0.4);
+    margin-top: 1.5rem;
+}
+
+.nt-cta-btn:hover {
+    background: #20bd5a;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(37,211,102,0.5);
+}
+
+/* ── Scroll reveal ──────────────────────────────────────────── */
+.nt-reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.nt-reveal.nt-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .nt-hero {
+        padding: 3rem 0 2.5rem;
+    }
+
+    .nt-hero-title {
+        font-size: 2.2rem;
+        letter-spacing: 0.5px;
+    }
+
+    .nt-hero-sub {
+        font-size: 0.78rem;
+        letter-spacing: 2px;
+    }
+
+    .nt-hero-price {
+        font-size: 2.4rem;
+        padding: 0.25rem 1.6rem;
+        margin-top: 1.5rem;
+    }
+
+    .nt-section {
+        padding: 2.5rem 0;
+    }
+
+    .nt-section-title {
+        font-size: 1.5rem;
+    }
+
+    .nt-section-sub {
+        margin-bottom: 1.75rem;
+    }
+
+    .nt-highlight {
+        font-size: 1.3rem !important;
+    }
+
+    .nt-timeline {
+        padding-left: 36px;
+    }
+
+    .nt-timeline::before {
+        left: 13px;
+    }
+
+    .nt-timeline-dot {
+        left: -36px;
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+
+    .nt-timeline-card {
+        padding: 1.25rem;
+    }
+
+    .nt-why-points {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .nt-professionals {
+        grid-template-columns: 1fr;
+    }
+
+    .nt-results-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .nt-cta {
+        padding: 3.5rem 0;
+    }
+
+    .nt-cta h2 {
+        font-size: 1.6rem;
+    }
+
+    .nt-cta-price-value {
+        font-size: 2.8rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .nt-hero-title {
+        font-size: 3.2rem;
+    }
+}

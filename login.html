@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; frame-src 'self' https://accounts.google.com; form-action 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="manifest" href="manifest.json?v=3">
+    <meta name="theme-color" content="#8B5CF6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Palestra">
+    <title>Accedi – PalestrIA</title>
+    <link rel="icon" type="image/png" href="images/logo-palestria.png">
+    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/login.css?v=4">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <a href="index.html"><img src="images/logo-palestria-light.png" alt="PalestrIA" class="nav-logo"></a>
+            </div>
+            <div class="nav-right">
+                <ul class="nav-desktop-links">
+                    <li><a href="index.html">Calendario</a></li>
+                    <li><a href="regolamento.html">Regolamento</a></li>
+                    <li><a href="nutrizione.html">Nutrizione</a></li>
+                    <li><a href="chi-sono.html">Chi sono</a></li>
+                    <li><a href="dove-sono.html">Dove sono</a></li>
+                </ul>
+                <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="login-page">
+        <div class="login-card">
+            <img src="images/logo-palestria-full.png" alt="PalestrIA" class="login-logo">
+
+            <!-- Tab toggle -->
+            <div class="login-tabs">
+                <button class="login-tab active" id="tabAccedi" onclick="switchTab('accedi')">Accedi</button>
+                <button class="login-tab" id="tabRegistrati" onclick="switchTab('registrati')">Registrati</button>
+            </div>
+
+            <!-- ===== ACCEDI ===== -->
+            <div id="panelAccedi">
+                <p class="login-subtitle">Accedi per vedere le tue prenotazioni</p>
+
+                <!-- Social login buttons -->
+                <div style="background:#eef7ff;border:1px solid #8B5CF6;border-radius:10px;padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.88rem;line-height:1.5;">
+                    <div style="font-weight:700;color:#0076a3;margin-bottom:0.4rem;">🎬 Demo mode</div>
+                    <div style="color:#333;">
+                        <strong>Admin (PT):</strong> <code style="background:#fff;padding:1px 5px;border-radius:4px;">admin@palestria.app</code> · <code style="background:#fff;padding:1px 5px;border-radius:4px;">Demo2026Admin!</code><br>
+                        <strong>Cliente:</strong> <code style="background:#fff;padding:1px 5px;border-radius:4px;">luca.bianchi@demo.it</code> · <code style="background:#fff;padding:1px 5px;border-radius:4px;">Demo2026!</code>
+                    </div>
+                </div>
+
+                <div class="social-buttons">
+                    <button class="social-btn social-btn-google" onclick="startSocialLogin('Google')">
+                        <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                        Continua con Google
+                    </button>
+                </div>
+
+                <div class="login-divider"><span>oppure</span></div>
+
+                <!-- Manual login form -->
+                <form id="manualLoginForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" placeholder="mario@email.com" autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+                            <button type="button" class="password-toggle" onclick="togglePwd('loginPassword', this)">Mostra</button>
+                        </div>
+                    </div>
+                    <div id="loginError" class="login-error" style="display:none;"></div>
+                    <button type="submit" class="btn-primary" style="width:100%">Accedi</button>
+                </form>
+                <button class="forgot-password-link" onclick="switchTab('forgot')">Hai dimenticato la password?</button>
+            </div>
+
+            <!-- ===== PASSWORD DIMENTICATA ===== -->
+            <div id="panelForgot" style="display:none;">
+                <p class="login-subtitle">Inserisci la tua email e ti invieremo un link per reimpostare la password.</p>
+                <div id="forgotSuccess" style="display:none; text-align:center; padding: 1.5rem 0;">
+                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">📧</div>
+                    <p style="font-weight:600; margin-bottom:0.5rem;">Email inviata!</p>
+                    <p style="color:#555; font-size:0.95rem;">Controlla la tua casella di posta e clicca il link per reimpostare la password.</p>
+                    <button class="forgot-password-link" style="margin-top:1rem;" onclick="switchTab('accedi')">← Torna al login</button>
+                </div>
+                <form id="forgotForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="forgotEmail">Email</label>
+                        <input type="email" id="forgotEmail" placeholder="mario@email.com" autocomplete="email">
+                    </div>
+                    <div id="forgotError" class="login-error" style="display:none;"></div>
+                    <button type="submit" class="btn-primary" style="width:100%">Invia link di reset</button>
+                </form>
+            </div>
+
+            <!-- ===== REIMPOSTA PASSWORD ===== -->
+            <div id="panelReset" style="display:none;">
+                <p class="login-subtitle">Scegli la tua nuova password.</p>
+                <div id="resetSuccess" style="display:none; text-align:center; padding: 1.5rem 0;">
+                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">✅</div>
+                    <p style="font-weight:600; margin-bottom:0.5rem;">Password aggiornata!</p>
+                    <p style="color:#555; font-size:0.95rem;">Ora puoi accedere con la nuova password.</p>
+                    <button class="btn-primary" style="width:100%; margin-top:1rem;" onclick="switchTab('accedi')">Vai al login</button>
+                </div>
+                <form id="resetForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="resetPassword">Nuova Password</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="resetPassword" placeholder="Min. 6 caratteri" autocomplete="new-password">
+                            <button type="button" class="password-toggle" onclick="togglePwd('resetPassword', this)">Mostra</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="resetPasswordConfirm">Conferma Password</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="resetPasswordConfirm" placeholder="Ripeti la password" autocomplete="new-password">
+                            <button type="button" class="password-toggle" onclick="togglePwd('resetPasswordConfirm', this)">Mostra</button>
+                        </div>
+                    </div>
+                    <div id="resetError" class="login-error" style="display:none;"></div>
+                    <button type="submit" class="btn-primary" style="width:100%">Salva nuova password</button>
+                </form>
+            </div>
+
+            <!-- ===== REGISTRATI ===== -->
+            <div id="panelRegistrati" style="display:none;">
+                <p class="login-subtitle">Crea il tuo account per prenotare le lezioni</p>
+
+                <div id="registerSuccess" style="display:none; text-align:center; padding: 1.5rem 0;">
+                    <div style="font-size:2.5rem; margin-bottom:0.75rem;">📧</div>
+                    <p style="font-weight:600; margin-bottom:0.5rem;">Controlla la tua email!</p>
+                    <p style="color:#555; font-size:0.95rem;">Ti abbiamo inviato un link di conferma. Clicca il link per attivare il tuo account e accedere.</p>
+                </div>
+
+                <form id="registerForm" class="auth-form">
+                    <div class="form-group" style="display:flex; gap:0.75rem;">
+                        <div style="flex:1">
+                            <label for="regNome">Nome *</label>
+                            <input type="text" id="regNome" placeholder="Mario" autocomplete="given-name" maxlength="40">
+                        </div>
+                        <div style="flex:1">
+                            <label for="regCognome">Cognome *</label>
+                            <input type="text" id="regCognome" placeholder="Rossi" autocomplete="family-name" maxlength="40">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="regEmail">Email *</label>
+                        <input type="email" id="regEmail" placeholder="mario@email.com" autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label for="regWhatsapp">Numero WhatsApp *</label>
+                        <input type="tel" id="regWhatsapp" placeholder="+39 348 1234567" autocomplete="tel">
+                    </div>
+                    <div class="form-group">
+                        <label for="regCodiceFiscale">Codice Fiscale *</label>
+                        <input type="text" id="regCodiceFiscale" placeholder="RSSMRA85M01H501Z" maxlength="16" style="text-transform:uppercase">
+                    </div>
+                    <div class="form-group">
+                        <label for="regVia">Via / Indirizzo *</label>
+                        <input type="text" id="regVia" placeholder="Via Roma 1" autocomplete="street-address">
+                    </div>
+                    <div class="form-group" style="display:flex; gap:0.75rem;">
+                        <div style="flex:2">
+                            <label for="regPaese">Paese / Città *</label>
+                            <input type="text" id="regPaese" placeholder="Milano" autocomplete="address-level2">
+                        </div>
+                        <div style="flex:1">
+                            <label for="regCAP">CAP *</label>
+                            <input type="text" id="regCAP" placeholder="20100" maxlength="5" inputmode="numeric" autocomplete="postal-code">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="regPassword">Password *</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="regPassword" placeholder="Min. 6 caratteri" autocomplete="new-password">
+                            <button type="button" class="password-toggle" onclick="togglePwd('regPassword', this)">Mostra</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="regPasswordConfirm">Conferma Password *</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="regPasswordConfirm" placeholder="Ripeti la password" autocomplete="new-password">
+                            <button type="button" class="password-toggle" onclick="togglePwd('regPasswordConfirm', this)">Mostra</button>
+                        </div>
+                    </div>
+                    <div id="registerError" class="login-error" style="display:none;"></div>
+                    <button type="submit" class="btn-primary" style="width:100%">Registrati</button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- Complete profile modal: ask WhatsApp after OAuth login -->
+    <div id="completeProfileModal" class="social-modal-overlay" style="display:none;">
+        <div class="social-modal-box">
+            <h3>Un'ultima cosa!</h3>
+            <p class="social-modal-sub">Completa il tuo profilo per continuare.</p>
+            <div class="form-group">
+                <label for="oauthWhatsapp">Numero WhatsApp *</label>
+                <input type="tel" id="oauthWhatsapp" placeholder="+39 348 1234567" autocomplete="tel">
+            </div>
+            <div class="form-group">
+                <label for="oauthCodiceFiscale">Codice Fiscale *</label>
+                <input type="text" id="oauthCodiceFiscale" placeholder="RSSMRA85M01H501Z" maxlength="16" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+                <label for="oauthVia">Via / Indirizzo *</label>
+                <input type="text" id="oauthVia" placeholder="Via Roma 1" autocomplete="street-address">
+            </div>
+            <div class="form-group" style="display:flex; gap:0.75rem;">
+                <div style="flex:2">
+                    <label for="oauthPaese">Paese / Città *</label>
+                    <input type="text" id="oauthPaese" placeholder="Milano" autocomplete="address-level2">
+                </div>
+                <div style="flex:1">
+                    <label for="oauthCAP">CAP *</label>
+                    <input type="text" id="oauthCAP" placeholder="20100" maxlength="5" inputmode="numeric" autocomplete="postal-code">
+                </div>
+            </div>
+            <div id="oauthWhatsappError" class="login-error" style="display:none;">Inserisci un numero valido (min. 10 cifre).</div>
+            <button class="btn-primary" style="width:100%; margin-top:0.5rem" onclick="confirmCompleteProfile()">Continua</button>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="nav-sidebar-overlay" id="navSidebarOverlay" onclick="toggleNavMenu()"></div>
+    <nav class="nav-sidebar" id="navSidebar">
+        <div class="nav-sidebar-header">
+            <img src="images/logo-palestria-light.png" alt="PalestrIA" class="nav-sidebar-logo">
+            <button class="nav-sidebar-close" onclick="toggleNavMenu()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <ul class="nav-sidebar-links">
+            <li><a href="index.html">Calendario</a></li>
+            <li id="navAllenamento" style="display:none"><a href="allenamento.html">Allenamento</a></li>
+            <li><a href="nutrizione.html">Nutrizione</a></li>
+            <li><a href="regolamento.html">Regolamento</a></li>
+            <li><a href="chi-sono.html">Chi sono</a></li>
+            <li><a href="dove-sono.html">Dove sono</a></li>
+        </ul>
+        <p class="nav-sidebar-credit">powered by <a href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link" onclick="logCreditClick(event)">Andrea Pompili</a></p>
+    </nav>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/supabase-client.js?v=4"></script>
+    <script src="js/ui.js?v=2"></script>
+    <script src="js/data.js?v=74"></script>
+    <script src="js/auth.js?v=24"></script>
+    <script src="js/silent-refresh.js?v=1"></script>
+    <script src="js/maintenance.js?v=1"></script>
+    <script src="js/push.js?v=19"></script>
+    <script>
+        // Prevent iOS Safari auto-zoom on input focus.
+        // touchstart fires before iOS decides to zoom, so setting
+        // maximum-scale=1 here blocks the zoom from happening at all.
+        // We restore normal zoom on blur so pinch-zoom still works outside forms.
+        (function () {
+            var vp = document.querySelector('meta[name="viewport"]');
+            if (!vp) return;
+            document.addEventListener('touchstart', function (e) {
+                var tag = e.target.tagName;
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+                    vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1');
+                }
+            }, { passive: true });
+            document.addEventListener('focusout', function (e) {
+                var tag = e.target.tagName;
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+                    setTimeout(function () {
+                        vp.setAttribute('content', 'width=device-width, initial-scale=1');
+                    }, 300);
+                }
+            });
+        }());
+    </script>
+    <script>
+        // ── Password visibility toggle ────────────────────────────────────
+        function togglePwd(inputId, btn) {
+            const input = document.getElementById(inputId);
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.textContent = show ? 'Nascondi' : 'Mostra';
+        }
+
+        // ── Tab switch ────────────────────────────────────────────────────
+        function switchTab(tab) {
+            document.getElementById('panelAccedi').style.display     = tab === 'accedi'     ? 'block' : 'none';
+            document.getElementById('panelRegistrati').style.display = tab === 'registrati' ? 'block' : 'none';
+            document.getElementById('panelForgot').style.display     = tab === 'forgot'     ? 'block' : 'none';
+            document.getElementById('panelReset').style.display      = tab === 'reset'      ? 'block' : 'none';
+            document.getElementById('tabAccedi').classList.toggle('active',     tab === 'accedi');
+            document.getElementById('tabRegistrati').classList.toggle('active', tab === 'registrati');
+            // Nascondi le tabs quando si è su forgot/reset
+            document.querySelector('.login-tabs').style.display = (tab === 'forgot' || tab === 'reset') ? 'none' : 'flex';
+        }
+
+        // ── Manual login ──────────────────────────────────────────────────
+        document.getElementById('manualLoginForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const email    = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const errEl    = document.getElementById('loginError');
+            const btn      = e.target.querySelector('button[type="submit"]');
+            errEl.style.display = 'none';
+
+            if (!email || !password) {
+                errEl.textContent = 'Compila tutti i campi.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            setLoading(btn, true, 'Accesso in corso...');
+            const result = await loginWithPassword(email, password);
+            if (result.ok) {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (await requireCompleteProfileAfterAuth(session)) window.location.href = 'index.html';
+                else setLoading(btn, false);
+            } else {
+                setLoading(btn, false);
+                errEl.textContent = result.error;
+                errEl.style.display = 'block';
+            }
+        });
+
+        // ── Registration ──────────────────────────────────────────────────
+        document.getElementById('registerForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const nome     = document.getElementById('regNome').value.trim().replace(/\s+/g, ' ');
+            const cognome  = document.getElementById('regCognome').value.trim().replace(/\s+/g, ' ');
+            const email    = document.getElementById('regEmail').value.trim();
+            const whatsapp = normalizePhone(document.getElementById('regWhatsapp').value.trim());
+            const codiceFiscale = document.getElementById('regCodiceFiscale').value.trim().toUpperCase();
+            const via      = document.getElementById('regVia').value.trim();
+            const paese    = document.getElementById('regPaese').value.trim();
+            const cap      = document.getElementById('regCAP').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const confirm  = document.getElementById('regPasswordConfirm').value;
+            const errEl    = document.getElementById('registerError');
+            const btn      = e.target.querySelector('button[type="submit"]');
+            errEl.style.display = 'none';
+
+            if (!nome || !cognome || !email || !whatsapp || !codiceFiscale || !via || !paese || !cap || !password || !confirm) {
+                errEl.textContent = 'Compila tutti i campi obbligatori.';
+                errEl.style.display = 'block';
+                return;
+            }
+            // Caratteri validi nome/cognome: lettere (incluse accentate), apostrofo, spazio, trattino. Min 2 char.
+            const nameRegex = /^[\p{L}][\p{L}\s'-]{1,}$/u;
+            if (!nameRegex.test(nome)) {
+                errEl.textContent = 'Nome non valido. Usa solo lettere, apostrofi e trattini (min. 2 caratteri).';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!nameRegex.test(cognome)) {
+                errEl.textContent = 'Cognome non valido. Usa solo lettere, apostrofi e trattini (min. 2 caratteri).';
+                errEl.style.display = 'block';
+                return;
+            }
+            const name = `${nome} ${cognome}`;
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                errEl.textContent = 'Inserisci un indirizzo email valido.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!/^\+\d{10,15}$/.test(whatsapp)) {
+                errEl.textContent = 'Numero WhatsApp non valido. Usa formato: +39 348 1234567';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!/^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/i.test(codiceFiscale)) {
+                errEl.textContent = 'Codice Fiscale non valido. Deve essere di 16 caratteri alfanumerici.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!/^\d{5}$/.test(cap)) {
+                errEl.textContent = 'CAP non valido. Deve essere di 5 cifre.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password.length < 6) {
+                errEl.textContent = 'La password deve essere di almeno 6 caratteri.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password !== confirm) {
+                errEl.textContent = 'Le password non coincidono.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            setLoading(btn, true, 'Registrazione in corso...');
+            try {
+                const result = await registerUser(name, email, whatsapp, password, codiceFiscale, { via, paese, cap });
+                if (result.ok) {
+                    notifyAdminNewClient(name);
+                    document.getElementById('registerForm').style.display = 'none';
+                    document.getElementById('registerSuccess').style.display = 'block';
+                } else {
+                    setLoading(btn, false);
+                    errEl.textContent = result.error;
+                    errEl.style.display = 'block';
+                }
+            } catch (err) {
+                setLoading(btn, false);
+                errEl.textContent = 'Errore durante la registrazione. Riprova.';
+                errEl.style.display = 'block';
+                console.error('registerUser exception:', err);
+            }
+        });
+
+        // ── Forgot password ──────────────────────────────────────────────
+        document.getElementById('forgotForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const email = document.getElementById('forgotEmail').value.trim();
+            const errEl = document.getElementById('forgotError');
+            const btn   = e.target.querySelector('button[type="submit"]');
+            errEl.style.display = 'none';
+
+            if (!email) {
+                errEl.textContent = 'Inserisci la tua email.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                errEl.textContent = 'Inserisci un indirizzo email valido.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            setLoading(btn, true, 'Invio in corso...');
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + '/login.html'
+            });
+            setLoading(btn, false);
+
+            if (error) {
+                errEl.textContent = 'Errore durante l\'invio. Riprova.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            // Mostra successo, nascondi form
+            document.getElementById('forgotForm').style.display = 'none';
+            document.getElementById('forgotSuccess').style.display = 'block';
+        });
+
+        // ── Reset password (nuova password dopo click link email) ────────
+        document.getElementById('resetForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const password = document.getElementById('resetPassword').value;
+            const confirm  = document.getElementById('resetPasswordConfirm').value;
+            const errEl    = document.getElementById('resetError');
+            const btn      = e.target.querySelector('button[type="submit"]');
+            errEl.style.display = 'none';
+
+            if (!password || !confirm) {
+                errEl.textContent = 'Compila entrambi i campi.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password.length < 6) {
+                errEl.textContent = 'La password deve essere di almeno 6 caratteri.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password !== confirm) {
+                errEl.textContent = 'Le password non coincidono.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            setLoading(btn, true, 'Salvataggio...');
+            const { error } = await supabaseClient.auth.updateUser({ password });
+            setLoading(btn, false);
+
+            if (error) {
+                errEl.textContent = 'Errore durante il salvataggio: ' + (error.message || 'Riprova.');
+                errEl.style.display = 'block';
+                return;
+            }
+
+            // Successo: mostra conferma, nascondi form
+            document.getElementById('resetForm').style.display = 'none';
+            document.getElementById('resetSuccess').style.display = 'block';
+        });
+
+        // ── OAuth callback: handle redirect back from Google ──────────────
+        // NON usiamo più ?code= nell'URL: Supabase PKCE lo consuma automaticamente
+        // durante l'inizializzazione del client, prima che questo codice venga eseguito.
+        // Usiamo invece il provider della sessione per capire se è un login OAuth.
+        function showCompleteProfileModalForSession(session) {
+            if (!session) return false;
+            const user = getCurrentUser();
+            const meta = session.user.user_metadata || {};
+            const name = user?.name || meta.full_name || meta.name || session.user.email.split('@')[0];
+            const email = session.user.email;
+            const userId = session.user.id;
+
+            window._pendingOAuthUser = { name, email, userId };
+            if (user?.whatsapp) document.getElementById('oauthWhatsapp').value = user.whatsapp;
+            if (user?.codice_fiscale) document.getElementById('oauthCodiceFiscale').value = user.codice_fiscale;
+            if (user?.indirizzo_via) document.getElementById('oauthVia').value = user.indirizzo_via;
+            if (user?.indirizzo_paese) document.getElementById('oauthPaese').value = user.indirizzo_paese;
+            if (user?.indirizzo_cap) document.getElementById('oauthCAP').value = user.indirizzo_cap;
+            document.getElementById('completeProfileModal').style.display = 'flex';
+            return true;
+        }
+
+        async function requireCompleteProfileAfterAuth(session) {
+            if (!session) return false;
+            const user = getCurrentUser();
+            if (typeof isAnagraficaComplete === 'function' && isAnagraficaComplete(user)) return true;
+            showCompleteProfileModalForSession(session);
+            return false;
+        }
+
+        async function handleOAuthReturn() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) return false;
+
+            const provider = session.user.app_metadata?.provider;
+            if (!provider || provider === 'email') return false; // login email: non intercettare
+
+            // È un login OAuth (Google ecc.) — controlla se il profilo ha già il WhatsApp
+            // (initAuth() ha già chiamato _loadProfile, quindi getCurrentUser() è pronto)
+            const user   = getCurrentUser();
+            const meta   = session.user.user_metadata || {};
+            const name   = user?.name || meta.full_name || meta.name || session.user.email.split('@')[0];
+            const email  = session.user.email;
+            const userId = session.user.id;
+
+            if (typeof isAnagraficaComplete === 'function' && isAnagraficaComplete(user)) {
+                // Profilo completo: vai direttamente
+                window.location.replace('index.html');
+                return true;
+            }
+
+            // Mancano dati obbligatori: mostra il modal
+            showCompleteProfileModalForSession(session);
+            return true;
+        }
+
+        async function confirmCompleteProfile() {
+            const raw   = document.getElementById('oauthWhatsapp').value.trim();
+            const cfRaw = document.getElementById('oauthCodiceFiscale').value.trim().toUpperCase();
+            const via   = document.getElementById('oauthVia').value.trim();
+            const paese = document.getElementById('oauthPaese').value.trim();
+            const cap   = document.getElementById('oauthCAP').value.trim();
+            const errEl = document.getElementById('oauthWhatsappError');
+            const btn   = document.querySelector('#completeProfileModal .btn-primary');
+            errEl.style.display = 'none';
+
+            const whatsapp = normalizePhone(raw);
+            if (!/^\+\d{10,15}$/.test(whatsapp)) {
+                errEl.textContent = 'Numero non valido. Usa formato: +39 348 1234567';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            if (!/^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/i.test(cfRaw)) {
+                errEl.textContent = 'Codice Fiscale non valido (16 caratteri alfanumerici).';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            if (!via || !paese) {
+                errEl.textContent = 'Compila via e paese di residenza.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!/^\d{5}$/.test(cap)) {
+                errEl.textContent = 'CAP non valido. Deve essere di 5 cifre.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            // Controlla se il numero è già usato da un altro utente
+            setLoading(btn, true, 'Salvataggio...');
+            const { name, email, userId } = window._pendingOAuthUser;
+
+            const { data: taken } = await supabaseClient.rpc('is_whatsapp_taken', { phone: whatsapp, exclude_user_id: userId });
+            if (taken) {
+                setLoading(btn, false);
+                errEl.textContent = 'Questo numero WhatsApp è già associato a un altro account.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            // Upsert profilo su Supabase
+            const { error } = await supabaseClient
+                .from('profiles')
+                .upsert({ id: userId, name, email, whatsapp, codice_fiscale: cfRaw, indirizzo_via: via, indirizzo_paese: paese, indirizzo_cap: cap });
+
+            if (error) {
+                setLoading(btn, false);
+                errEl.textContent = 'Errore durante il salvataggio. Riprova.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            window.location.replace('index.html');
+        }
+
+        // ── Social login — Google OAuth ───────────────────────────────────
+        async function startSocialLogin(provider) {
+            const { error } = await supabaseClient.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.origin + '/login.html' }
+            });
+            if (error) alert('Errore durante il login con Google: ' + error.message);
+        }
+
+        // ── Detect PASSWORD_RECOVERY event from Supabase ─────────────────
+        // Supabase emits this when the user clicks the reset link in the email.
+        // We listen BEFORE initAuth() so we catch it immediately.
+        window._isPasswordRecovery = false;
+        window._isEmailConfirmation = false;
+        supabaseClient.auth.onAuthStateChange((event) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                window._isPasswordRecovery = true;
+                switchTab('reset');
+            }
+        });
+
+        // ── Detect email confirmation: URL contains type=signup or type=email_change ──
+        (function detectEmailConfirmation() {
+            const hash = window.location.hash || '';
+            const params = new URLSearchParams(hash.replace('#', ''));
+            const type = params.get('type');
+            if (type === 'signup' || type === 'email_change') {
+                window._isEmailConfirmation = true;
+            }
+        })();
+
+        // ── Init: redirect se già loggato, oppure gestisci OAuth return ──
+        initAuth().then(async session => {
+            if (window._isPasswordRecovery) return; // Non redirigere durante il reset
+
+            // Email confirmation: l'utente ha cliccato il link di conferma
+            // Supabase ha già consumato il token e creato la sessione
+            if (window._isEmailConfirmation && session) {
+                if (await requireCompleteProfileAfterAuth(session)) window.location.replace('index.html');
+                return;
+            }
+
+            const isOAuth = await handleOAuthReturn();
+            if (!isOAuth && session && getCurrentUser()) {
+                // Già loggato con profilo completo: vai all'homepage
+                if (await requireCompleteProfileAfterAuth(session)) window.location.href = 'index.html';
+            }
+        });
+    </script>
+    <script>
+        // navAllenamento gestito centralmente da updateNavAuth() in auth.js
+    </script>
+    <script src="js/sw-update.js"></script>
+    <script src="js/pull-to-refresh.js?v=1"></script>
+    <script src="js/pwa-install.js"></script>
+</body>
+</html>

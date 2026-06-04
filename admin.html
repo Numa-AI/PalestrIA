@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: https:; media-src 'self' https://apilyfta.com; font-src 'self'; frame-src 'self' https://accounts.google.com; form-action 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="manifest" href="manifest.json?v=3">
+    <meta name="theme-color" content="#8B5CF6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Palestra">
+    <title>PalestrIA</title>
+    <link rel="icon" type="image/png" href="images/logo-palestria.png">
+    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/login.css?v=5">
+    <link rel="stylesheet" href="css/admin.css?v=70">
+    <link rel="stylesheet" href="css/allenamento.css?v=55">
+    <script>
+        // Anti-flash al refresh: legge il tab attivo dal sessionStorage e lo
+        // espone come data-initial-tab su <html> prima che il body venga
+        // parsato. Le regole in admin.css usano questo attributo per nascondere
+        // il default (Prenotazioni) e mostrare subito il tab salvato.
+        (function() {
+            try {
+                var s = sessionStorage.getItem('adminActiveTab');
+                // Migrazione: 'importa' è ora una sub-sezione di 'schede'
+                if (s === 'importa') {
+                    s = 'schede';
+                    sessionStorage.setItem('adminActiveTab', s);
+                    sessionStorage.setItem('adminSchedeSection', 'importa');
+                }
+                if (s && s !== 'bookings') {
+                    document.documentElement.setAttribute('data-initial-tab', s);
+                }
+            } catch (e) {}
+        })();
+    </script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand" style="display:flex; align-items:center; gap:0.75rem;">
+                <a href="index.html"><img src="images/logo-palestria-light.png" alt="PalestrIA" class="nav-logo"></a>
+                <span style="color:#8B5CF6; font-size:0.85rem; font-weight:700; letter-spacing:2px; text-transform:uppercase;">Admin</span>
+            </div>
+            <div class="nav-right">
+                <ul class="nav-desktop-links">
+                    <li><a href="index.html">Calendario</a></li>
+                    <li><a href="regolamento.html">Regolamento</a></li>
+                    <li><a href="nutrizione.html">Nutrizione</a></li>
+                    <li><a href="chi-sono.html">Chi sono</a></li>
+                    <li><a href="dove-sono.html">Dove sono</a></li>
+                    <li><a href="admin.html" class="nav-admin-link">Amministrazione</a></li>
+                </ul>
+                <div id="navLoginLink" style="display:flex; align-items:center;">
+                    <a href="login.html" class="nav-login-btn">Accedi</a>
+                </div>
+                <div id="navUserMenu" style="display:none; align-items:center; gap:0.4rem;">
+                    <span id="navUserName" class="nav-user-name"></span>
+                    <button id="navLogoutBtn" class="nav-logout-btn">Esci</button>
+                </div>
+                <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="dashboardSection" class="dashboard-section">
+        <!-- Desktop sidebar (solo ≥ 1024px) -->
+        <aside class="adm-sidebar" id="admSidebar" aria-label="Amministrazione">
+            <div class="adm-side-head">Amministrazione</div>
+            <nav class="adm-side-nav">
+                <ul class="adm-side-list" id="admSideList" role="list"></ul>
+            </nav>
+        </aside>
+        <div class="container">
+            <!-- Desktop topbar (solo ≥ 1024px) -->
+            <header class="adm-topbar" id="admTopbar">
+                <div class="adm-topbar-right">
+                    <button type="button" class="adm-topbar-btn adm-topbar-btn--ghost" id="admTopbarExport" hidden aria-label="Esporta">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                        <span>Esporta</span>
+                    </button>
+                    <button type="button" class="adm-topbar-btn adm-topbar-btn--date" id="admTopbarDateBtn" hidden aria-haspopup="dialog" aria-expanded="false" aria-label="Seleziona periodo">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="adm-topbar-btn-ico" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                        <span id="admTopbarDateLabel">Questo mese</span>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="adm-topbar-btn-chev" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Weekly Report Banner -->
+            <div id="weeklyReportBanner" class="weekly-report-banner" style="display:none;">
+                <div class="weekly-report-banner-content">
+                    <span class="weekly-report-banner-icon">📊</span>
+                    <div class="weekly-report-banner-text">
+                        <strong>Report settimanale disponibile</strong>
+                        <span id="weeklyReportPeriod"></span>
+                    </div>
+                    <button class="weekly-report-banner-btn" onclick="downloadWeeklyReport()">📥 Scarica report</button>
+                    <button class="weekly-report-banner-close" onclick="dismissWeeklyReport()" title="Chiudi">✕</button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-tab="bookings">📅 Prenotazioni</button>
+                <button class="admin-tab" data-tab="payments">💳 Pagamenti</button>
+                <button class="admin-tab" data-tab="analytics">📊 Statistiche & Fatturato</button>
+                <button class="admin-tab" data-tab="schede" id="adminTabSchede">🏋🏻 Schede</button>
+                <button class="admin-tab" data-tab="registro">📋 Registro</button>
+                <button class="admin-tab" data-tab="clients">👤 Clienti</button>
+                <button class="admin-tab" data-tab="schedule">⚙️ Gestione Orari</button>
+                <button class="admin-tab" data-tab="messaggi">📩 Messaggi</button>
+                <button class="admin-tab" data-tab="settings">🔧 Impostazioni</button>
+                <button class="admin-tab admin-tab--privacy" id="btnToggleSensitive" onclick="toggleSensitiveData()" title="Nascondi/mostra dati sensibili">👁</button>
+            </div>
+
+            <!-- Tab: Bookings -->
+            <div id="tab-bookings" class="tab-content active">
+                <div class="bookings-hub">
+                    <div class="bookings-week-bar">
+                        <div class="bookings-week-nav">
+                            <div class="bookings-week-info">
+                                <span class="schedule-week-dates" id="adminCurrentWeek">Settimana Corrente</span>
+                                <span class="schedule-week-month" id="adminCurrentMonth"></span>
+                            </div>
+                            <div class="bookings-week-arrows">
+                                <button id="adminPrevWeek" class="schedule-week-btn" title="Settimana precedente" aria-label="Settimana precedente">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                </button>
+                                <button id="adminNextWeek" class="schedule-week-btn" title="Settimana successiva" aria-label="Settimana successiva">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="admin-day-selector" id="adminDaySelector">
+                            <!-- Days will be generated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <div id="adminDayView" class="admin-day-view">
+                        <!-- Selected day schedule will be shown here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Payments -->
+            <div id="tab-payments" class="tab-content">
+
+                <div class="tab-page-title">
+                    <h2>Pagamenti</h2>
+                    <span>Da incassare</span>
+                </div>
+
+                <div class="stats-grid stats-grid--payments">
+                    <div class="stat-card stat-card--clickable" id="statcard-debtors" onclick="toggleDebtorsList()" title="Clicca per vedere la lista">
+                        <div class="stat-card-click-hint" id="debtorsToggleHint">Dettagli ▼</div>
+                        <div class="stat-icon">💰</div>
+                        <h3>Da Incassare</h3>
+                        <p class="stat-value" id="totalUnpaid">€0</p>
+                    </div>
+                    <div class="stat-card stat-card--clickable" id="statcard-creditors" onclick="toggleCreditsList()" title="Clicca per i pagamenti recenti">
+                        <div class="stat-card-click-hint" id="creditorsToggleHint">Dettagli ▼</div>
+                        <div class="stat-icon">💳</div>
+                        <h3>Incassato questo mese</h3>
+                        <p class="stat-value" id="totalCreditAmount">€0</p>
+                    </div>
+                </div>
+
+                <!-- Lista clienti con prenotazioni da incassare (generata da admin-payments.js) -->
+                <div id="debtorsList" class="debtors-list">
+                    <!-- Generata da JavaScript -->
+                </div>
+
+                <!-- Pagamenti recenti dal ledger payments (generata da admin-payments.js) -->
+                <div id="creditsList" class="debtors-list credits-list" style="display:none;">
+                    <!-- Generata da JavaScript -->
+                </div>
+
+            </div>
+
+            <!-- Tab: Clients -->
+            <div id="tab-clients" class="tab-content">
+
+                <div class="tab-page-title">
+                    <h2>Clienti</h2>
+                    <span id="clientsPageSub">&nbsp;</span>
+                </div>
+
+                <div class="clients-search-bar" style="position:relative;">
+                    <div class="clients-search-row">
+                        <div class="search-input-group" style="flex:1;">
+                            <input type="text" id="clientSearchInput"
+                                   placeholder="Cerca cliente.."
+                                   oninput="liveSearchClients()"
+                                   onkeydown="if(event.key==='Escape') closeClientsSearchDropdown()">
+                        </div>
+                        <button class="clients-filter-toggle" id="clientsFilterToggle" onclick="toggleClientsFiltersMenu()">
+                            <span class="filter-toggle-emoji">🔍</span><span class="filter-toggle-text"> Filtri</span> <span id="clientsFilterToggleArrow">▼</span>
+                        </button>
+                    </div>
+                    <div id="clientsSearchDropdown" class="debtor-search-dropdown" style="display:none;"></div>
+                    <div class="clients-filter-chips" id="clientsFilterChips">
+                        <button class="clients-filter-chip" id="certFilterBtn" onclick="toggleCertFilter()">🏥 Senza certificato</button>
+                        <button class="clients-filter-chip" id="assicFilterBtn" onclick="toggleAssicFilter()">📋 Senza assicurazione</button>
+                        <button class="clients-filter-chip" id="anagFilterBtn" onclick="toggleAnagFilter()">📝 Senza anagrafica</button>
+                        <button class="clients-filter-chip" id="privacyFilterBtn" onclick="togglePrivacyFilter()">🔒 Anonimi</button>
+                        <button class="clients-filter-chip" id="pushFilterBtn" onclick="togglePushFilter()">🔕 Notifiche Disattivate</button>
+                    </div>
+                </div>
+                <div class="clients-filter-result" id="clientsFilterResult" style="display:none;"></div>
+
+                <div class="stats-grid stats-grid--payments" id="clientsStatsGrid">
+                    <div class="stat-card stat-card--clickable" id="statcard-clienti-totali" onclick="toggleClientsTotalList()" title="Clicca per vedere la lista">
+                        <div class="stat-card-click-hint" id="clientsTotalHint">Dettagli ▼</div>
+                        <div class="stat-icon">👥</div>
+                        <h3>Clienti Totali</h3>
+                        <p class="stat-value" id="clientsTotalCount">0</p>
+                    </div>
+                    <div class="stat-card stat-card--clickable" id="statcard-clienti-attivi" onclick="toggleClientsActiveList()" title="Clicca per vedere la lista">
+                        <div class="stat-card-click-hint" id="clientsActiveHint">Dettagli ▼</div>
+                        <div class="stat-icon">💪</div>
+                        <h3>Clienti Attivi</h3>
+                        <p class="stat-value" id="clientsActiveCount">0</p>
+                    </div>
+                </div>
+                <div class="clients-list" id="clientsList" style="display:none;">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Tab: Schedule Management -->
+            <div id="tab-schedule" class="tab-content">
+                <div id="scheduleManager">
+                    <!-- Schedule management will be generated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Tab: Analytics -->
+            <div id="tab-analytics" class="tab-content">
+
+                <div class="tab-page-title">
+                    <h2>Statistiche</h2>
+                    <span>& Fatturato</span>
+                </div>
+
+                <!-- Filter Bar -->
+                <div class="analytics-filter-bar">
+                    <button class="filter-btn active" onclick="setAnalyticsFilter('this-month', this)">Questo mese</button>
+                    <button class="filter-btn" onclick="setAnalyticsFilter('next-month', this)">Mese prossimo</button>
+                    <button class="filter-btn" onclick="setAnalyticsFilter('last-month', this)">Mese scorso</button>
+                    <button class="filter-btn" onclick="setAnalyticsFilter('this-year', this)">Quest'anno</button>
+                    <button class="filter-btn" onclick="setAnalyticsFilter('last-year', this)">Anno scorso</button>
+                    <button class="filter-btn" onclick="setAnalyticsFilter('custom', this)">📅 Personalizzato</button>
+                    <div class="filter-custom-dates" id="filterCustomDates" style="display:none;">
+                        <input type="date" id="filterDateFrom">
+                        <span style="color:#666;">→</span>
+                        <input type="date" id="filterDateTo">
+                        <button class="btn-apply-filter" onclick="applyCustomFilter()">Applica</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card stat-card--clickable" id="statcard-fatturato" onclick="toggleStatDetail('fatturato')">
+                        <div class="stat-card-click-hint">Dettagli ▼</div>
+                        <div class="stat-icon">💰</div>
+                        <h3>Fatturato previsto</h3>
+                        <p class="stat-value" id="monthlyRevenue">€0</p>
+                        <span class="stat-change positive" id="revenueChange">+0%</span>
+                    </div>
+                    <div class="stat-card stat-card--clickable" id="statcard-prenotazioni" onclick="toggleStatDetail('prenotazioni')">
+                        <div class="stat-card-click-hint">Dettagli ▼</div>
+                        <div class="stat-icon">📅</div>
+                        <h3>Prenotazioni Totali</h3>
+                        <p class="stat-value" id="totalBookings">0</p>
+                        <span class="stat-change" id="bookingsChange">+0%</span>
+                    </div>
+                    <div class="stat-card stat-card--clickable" id="statcard-clienti" onclick="toggleStatDetail('clienti')">
+                        <div class="stat-card-click-hint">Dettagli ▼</div>
+                        <div class="stat-icon">👥</div>
+                        <h3>Clienti Attivi</h3>
+                        <p class="stat-value" id="activeClients">0</p>
+                        <span class="stat-change" id="clientsChange">+0%</span>
+                    </div>
+                    <div class="stat-card stat-card--clickable" id="statcard-occupancy" onclick="toggleStatDetail('occupancy')">
+                        <div class="stat-card-click-hint">Dettagli ▼</div>
+                        <div class="stat-icon">📊</div>
+                        <h3>Tasso Occupazione</h3>
+                        <p class="stat-value" id="occupancyRate">0%</p>
+                        <span class="stat-change" id="occupancyChange">+0%</span>
+                    </div>
+                </div>
+
+                <!-- Pannello dettaglio statistiche (aperto al click su una card) -->
+                <div id="statsDetailPanel" class="stats-detail-panel" style="display:none;"></div>
+
+
+
+            </div>
+            <!-- End Tab: Analytics -->
+
+            <!-- Tab: Impostazioni -->
+            <div id="tab-settings" class="tab-content">
+                <div class="sett-hub">
+
+                    <div class="sett-header">
+                        <h3>Impostazioni</h3>
+                        <span class="sett-header-badge">🔧 Configurazione</span>
+                    </div>
+
+                    <div class="sett-group-label">
+                        <span class="sett-group-label-icon">🛡️</span>
+                        Regole prenotazioni
+                    </div>
+
+                    <!-- Certificato medico -->
+                    <div class="sett-card">
+                        <div class="sett-card-header">
+                            <span class="sett-card-icon sett-card-icon--cyan">🏥</span>
+                            <div>
+                                <h4 class="sett-card-title">Certificato medico</h4>
+                                <p class="sett-card-desc">Se attivo, i clienti possono modificare la data di scadenza del proprio certificato medico nel profilo.</p>
+                            </div>
+                            <label class="settings-toggle-wrap">
+                                <input type="checkbox" id="certEditableToggle" onchange="saveCertEditable(this.checked)">
+                                <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                <span class="settings-toggle-text" id="certEditableText"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Blocco prenotazioni cert -->
+                    <div class="sett-card">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--red">🚫</span>
+                            <div>
+                                <h4 class="sett-card-title">Blocco prenotazioni per certificato medico</h4>
+                                <p class="sett-card-desc">Impedisci ai clienti di prenotare in base allo stato del loro certificato medico.</p>
+                            </div>
+                        </div>
+                        <div class="sett-toggle-list">
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text">
+                                    <strong>Certificato scaduto</strong>
+                                    <span>Blocca la prenotazione se il certificato medico risulta scaduto.</span>
+                                </div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="certBlockExpiredToggle" onchange="saveCertBlockExpired(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="certBlockExpiredText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text">
+                                    <strong>Certificato non impostato</strong>
+                                    <span>Blocca la prenotazione se il cliente non ha ancora inserito la data di scadenza.</span>
+                                </div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="certBlockNotSetToggle" onchange="saveCertBlockNotSet(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="certBlockNotSetText"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Blocco prenotazioni assicurazione -->
+                    <div class="sett-card">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--red">🚫</span>
+                            <div>
+                                <h4 class="sett-card-title">Blocco prenotazioni per assicurazione</h4>
+                                <p class="sett-card-desc">Impedisci ai clienti di prenotare in base allo stato della loro assicurazione.</p>
+                            </div>
+                        </div>
+                        <div class="sett-toggle-list">
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text">
+                                    <strong>Assicurazione scaduta</strong>
+                                    <span>Blocca la prenotazione se l'assicurazione risulta scaduta.</span>
+                                </div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="assicBlockExpiredToggle" onchange="saveAssicBlockExpired(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="assicBlockExpiredText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text">
+                                    <strong>Assicurazione non impostata</strong>
+                                    <span>Blocca la prenotazione se il cliente non ha ancora inserito la data di scadenza.</span>
+                                </div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="assicBlockNotSetToggle" onchange="saveAssicBlockNotSet(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="assicBlockNotSetText"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visualizza bottoni partecipante -->
+                    <div class="sett-card">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--cyan">👁️</span>
+                            <div>
+                                <h4 class="sett-card-title">Visualizza bottoni</h4>
+                            </div>
+                        </div>
+                        <div class="sett-toggle-list">
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text"><strong>🏥 Certificato medico</strong></div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="showCertBadgeToggle" onchange="saveShowCertBadge(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="showCertBadgeText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text"><strong>📋 Assicurazione</strong></div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="showAssicBadgeToggle" onchange="saveShowAssicBadge(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="showAssicBadgeText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text"><strong>📝 Documento non firmato</strong></div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="showDocBadgeToggle" onchange="saveShowDocBadge(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="showDocBadgeText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text"><strong>📋 Completa anagrafica</strong></div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="showAnagBadgeToggle" onchange="saveShowAnagBadge(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="showAnagBadgeText"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sett-group-label">
+                        <span class="sett-group-label-icon">📅</span>
+                        Pianificazione
+                    </div>
+
+                    <!-- Settimane Standard -->
+                    <div class="sett-card">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--cyan">📅</span>
+                            <div>
+                                <h4 class="sett-card-title">Settimane Standard</h4>
+                                <p class="sett-card-desc">Configura fino a 3 settimane tipo. Quella attiva viene usata quando importi la "settimana standard" in Gestione Orari.</p>
+                            </div>
+                        </div>
+                        <div id="weekTemplatesContainer"></div>
+                    </div>
+
+                    <div class="sett-group-label">
+                        <span class="sett-group-label-icon">📊</span>
+                        Dati & Report
+                    </div>
+
+                    <!-- Backup & Ripristino -->
+                    <div class="sett-card">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--blue">💾</span>
+                            <div>
+                                <h4 class="sett-card-title">Backup & Ripristino</h4>
+                                <p class="sett-card-desc">Esporta tutti i dati in formato JSON o CSV. Il ripristino sovrascrive tutti i dati attuali.</p>
+                            </div>
+                        </div>
+                        <div class="sett-btn-row">
+                            <button class="sett-action-btn sett-action-btn--blue" onclick="exportBackup('json')">📤 Esporta JSON</button>
+                            <button class="sett-action-btn sett-action-btn--purple" onclick="exportBackup('csv')">📤 Esporta CSV</button>
+                            <button class="sett-action-btn sett-action-btn--green" onclick="document.getElementById('importBackupFile').click()">📥 Importa backup</button>
+                        </div>
+                        <input type="file" id="importBackupFile" accept=".json" style="display:none" onchange="importBackup(this)">
+                        <div id="backupStatus" class="sett-status-text"></div>
+                    </div>
+
+                    <!-- Report settimanale -->
+                    <div class="sett-card">
+                        <div class="sett-card-header">
+                            <span class="sett-card-icon sett-card-icon--blue">📊</span>
+                            <div>
+                                <h4 class="sett-card-title">Report settimanale pagamenti</h4>
+                                <p class="sett-card-desc">Genera il report XLSX dei pagamenti fiscali (carta, bonifico, stripe, contanti con report) della settimana precedente (lun–dom).</p>
+                            </div>
+                            <button class="sett-action-btn sett-action-btn--blue" onclick="downloadWeeklyReport()">📥 Rigenera</button>
+                        </div>
+                    </div>
+
+                    <!-- Report fiscale completo -->
+                    <div class="sett-card">
+                        <div class="sett-card-header">
+                            <span class="sett-card-icon sett-card-icon--green">🧾</span>
+                            <div>
+                                <h4 class="sett-card-title">Report fiscale completo</h4>
+                                <p class="sett-card-desc">Scarica XLSX con tutti i pagamenti carta, bonifico e Stripe. Include prenotazioni, debiti e crediti.</p>
+                            </div>
+                            <button class="sett-action-btn sett-action-btn--green" id="fiscalReportBtn" onclick="downloadFiscalReport()">🧾 Scarica</button>
+                        </div>
+                    </div>
+
+                    <!-- Verifica integrità dati -->
+                    <div class="sett-card">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--purple">🔍</span>
+                            <div>
+                                <h4 class="sett-card-title">Verifica integrità dati</h4>
+                                <p class="sett-card-desc">Controlla anomalie: utenti senza profilo, prenotazioni orfane, email non corrispondenti al profilo collegato.</p>
+                            </div>
+                        </div>
+                        <div class="sett-btn-row">
+                            <button class="sett-action-btn sett-action-btn--purple" id="healthCheckBtn" onclick="runHealthCheck()">🔍 Verifica</button>
+                            <button class="sett-action-btn sett-action-btn--red" id="healthFixBtn" onclick="runHealthFix()" style="display:none">🔧 Correggi anomalie</button>
+                        </div>
+                        <div id="healthCheckResult" style="display:none; margin-top:1rem;"></div>
+                    </div>
+
+                    <div class="sett-group-label sett-group-label--danger">
+                        <span class="sett-group-label-icon">⚠️</span>
+                        Sistema
+                    </div>
+
+                    <!-- Modalità manutenzione -->
+                    <div class="sett-card sett-card--danger">
+                        <div class="sett-card-header sett-card-header--top">
+                            <span class="sett-card-icon sett-card-icon--red">🔧</span>
+                            <div>
+                                <h4 class="sett-card-title">Modalità manutenzione</h4>
+                                <p class="sett-card-desc">Quando attiva, gli utenti vedono un overlay "sistema non disponibile". L'admin continua ad accedere normalmente.</p>
+                            </div>
+                        </div>
+                        <div class="sett-toggle-list">
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text">
+                                    <strong>Attiva manutenzione</strong>
+                                    <span>Blocca l'accesso agli utenti mostrando un messaggio di manutenzione.</span>
+                                </div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="maintenanceModeToggle" onchange="saveMaintenanceMode(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="maintenanceModeText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row">
+                                <div class="sett-toggle-text">
+                                    <strong>Blocca anche admin</strong>
+                                    <span>Blocca anche l'interfaccia admin. Per sbloccare dovrai andare su Supabase.</span>
+                                </div>
+                                <label class="settings-toggle-wrap">
+                                    <input type="checkbox" id="maintenanceAdminToggle" onchange="saveMaintenanceAdmin(this.checked)">
+                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                                    <span class="settings-toggle-text" id="maintenanceAdminText"></span>
+                                </label>
+                            </div>
+                            <div class="sett-toggle-row sett-toggle-row--input">
+                                <label class="sett-input-label">Messaggio personalizzato (opzionale)</label>
+                                <div class="sett-input-row">
+                                    <input type="text" id="maintenanceMessageInput" placeholder="Sistema temporaneamente non disponibile..." class="sett-text-input">
+                                    <button class="sett-save-btn" onclick="saveMaintenanceMessage()">Salva</button>
+                                    <span id="maintenanceMessageSaved" class="sett-saved-msg">Salvato</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- End Tab: Impostazioni -->
+
+            <!-- Tab: Registro / Log DB -->
+            <div id="tab-registro" class="tab-content">
+
+                <!-- Sub-tabs -->
+                <div class="registro-subtabs">
+                    <button class="registro-subtab active" data-subtab="registro" onclick="switchRegistroSubtab('registro', this)">Registro</button>
+                    <button class="registro-subtab" data-subtab="notifiche-admin" onclick="switchRegistroSubtab('notifiche-admin', this)">Notifiche admin</button>
+                    <button class="registro-subtab" data-subtab="notifiche-clienti" onclick="switchRegistroSubtab('notifiche-clienti', this)">Notifiche clienti</button>
+                </div>
+
+                <!-- Sezione: Registro -->
+                <div id="registroSubtab-registro" class="registro-subtab-content active">
+                    <div class="reg-panel">
+                        <div class="reg-panel-filters registro-filters">
+                            <button class="reg-header-toggle" onclick="toggleRegFilters(this)">
+                                <h3>📋 Registro Operazioni</h3>
+                                <span class="reg-filters-toggle-icon">▼</span>
+                            </button>
+                            <div class="reg-filters-collapsible">
+                                <!-- Periodo -->
+                                <div class="registro-filter-row">
+                                    <div class="registro-filter-group" style="width:100%;">
+                                        <label class="registro-filter-label">Periodo (data evento)</label>
+                                        <div class="registro-date-btns">
+                                            <button class="rfilter-btn active" data-range="all" onclick="setRegistroRange('all', this)">Tutto</button>
+                                            <button class="rfilter-btn" data-range="this-month" onclick="setRegistroRange('this-month', this)">Questo mese</button>
+                                            <button class="rfilter-btn" data-range="last-month" onclick="setRegistroRange('last-month', this)">Mese scorso</button>
+                                            <button class="rfilter-btn" data-range="this-year" onclick="setRegistroRange('this-year', this)">Quest'anno</button>
+                                            <button class="rfilter-btn" data-range="custom" onclick="setRegistroRange('custom', this)">📅 Personalizzato</button>
+                                        </div>
+                                        <div id="registroCustomDates" class="registro-custom-dates" style="display:none;">
+                                            <input type="date" id="registroDateFrom">
+                                            <span>→</span>
+                                            <input type="date" id="registroDateTo">
+                                            <button class="btn-apply-filter" onclick="applyRegistroCustomRange()">Applica</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Dropdowns + search -->
+                                <div class="registro-filter-row">
+                                    <div class="registro-filter-group">
+                                        <label class="registro-filter-label">Tipo evento</label>
+                                        <div class="rfilter-type-pills">
+                                            <button class="rfilter-btn" data-etype="booking_created"          onclick="toggleRegistroType(this)">📅 Prenotazione</button>
+                                            <button class="rfilter-btn" data-etype="booking_paid"             onclick="toggleRegistroType(this)">✅ Pagamento</button>
+                                            <button class="rfilter-btn" data-etype="booking_cancelled"        onclick="toggleRegistroType(this)">❌ Annullamento</button>
+                                            <button class="rfilter-btn" data-etype="credit_added"             onclick="toggleRegistroType(this)">⬆️ Credito Manuale</button>
+                                            <button class="rfilter-btn" data-etype="manual_debt"              onclick="toggleRegistroType(this)">📋 Debito Manuale</button>
+                                            <button class="rfilter-btn" data-etype="manual_debt_paid"         onclick="toggleRegistroType(this)">💰 Debito Saldato</button>
+                                            <button class="rfilter-btn" data-etype="cancellation_mora"        onclick="toggleRegistroType(this)">💸 Mora</button>
+                                        </div>
+                                    </div>
+                                    <div class="registro-filter-group registro-filter-group--sm">
+                                        <label class="registro-filter-label">Tipo lezione</label>
+                                        <select id="registroFilterSlot" onchange="applyRegistroFilters()">
+                                            <option value="all">Tutte</option>
+                                            <option value="personal-training">Autonomia</option>
+                                            <option value="small-group">Lezione di Gruppo</option>
+                                            <option value="group-class">Slot prenotato</option>
+                                        </select>
+                                    </div>
+                                    <div class="registro-filter-group registro-filter-group--sm">
+                                        <label class="registro-filter-label">Metodo pagamento</label>
+                                        <select id="registroFilterMethod" onchange="applyRegistroFilters()">
+                                            <option value="all">Tutti</option>
+                                            <option value="contanti">💵 Contanti</option>
+                                            <option value="contanti-report">🧾 Contanti con Report</option>
+                                            <option value="carta">💳 Carta</option>
+                                            <option value="stripe">💳 Stripe</option>
+                                            <option value="iban">🏦 Bonifico</option>
+                                            <option value="credito">🔄 Credito</option>
+                                            <option value="lezione-gratuita">🎁 Gratuita</option>
+                                        </select>
+                                    </div>
+                                    <div class="registro-filter-group registro-filter-group--sm">
+                                        <label class="registro-filter-label">Stato</label>
+                                        <select id="registroFilterStatus" onchange="applyRegistroFilters()">
+                                            <option value="all">Tutti</option>
+                                            <option value="paid">Pagato</option>
+                                            <option value="unpaid">Non pagato</option>
+                                            <option value="cancelled">Annullato</option>
+                                        </select>
+                                    </div>
+                                    <div class="registro-search-row">
+                                        <div class="registro-filter-group registro-filter-group--search">
+                                            <label class="registro-filter-label">Cerca cliente</label>
+                                            <input type="text" id="registroSearch" placeholder="Nome, telefono..." oninput="_debouncedRegistroFilter()">
+                                        </div>
+                                        <div class="registro-filter-group">
+                                            <label class="registro-filter-label">&nbsp;</label>
+                                            <button class="rfilter-btn rfilter-btn--reset" onclick="resetRegistroFilters()">↺ Reset</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div><!-- /reg-filters-collapsible -->
+                        </div>
+                        <div class="registro-table-wrap">
+                            <table class="registro-table">
+                                <thead>
+                                    <tr>
+                                        <th class="registro-th-ts" onclick="toggleRegistroSort('timestamp')">
+                                            Data/Ora <span class="registro-sort-icon" id="registroSortTs">↓</span>
+                                        </th>
+                                        <th>Tipo</th>
+                                        <th>Cliente</th>
+                                        <th class="registro-th-lesson" onclick="toggleRegistroSort('lessonDate')">
+                                            Data Lezione <span class="registro-sort-icon" id="registroSortLesson"></span>
+                                        </th>
+                                        <th>Ora</th>
+                                        <th>Tipo Lezione</th>
+                                        <th>Importo</th>
+                                        <th>Metodo</th>
+                                        <th>Stato</th>
+                                        <th>Nota</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="registroTableBody">
+                                    <tr><td colspan="10" class="registro-empty">Seleziona il tab per caricare il registro.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Lista mobile (Variante A) -->
+                        <div class="registro-mobile-list" id="registroMobileList" aria-hidden="true">
+                            <div class="registro-mobile-empty">Seleziona il tab per caricare il registro.</div>
+                        </div>
+                        <div class="registro-pagination">
+                            <button class="registro-pag-btn" onclick="registroPrevPage()" id="registroPrevBtn" disabled>← Prec</button>
+                            <span class="registro-pag-info" id="registroPaginationInfo">—</span>
+                            <button class="registro-pag-btn" onclick="registroNextPage()" id="registroNextBtn" disabled>Succ →</button>
+                        </div>
+                    </div>
+                </div><!-- /registroSubtab-registro -->
+
+                <!-- Sezione: Notifiche admin -->
+                <div id="registroSubtab-notifiche-admin" class="registro-subtab-content">
+                    <div class="reg-panel">
+                        <div class="reg-panel-filters">
+                            <button class="reg-header-toggle" onclick="toggleRegFilters(this)">
+                                <h3>📩 Storico notifiche</h3>
+                                <span class="reg-filters-toggle-icon">▼</span>
+                            </button>
+                            <div class="reg-filters-collapsible">
+                                <div class="reg-panel-filters-row">
+                                    <select id="msgFilterType" onchange="loadMessaggi()" class="reg-panel-select">
+                                        <option value="">Tutti i tipi</option>
+                                        <option value="booking">✔️ Prenotazioni</option>
+                                        <option value="cancellation">❌ Annullamenti</option>
+                                        <option value="new_client">🆕 Nuovi iscritti</option>
+                                        <option value="topup">💰 Ricariche</option>
+                                    </select>
+                                    <select id="msgFilterStatus" onchange="renderMessaggiTable()" class="reg-panel-select">
+                                        <option value="">Tutti gli stati</option>
+                                        <option value="sent">✅ Inviata</option>
+                                        <option value="failed">❌ Non inviata</option>
+                                    </select>
+                                    <input type="date" id="msgFilterDate" onchange="renderMessaggiTable()" class="reg-panel-date">
+                                    <button class="rfilter-btn rfilter-btn--reset" onclick="document.getElementById('msgFilterType').value='';document.getElementById('msgFilterStatus').value='';document.getElementById('msgFilterDate').value='';loadMessaggi()">↺ Reset</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="registro-table-wrap">
+                            <table class="registro-table reg-panel-table">
+                                <thead>
+                                    <tr>
+                                        <th>Data/Ora</th>
+                                        <th>Tipo</th>
+                                        <th>Titolo</th>
+                                        <th>Dettaglio</th>
+                                        <th>Cliente</th>
+                                        <th>Stato</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="messaggiTableBody">
+                                    <tr><td colspan="6" class="registro-empty">Caricamento...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Lista mobile (Variante A) -->
+                        <div class="registro-mobile-list" id="messaggiMobileList" aria-hidden="true">
+                            <div class="registro-mobile-empty">Caricamento...</div>
+                        </div>
+                        <div class="registro-pagination">
+                            <button class="registro-pag-btn" onclick="messaggiPrevPage()" id="messaggiPrevBtn" disabled>← Prec</button>
+                            <span class="registro-pag-info" id="messaggiPaginationInfo">—</span>
+                            <button class="registro-pag-btn" onclick="messaggiNextPage()" id="messaggiNextBtn" disabled>Succ →</button>
+                        </div>
+                    </div>
+                </div><!-- /registroSubtab-notifiche-admin -->
+
+                <!-- Sezione: Notifiche clienti -->
+                <div id="registroSubtab-notifiche-clienti" class="registro-subtab-content">
+                    <div class="reg-panel">
+                        <div class="reg-panel-filters">
+                            <button class="reg-header-toggle" onclick="toggleRegFilters(this)">
+                                <h3>📬 Notifiche ai clienti</h3>
+                                <span class="reg-filters-toggle-icon">▼</span>
+                            </button>
+                            <div class="reg-filters-collapsible">
+                                <div class="reg-panel-filters-row">
+                                    <select id="cnFilterType" onchange="renderClientNotifTable()" class="reg-panel-select">
+                                        <option value="">Tutti i tipi</option>
+                                        <option value="reminder_24h">⏰ Promemoria 24h</option>
+                                        <option value="reminder_1h">⏰ Promemoria 1h</option>
+                                        <option value="slot_available">🟢 Slot disponibile</option>
+                                        <option value="broadcast">📢 Broadcast</option>
+                                    </select>
+                                    <select id="cnFilterStatus" onchange="renderClientNotifTable()" class="reg-panel-select">
+                                        <option value="">Tutti gli stati</option>
+                                        <option value="sent">✅ Inviata</option>
+                                        <option value="failed">❌ Fallita</option>
+                                        <option value="no_subscription">⚠️ No subscription</option>
+                                    </select>
+                                    <input type="text" id="cnFilterClient" placeholder="Cerca cliente..." oninput="_debouncedCnFilter()" class="reg-panel-search">
+                                    <input type="date" id="cnFilterDate" onchange="renderClientNotifTable()" class="reg-panel-date">
+                                    <button class="rfilter-btn rfilter-btn--reset" onclick="document.getElementById('cnFilterType').value='';document.getElementById('cnFilterStatus').value='';document.getElementById('cnFilterClient').value='';document.getElementById('cnFilterDate').value='';renderClientNotifTable()">↺ Reset</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="registro-table-wrap">
+                            <table class="registro-table reg-panel-table">
+                                <thead>
+                                    <tr>
+                                        <th>Data/Ora</th>
+                                        <th>Tipo</th>
+                                        <th>Cliente</th>
+                                        <th>Titolo</th>
+                                        <th>Dettaglio</th>
+                                        <th>Stato</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="clientNotifTableBody">
+                                    <tr><td colspan="6" class="registro-empty">Caricamento...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Lista mobile (Variante A) -->
+                        <div class="registro-mobile-list" id="cnMobileList" aria-hidden="true">
+                            <div class="registro-mobile-empty">Caricamento...</div>
+                        </div>
+                        <div class="registro-pagination">
+                            <button class="registro-pag-btn" onclick="cnPrevPage()" id="cnPrevBtn" disabled>← Prec</button>
+                            <span class="registro-pag-info" id="cnPaginationInfo">—</span>
+                            <button class="registro-pag-btn" onclick="cnNextPage()" id="cnNextBtn" disabled>Succ →</button>
+                        </div>
+                    </div>
+                </div><!-- /registroSubtab-notifiche-clienti -->
+
+            </div>
+            <!-- End Tab: Registro -->
+
+            <!-- Tab: Messaggi -->
+            <div id="tab-messaggi" class="tab-content">
+                <div class="msg-hub">
+
+                    <div class="msg-header">
+                        <h3>Notifiche Push</h3>
+                        <span class="msg-header-badge">📡 Broadcast</span>
+                    </div>
+
+                    <div class="msg-cards-row">
+                    <!-- Compose -->
+                    <div class="msg-card">
+                        <div class="msg-card-title">
+                            <span class="msg-card-title-icon">✏️</span>
+                            Componi messaggio
+                        </div>
+                        <div class="msg-fields">
+                            <div class="msg-field">
+                                <label class="msg-label" for="msgTitle">Titolo</label>
+                                <input type="text" id="msgTitle" maxlength="60" placeholder="Titolo notifica" class="msg-input">
+                            </div>
+                            <div class="msg-field">
+                                <label class="msg-label" for="msgBody">Messaggio</label>
+                                <textarea id="msgBody" rows="3" maxlength="200" placeholder="Testo del messaggio" class="msg-textarea"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recipients -->
+                    <div class="msg-card">
+                        <div class="msg-card-title">
+                            <span class="msg-card-title-icon">👥</span>
+                            Destinatari
+                        </div>
+                        <div class="msg-recipient-options" id="msgRecipientOptions">
+                            <label class="msg-recipient-opt">
+                                <input type="radio" name="msgRecipientMode" value="tutti" checked onchange="onMsgRecipientModeChange(this.value)">
+                                <div class="msg-recipient-opt-content">
+                                    <span class="msg-recipient-icon">🌐</span>
+                                    <div class="msg-recipient-opt-text">
+                                        <strong>Tutti gli utenti</strong>
+                                        <span>Invia a tutti gli utenti iscritti alle notifiche push.</span>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="msg-recipient-opt">
+                                <input type="radio" name="msgRecipientMode" value="giorno" onchange="onMsgRecipientModeChange(this.value)">
+                                <div class="msg-recipient-opt-content">
+                                    <span class="msg-recipient-icon">📅</span>
+                                    <div class="msg-recipient-opt-text">
+                                        <strong>Iscritti di un giorno</strong>
+                                        <span>Invia solo a chi ha una prenotazione in un giorno specifico.</span>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="msg-recipient-opt">
+                                <input type="radio" name="msgRecipientMode" value="ora" onchange="onMsgRecipientModeChange(this.value)">
+                                <div class="msg-recipient-opt-content">
+                                    <span class="msg-recipient-icon">🕐</span>
+                                    <div class="msg-recipient-opt-text">
+                                        <strong>Iscritti di un'ora specifica</strong>
+                                        <span>Invia solo a chi ha una prenotazione in un giorno e orario specifico.</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="msgDatePicker" style="display:none;" class="msg-conditional-field">
+                            <label class="msg-label">Data</label>
+                            <input type="date" id="msgDate" onchange="onMsgDateChange(this.value)" class="msg-input msg-input--date">
+                        </div>
+                        <div id="msgTimePicker" style="display:none;" class="msg-conditional-field">
+                            <label class="msg-label">Orario</label>
+                            <select id="msgTimeSlot" class="msg-input msg-input--select">
+                                <option value="">Seleziona prima una data</option>
+                            </select>
+                        </div>
+                    </div>
+                    </div>
+
+                    <!-- Send -->
+                    <div class="msg-send-bar">
+                        <button class="msg-send-btn" onclick="sendAdminMessage()">📤 Invia notifica</button>
+                        <span id="msgStatus" class="msg-status"></span>
+                    </div>
+
+                </div>
+            </div>
+            <!-- End Tab: Messaggi -->
+
+            <!-- Tab: Schede (include Live, Schede, Clienti, Importa come sub-page) -->
+            <div id="tab-schede" class="tab-content">
+                <div class="dashboard-card" id="schedeContainer">
+                    <div class="schede-loading">Caricamento schede...</div>
+                </div>
+            </div>
+            <!-- End Tab: Schede -->
+
+        </div>
+    </div>
+
+    <!-- Mobile bottom stack: pill filtro + dock page-switcher (solo < 768px) -->
+    <div class="adm-bottom-stack" id="admBottomStack">
+        <div class="adm-mbar" id="admMbar" role="toolbar" aria-label="Filtri sezione">
+            <button class="adm-mbar-filter" id="admMbarFilter"
+                    aria-haspopup="dialog" aria-expanded="false" aria-label="Filtri">
+                <span class="adm-mbar-filter-ico" id="admMbarFilterIco" aria-hidden="true">🔍</span>
+                <span class="adm-mbar-filter-label" id="admMbarFilterLabel">Filtri</span>
+                <span class="adm-mbar-filter-chev" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div class="adm-dock" id="admDock" role="navigation" aria-label="Sezione corrente">
+            <button class="adm-dock-btn" id="admMbarPage"
+                    aria-haspopup="dialog" aria-expanded="false" aria-label="Cambia sezione">
+                <span class="adm-dock-icon" aria-hidden="true">
+                    <span id="admMbarPageIco">📅</span>
+                </span>
+                <span class="adm-dock-labels">
+                    <span class="adm-dock-eyebrow">Sezione</span>
+                    <span class="adm-dock-name" id="admMbarPageLabel">Prenotazioni</span>
+                </span>
+                <span class="adm-dock-chev" aria-hidden="true"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Cert Modal -->
+    <div id="certModalOverlay" class="debt-popup-overlay" onclick="event.stopPropagation()" style="display:none"></div>
+    <div id="certModal" class="cert-modal" style="display:none">
+        <div class="debt-popup-header">
+            <div>
+                <h3>🏥 Certificato Medico</h3>
+                <p id="certModalName" style="margin:0;font-size:0.9rem;color:#6b7280"></p>
+            </div>
+            <button class="debt-popup-close" onclick="closeCertModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="cert-modal-body">
+            <label class="debt-field-label">Data di scadenza</label>
+            <input type="date" id="certModalDate" class="cert-modal-date-input">
+            <div class="cert-modal-actions">
+                <button class="cert-modal-btn cert-modal-btn--cancel" onclick="closeCertModal()">Annulla</button>
+                <button class="cert-modal-btn cert-modal-btn--save" onclick="saveCertDate()">Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assicurazione Modal -->
+    <div id="assicModalOverlay" class="debt-popup-overlay" onclick="event.stopPropagation()" style="display:none"></div>
+    <div id="assicModal" class="cert-modal" style="display:none">
+        <div class="debt-popup-header">
+            <div>
+                <h3>📋 Assicurazione</h3>
+                <p id="assicModalName" style="margin:0;font-size:0.9rem;color:#6b7280"></p>
+            </div>
+            <button class="debt-popup-close" onclick="closeAssicModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="cert-modal-body">
+            <label class="debt-field-label">Data di scadenza</label>
+            <input type="date" id="assicModalDate" class="cert-modal-date-input">
+            <div class="cert-modal-actions">
+                <button class="cert-modal-btn cert-modal-btn--cancel" onclick="closeAssicModal()">Annulla</button>
+                <button class="cert-modal-btn cert-modal-btn--save" onclick="saveAssicDate()">Salva</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Debt Payment Popup -->
+    <div id="debtPopupOverlay" class="debt-popup-overlay" onclick="event.stopPropagation()"></div>
+    <div id="debtPopupModal" class="debt-popup-modal">
+        <div class="debt-popup-header">
+            <div>
+                <h3 id="debtPopupName"></h3>
+                <p id="debtPopupSubtitle"></p>
+            </div>
+            <button class="debt-popup-close" onclick="closeDebtPopup()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div id="debtPopupList" class="debt-popup-list"></div>
+        <div class="debt-popup-payment">
+            <div class="debt-payment-method-row">
+                <span class="debt-field-label">Metodo di pagamento</span>
+                <select class="debt-method-select" id="debtMethodSelect" onchange="onPaymentMethodChange(this)">
+                    <option value="" disabled selected>Seleziona…</option>
+                    <option value="contanti">💵 Contanti</option>
+                    <option value="contanti-report">🧾 Contanti con Report</option>
+                    <option value="carta">💳 Carta</option>
+                    <option value="iban">🏦 Bonifico</option>
+                    <option value="lezione-gratuita">🎁 Gratuita</option>
+                </select>
+            </div>
+        </div>
+        <div class="debt-popup-footer">
+            <label class="debt-select-all">
+                <input type="checkbox" id="debtSelectAll" onchange="toggleAllDebts(this.checked)">
+                Seleziona tutto
+            </label>
+            <div class="debt-popup-total">Dovuto: <strong id="debtSelectedTotal">€0</strong></div>
+            <button class="debt-popup-pay-btn" id="debtPayBtn" onclick="paySelectedDebts()" disabled>✓ Conferma</button>
+        </div>
+    </div>
+
+    <!-- Modal: dati mancanti per pagamento carta/bonifico -->
+    <div id="missingDataOverlay" class="debt-popup-overlay">
+        <div id="missingDataModal" class="debt-popup-modal" style="max-width:420px;">
+            <div class="debt-popup-header">
+                <h3 id="missingDataTitle">⚠️ Dati mancanti per pagamento</h3>
+                <button class="debt-popup-close" onclick="closeMissingDataPopup()">✕</button>
+            </div>
+            <div style="padding:1rem 1.25rem; overflow-y:auto;">
+                <p style="color:#555; font-size:0.9rem; margin-bottom:1rem;">
+                    Per i pagamenti riportati fiscalmente (carta, bonifico, stripe, contanti con report) servono Codice Fiscale e indirizzo di residenza.
+                </p>
+                <div class="manual-entry-field" id="mdCfField">
+                    <span class="debt-field-label">Codice Fiscale</span>
+                    <input type="text" id="mdCodiceFiscale" placeholder="RSSMRA85M01H501Z" maxlength="16" style="text-transform:uppercase" class="manual-note-input">
+                </div>
+                <div class="manual-entry-field" id="mdViaField">
+                    <span class="debt-field-label">Via / Indirizzo</span>
+                    <input type="text" id="mdVia" placeholder="Via Roma 1" class="manual-note-input">
+                </div>
+                <div class="manual-entry-field" id="mdPaeseCapField" style="display:flex; gap:0.75rem;">
+                    <div style="flex:2">
+                        <span class="debt-field-label">Paese / Città</span>
+                        <input type="text" id="mdPaese" placeholder="Milano" class="manual-note-input">
+                    </div>
+                    <div style="flex:1">
+                        <span class="debt-field-label">CAP</span>
+                        <input type="text" id="mdCAP" placeholder="20100" maxlength="5" inputmode="numeric" class="manual-note-input">
+                    </div>
+                </div>
+                <div id="mdError" style="display:none; margin-top:0.5rem; color:#dc2626; font-size:0.85rem;"></div>
+            </div>
+            <div class="debt-popup-footer" style="justify-content:flex-end; gap:0.75rem;">
+                <button class="btn-clear-search" onclick="closeMissingDataPopup()">Annulla</button>
+                <button class="debt-popup-pay-btn" id="mdSaveBtn" onclick="saveMissingData()">✓ Salva e continua</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop date popover (solo ≥ 1024px) -->
+    <div class="adm-datepop-backdrop" id="admDatepopBackdrop" hidden></div>
+    <div class="adm-datepop" id="admDatepop" role="dialog" aria-modal="true" aria-labelledby="admDatepopTitle" aria-hidden="true">
+        <h3 class="adm-datepop-title" id="admDatepopTitle">Periodo</h3>
+        <div class="adm-datepop-presets" id="admDatepopPresets"></div>
+        <div class="adm-datepop-divider"></div>
+        <label class="adm-datepop-label">Range personalizzato</label>
+        <div class="adm-datepop-range">
+            <input type="date" id="admDatepopFrom" class="adm-datepop-input">
+            <span class="adm-datepop-sep">→</span>
+            <input type="date" id="admDatepopTo" class="adm-datepop-input">
+        </div>
+        <div class="adm-datepop-foot">
+            <button type="button" class="adm-datepop-btn" id="admDatepopApply">Applica</button>
+        </div>
+    </div>
+
+    <!-- Bottom sheet: Pagine (mobile) -->
+    <div class="adm-sheet-backdrop" id="admPagesBackdrop" hidden></div>
+    <aside class="adm-sheet" id="admPagesSheet" role="dialog" aria-modal="true" aria-labelledby="admPagesTitle" aria-hidden="true">
+        <div class="adm-sheet-grabber" aria-hidden="true"></div>
+        <h3 class="adm-sheet-title" id="admPagesTitle">Vai a</h3>
+        <ul class="adm-sheet-list" id="admPagesList" role="listbox"></ul>
+    </aside>
+
+    <!-- Bottom sheet: Filtri (mobile) -->
+    <div class="adm-sheet-backdrop" id="admFiltersBackdrop" hidden></div>
+    <aside class="adm-sheet adm-sheet--filters" id="admFiltersSheet" role="dialog" aria-modal="true" aria-labelledby="admFiltersTitle" aria-hidden="true">
+        <div class="adm-sheet-grabber" aria-hidden="true"></div>
+        <h3 class="adm-sheet-title" id="admFiltersTitle">Filtri</h3>
+        <div class="adm-sheet-body" id="admFiltersBody"></div>
+        <div class="adm-sheet-footer">
+            <button type="button" class="adm-sheet-btn adm-sheet-btn--ghost" id="admFiltersReset">Reset</button>
+            <button type="button" class="adm-sheet-btn adm-sheet-btn--primary" id="admFiltersApply">Applica</button>
+        </div>
+    </aside>
+
+    <!-- Sidebar -->
+    <div class="nav-sidebar-overlay" id="navSidebarOverlay" onclick="toggleNavMenu()"></div>
+    <nav class="nav-sidebar" id="navSidebar">
+        <div class="nav-sidebar-header">
+            <img src="images/logo-palestria-light.png" alt="PalestrIA" class="nav-sidebar-logo">
+            <button class="nav-sidebar-close" onclick="toggleNavMenu()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <ul class="nav-sidebar-links">
+            <li><a href="index.html">Calendario</a></li>
+            <li id="navAllenamento" style="display:none"><a href="allenamento.html">Allenamento</a></li>
+            <li><a href="nutrizione.html">Nutrizione</a></li>
+            <li><a href="regolamento.html">Regolamento</a></li>
+            <li><a href="chi-sono.html">Chi sono</a></li>
+            <li><a href="dove-sono.html">Dove sono</a></li>
+            <li><a href="admin.html" class="nav-admin-link">Amministrazione</a></li>
+        </ul>
+        <p class="nav-sidebar-credit">powered by <a href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link" onclick="logCreditClick(event)">Andrea Pompili</a></p>
+    </nav>
+
+    <script>
+        // Prevent iOS Safari auto-zoom on input focus.
+        (function () {
+            var vp = document.querySelector('meta[name="viewport"]');
+            if (!vp) return;
+            document.addEventListener('touchstart', function (e) {
+                var tag = e.target.tagName;
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+                    vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1');
+                }
+            }, { passive: true });
+            document.addEventListener('focusout', function (e) {
+                var tag = e.target.tagName;
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+                    setTimeout(function () {
+                        vp.setAttribute('content', 'width=device-width, initial-scale=1');
+                    }, 300);
+                }
+            });
+        }());
+    </script>
+    <script>
+        // iOS PWA standalone: position:fixed elementi possono finire renderizzati
+        // contro il layout viewport invece che contro visualViewport durante
+        // momentum scroll / rubber-band. Misuriamo lo scostamento del dock dal
+        // fondo visibile e lo compensiamo via CSS var --adm-fixed-correction-y.
+        (function syncAdminFixedBars() {
+            var ua = navigator.userAgent || '';
+            var isIosLike = /iPad|iPhone|iPod/.test(ua)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+            if (!isIosLike || !isStandalone || !window.visualViewport) return;
+
+            var root = document.documentElement;
+            var raf = 0;
+            function update() {
+                raf = 0;
+                var stack = document.getElementById('admBottomStack');
+                if (!stack || stack.offsetParent === null) {
+                    root.style.setProperty('--adm-fixed-correction-y', '0px');
+                    return;
+                }
+                var rect = stack.getBoundingClientRect();
+                var vv = window.visualViewport;
+                var visibleBottom = vv.height + vv.offsetTop;
+                var delta = rect.bottom - visibleBottom;
+                if (Math.abs(delta) < 1) {
+                    root.style.setProperty('--adm-fixed-correction-y', '0px');
+                } else {
+                    var current = parseFloat(getComputedStyle(root).getPropertyValue('--adm-fixed-correction-y')) || 0;
+                    root.style.setProperty('--adm-fixed-correction-y', (current - delta) + 'px');
+                }
+            }
+            function schedule() {
+                if (raf) return;
+                raf = requestAnimationFrame(update);
+            }
+            window.addEventListener('scroll', schedule, { passive: true });
+            window.addEventListener('resize', schedule);
+            window.visualViewport.addEventListener('scroll', schedule);
+            window.visualViewport.addEventListener('resize', schedule);
+            document.addEventListener('visibilitychange', schedule);
+            schedule();
+        }());
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/supabase-client.js?v=4"></script>
+    <script src="js/org-settings.js?v=1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+    <script src="js/ui.js?v=2"></script>
+    <script src="js/data.js?v=74"></script>
+    <script src="js/auth.js?v=24"></script>
+    <script src="js/silent-refresh.js?v=1"></script>
+    <script src="js/push.js?v=20"></script>
+    <script src="js/chart-mini.js?v=12"></script>
+    <script src="js/admin.js?v=115"></script>
+    <script src="js/admin-analytics.js?v=5"></script>
+    <script src="js/admin-backup.js?v=4"></script>
+    <script src="js/admin-calendar.js?v=16"></script>
+    <script src="js/admin-schedule.js?v=4"></script>
+    <script src="js/admin-settings.js?v=2"></script>
+    <script src="js/admin-payments.js?v=12"></script>
+    <script src="js/admin-clients.js?v=6"></script>
+    <script src="js/admin-registro.js?v=6"></script>
+    <script src="js/admin-messaggi.js?v=2"></script>
+    <script src="js/admin-schede.js?v=44"></script>
+    <script src="js/admin-health.js?v=1"></script>
+    <script src="js/admin-importa.js?v=5"></script>
+    <script src="js/admin-mobile-filters.js?v=1"></script>
+    <script src="js/admin-desktop-sidebar.js?v=1"></script>
+    <script src="js/maintenance.js?v=1"></script>
+    <script>
+        // Avvia auth, sincronizza i booking da Supabase, poi aggiorna la dashboard
+        (async function () {
+            await initAuth();
+            // ── Sync in serie per evitare contention sul pool Supabase ──
+            // Lanciare 5+ sync in parallelo saturava il pool: una query lenta
+            // faceva andare in timeout tutte le altre.
+            await UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin] UserStorage sync:', e?.message || e));
+            await BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin] BookingStorage sync:', e?.message || e));
+            await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin] AppSettings sync:', e?.message || e));
+            window._adminLastFullSyncAt = Date.now();
+            // ── Render subito: l'admin diventa utilizzabile ──
+            if (typeof loadDashboardData === 'function') loadDashboardData();
+            if (typeof renderAdminCalendar === 'function') renderAdminCalendar();
+            if (typeof renderScheduleManager === 'function') renderScheduleManager();
+            const _activeTab = document.querySelector('.admin-tab.active');
+            if (_activeTab) switchTab(_activeTab.dataset.tab);
+            // Push: mostra banner se permesso non ancora concesso
+            if (typeof promptPushPermission === 'function') setTimeout(promptPushPermission, 1500);
+
+            // ── Sync accessori in background (non bloccano il render) ──
+            if (typeof syncPushEnabledUsers === 'function') {
+                syncPushEnabledUsers().catch(e => console.warn('[Push] background sync error:', e));
+            }
+            // Supabase Realtime: un unico handler debounced che sincronizza TUTTO
+            // evita race condition tra canali separati (es. bookings vs profiles)
+            if (typeof supabaseClient !== 'undefined') {
+                let _adminRtTimer = null;
+                window._adminRefreshAfterResume = async function (reason) {
+                    console.log('[Admin] refresh after resume:', reason);
+                    if (typeof ensureValidSession === 'function') {
+                        await ensureValidSession({ force: true, timeoutMs: 12000 }).catch(e => console.warn('[Admin] session refresh:', e?.message || e));
+                    }
+                    await UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin resume] UserStorage sync:', e?.message || e));
+                    await BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin resume] BookingStorage sync:', e?.message || e));
+                    await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin resume] AppSettings sync:', e?.message || e));
+                    window._adminLastFullSyncAt = Date.now();
+                    if (typeof loadDashboardData === 'function') loadDashboardData();
+                    if (typeof renderAdminCalendar === 'function') renderAdminCalendar();
+                    const activeTab = document.querySelector('.admin-tab.active');
+                    if (activeTab) switchTab(activeTab.dataset.tab);
+                };
+                function _adminDebouncedSync() {
+                    clearTimeout(_adminRtTimer);
+                    _adminRtTimer = setTimeout(async () => {
+                        // Stessa logica del boot: sync in serie per non saturare il pool.
+                        await UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin rt] UserStorage sync:', e?.message || e));
+                        await BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin rt] BookingStorage sync:', e?.message || e));
+                        await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin rt] AppSettings sync:', e?.message || e));
+                        window._adminLastFullSyncAt = Date.now();
+                        if (typeof loadDashboardData === 'function') loadDashboardData();
+                        if (typeof renderAdminCalendar === 'function') renderAdminCalendar();
+                        if (typeof renderAdminDayView === 'function' && typeof selectedAdminDay !== 'undefined' && selectedAdminDay) renderAdminDayView(selectedAdminDay);
+                        if (typeof renderScheduleManager === 'function') renderScheduleManager();
+                        const activeTab = document.querySelector('.admin-tab.active');
+                        if (activeTab) {
+                            if (activeTab.dataset.tab === 'payments' && typeof renderPaymentsTab === 'function') renderPaymentsTab('realtime');
+                            if (activeTab.dataset.tab === 'clients' && typeof renderClientsTab === 'function') renderClientsTab();
+                            if (activeTab.dataset.tab === 'settings' && typeof renderSettingsTab === 'function') renderSettingsTab();
+                            if (activeTab.dataset.tab === 'schede' && typeof renderSchedeTab === 'function') renderSchedeTab();
+                        }
+                    }, 1500);
+                }
+                const _adminRtFactory = function () {
+                    return supabaseClient
+                        .channel('admin-rt')
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, _adminDebouncedSync)
+                        .subscribe();
+                };
+                if (typeof window._registerRealtimeChannel === 'function') window._registerRealtimeChannel('admin-rt', _adminRtFactory);
+                else _adminRtFactory();
+            }
+        })();
+    </script>
+    <script src="js/sw-update.js"></script>
+    <script src="js/pull-to-refresh.js?v=1"></script>
+    <script src="js/pwa-install.js"></script>
+
+    <!-- FAB Scroll to current slot -->
+    <button id="scrollToSlotFab" class="scroll-slot-fab" style="display:none;" onclick="_scrollToCurrentAdminSlot(document.getElementById('adminDayView'))" title="Vai allo slot corrente">🕐</button>
+
+    <!-- FAB Pagamenti -->
+    <button id="paymentsFab" class="payments-fab" style="display:none;" onclick="openPaymentsActionSheet()" aria-label="Aggiungi pagamento" title="Aggiungi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="28" height="28"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+</body>
+</html>

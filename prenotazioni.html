@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://checkout.stripe.com https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; frame-src 'self' https://accounts.google.com https://checkout.stripe.com; form-action 'self' https://checkout.stripe.com">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="manifest" href="manifest.json?v=3">
+    <meta name="theme-color" content="#8B5CF6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Palestra">
+    <title>Le mie prenotazioni – PalestrIA</title>
+    <link rel="icon" type="image/png" href="images/logo-palestria.png">
+    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/login.css?v=4">
+    <link rel="stylesheet" href="css/prenotazioni.css?v=11">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <a href="index.html"><img src="images/logo-palestria-light.png" alt="PalestrIA" class="nav-logo"></a>
+            </div>
+            <div class="nav-right">
+                <ul class="nav-desktop-links">
+                    <li><a href="index.html">Calendario</a></li>
+                    <li><a href="regolamento.html">Regolamento</a></li>
+                    <li><a href="nutrizione.html">Nutrizione</a></li>
+                    <li><a href="chi-sono.html">Chi sono</a></li>
+                    <li><a href="dove-sono.html">Dove sono</a></li>
+                </ul>
+                <div id="navLoginLink" style="display:flex; align-items:center;">
+                    <a href="login.html" class="nav-login-btn">Accedi</a>
+                </div>
+                <div id="navUserMenu" style="display:none; align-items:center; gap:0.4rem;">
+                    <span id="navUserName" class="nav-user-name"></span>
+                    <button id="navLogoutBtn" class="nav-logout-btn">Esci</button>
+                </div>
+                <button class="nav-hamburger" id="navHamburger" aria-label="Menu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="preno-page">
+        <div class="container">
+
+            <!-- Hero profilo -->
+            <div class="preno-hero">
+                <div class="preno-hero-glow"></div>
+                <div class="preno-hero-content">
+                    <div class="preno-hero-avatar" id="prenoAvatar"></div>
+                    <div class="preno-hero-info">
+                        <div class="preno-hero-top">
+                            <h1 class="preno-hero-name" id="prenoUserName"></h1>
+                            <button class="preno-hero-edit" onclick="openEditProfileModal()" aria-label="Modifica profilo">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                            </button>
+                        </div>
+                        <p class="preno-hero-code" id="prenoAccessCode"></p>
+                    </div>
+                    <button class="preno-hero-chart" onclick="openWeeklyChartModal()" aria-label="Allenamenti">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Warning anagrafica incompleta -->
+            <div id="prenoCertWarning"></div>
+
+            <!-- Tabs -->
+            <div class="preno-tabs">
+                <button class="preno-tab active" id="tabProssime"    onclick="switchPrenoTab('upcoming')">Prossime</button>
+                <button class="preno-tab"         id="tabPassate"     onclick="switchPrenoTab('past')">Passate</button>
+            </div>
+
+            <div class="preno-tabs-divider"></div>
+
+            <!-- Lista prenotazioni -->
+            <div id="prenoList" class="preno-list"></div>
+
+            <!-- CTA -->
+            <div class="preno-cta">
+                <a href="index.html" class="preno-cta-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    Prenota una lezione
+                </a>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 PalestrIA</p>
+            <p class="footer-links"><a href="privacy.html">Privacy</a> · <a href="termini.html">Termini</a></p>
+        </div>
+    </footer>
+
+    <!-- WhatsApp floating button -->
+    <a href="https://wa.me/390000000000" class="whatsapp-fab" target="_blank" rel="noopener" aria-label="Contattami su WhatsApp">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+    </a>
+
+    <!-- Sidebar -->
+    <div class="nav-sidebar-overlay" id="navSidebarOverlay" onclick="toggleNavMenu()"></div>
+    <nav class="nav-sidebar" id="navSidebar">
+        <div class="nav-sidebar-header">
+            <img src="images/logo-palestria-light.png" alt="PalestrIA" class="nav-sidebar-logo">
+            <button class="nav-sidebar-close" onclick="toggleNavMenu()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <ul class="nav-sidebar-links">
+            <li><a href="index.html">Calendario</a></li>
+            <li id="navAllenamento" style="display:none"><a href="allenamento.html">Allenamento</a></li>
+            <li><a href="nutrizione.html">Nutrizione</a></li>
+            <li><a href="regolamento.html">Regolamento</a></li>
+            <li><a href="chi-sono.html">Chi sono</a></li>
+            <li><a href="dove-sono.html">Dove sono</a></li>
+        </ul>
+        <p class="nav-sidebar-credit">powered by <a id="creditLink" href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link" onclick="logCreditClick(event)">Andrea Pompili</a></p>
+    </nav>
+
+    <!-- Weekly chart modal -->
+    <div id="weeklyChartModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeWeeklyChartModal()">
+        <div class="modal-box" style="max-width:520px;">
+            <button class="modal-close" onclick="closeWeeklyChartModal()">✕</button>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 1rem;flex-wrap:wrap;gap:0.5rem;">
+                <h3 id="chartViewTitle" style="margin:0;font-size:1.1rem;font-weight:700;">Allenamenti settimanali</h3>
+                <button id="chartToggleBtn" onclick="toggleChartView()" style="background:none;border:1.5px solid #e0e0e0;color:#666;font-size:0.72rem;font-weight:600;padding:0.18rem 0.55rem;border-radius:20px;cursor:pointer;white-space:nowrap;">Vista mensile</button>
+            </div>
+            <canvas id="weeklyChartCanvas" style="width:100%;height:250px;"></canvas>
+            <div style="display:flex;gap:1rem;justify-content:center;margin-top:0.75rem;font-size:0.75rem;color:#888;">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3b82f6;margin-right:4px;vertical-align:middle;"></span>Passati</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e63946;margin-right:4px;vertical-align:middle;"></span>Futuri</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit profile modal -->
+    <div id="editProfileModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeEditProfileModal()">
+        <div class="modal-box edit-profile-modal">
+            <button class="modal-close" onclick="closeEditProfileModal()">✕</button>
+
+            <div class="edit-profile-header">
+                <div class="edit-profile-avatar" id="editProfileAvatar"></div>
+                <div>
+                    <h3 class="edit-profile-title">Modifica profilo</h3>
+                    <p class="edit-profile-subtitle" id="editProfileSubtitle"></p>
+                </div>
+            </div>
+
+            <form id="editProfileForm" class="edit-profile-form">
+                <!-- Sezione: Dati personali -->
+                <div class="edit-profile-section">
+                    <div class="edit-profile-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Dati personali
+                    </div>
+                    <div class="form-group">
+                        <label for="editName">Nome completo</label>
+                        <input type="text" id="editName" required autocomplete="name" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label for="editEmail">Email</label>
+                        <input type="email" id="editEmail" required autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label for="editWhatsapp">Numero WhatsApp</label>
+                        <input type="tel" id="editWhatsapp" placeholder="+39 348 1234567" autocomplete="tel">
+                    </div>
+                    <div class="form-group">
+                        <label for="editCodiceFiscale">Codice Fiscale</label>
+                        <input type="text" id="editCodiceFiscale" placeholder="RSSMRA85M01H501Z" maxlength="16" style="text-transform:uppercase">
+                    </div>
+                </div>
+
+                <!-- Sezione: Indirizzo -->
+                <div class="edit-profile-section">
+                    <div class="edit-profile-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Indirizzo
+                    </div>
+                    <div class="form-group">
+                        <label for="editVia">Via / Indirizzo</label>
+                        <input type="text" id="editVia" placeholder="Via Roma 1" autocomplete="street-address">
+                    </div>
+                    <div class="edit-profile-row">
+                        <div class="form-group" style="flex:2">
+                            <label for="editPaese">Paese / Città</label>
+                            <input type="text" id="editPaese" placeholder="Milano" autocomplete="address-level2">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label for="editCAP">CAP</label>
+                            <input type="text" id="editCAP" placeholder="20100" maxlength="5" inputmode="numeric" autocomplete="postal-code">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sezione: Documenti -->
+                <div class="edit-profile-section">
+                    <div class="edit-profile-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Documenti
+                    </div>
+                    <div class="form-group">
+                        <label for="editCertScadenza">Scadenza certificato medico</label>
+                        <input type="date" id="editCertScadenza">
+                    </div>
+                    <div class="form-group">
+                        <label>Scadenza assicurazione <span class="edit-profile-label-note">(gestita dal trainer)</span></label>
+                        <input type="date" id="editAssicScadenza" disabled>
+                    </div>
+                </div>
+
+                <!-- Sezione: Sicurezza -->
+                <div id="editPasswordSection" class="edit-profile-section">
+                    <div class="edit-profile-section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Sicurezza
+                    </div>
+                    <div class="form-group">
+                        <label for="editPassword">Nuova password <span class="edit-profile-label-note">(lascia vuoto per non cambiare)</span></label>
+                        <input type="password" id="editPassword" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="editPasswordConfirm">Conferma nuova password</label>
+                        <input type="password" id="editPasswordConfirm" autocomplete="new-password">
+                    </div>
+                </div>
+
+                <!-- Privacy -->
+                <div class="edit-profile-section">
+                    <label class="edit-profile-checkbox-label">
+                        <input type="checkbox" id="editPrivacyPrenotazioni">
+                        <span>Privacy prenotazioni</span>
+                    </label>
+                    <p class="edit-profile-label-note" style="margin-top:0.25rem;margin-bottom:0">
+                        Se attivo, il tuo nome non sarà visibile agli altri nelle prenotazioni.
+                    </p>
+                </div>
+
+                <div id="editProfileError" class="edit-profile-error" style="display:none;"></div>
+                <button type="submit" class="btn-primary edit-profile-save">Salva modifiche</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/supabase-client.js?v=4"></script>
+    <script src="js/org-settings.js?v=1"></script>
+    <script src="js/ui.js?v=2"></script>
+    <script src="js/data.js?v=74"></script>
+    <script src="js/auth.js?v=24"></script>
+    <script src="js/silent-refresh.js?v=1"></script>
+    <script src="js/maintenance.js?v=1"></script>
+    <script src="js/push.js?v=20"></script>
+    <script src="js/chart-mini.js?v=12"></script>
+    <script>
+        // ── Guard async: aspetta la sessione Supabase prima di controllare ─
+
+        // ── Rimuovi evento dal calendario (ICS METHOD:CANCEL) ───────────
+        function _buildCalDates(dateStr, timeStr) {
+            const p = _parseSlotTime(timeStr);
+            if (!p) return { start: '', end: '' };
+            const sH = String(p.startH).padStart(2,'0'), sM = String(p.startM).padStart(2,'0');
+            const eH = String(p.endH).padStart(2,'0'), eM = String(p.endM).padStart(2,'0');
+            const d = dateStr.replace(/-/g, '');
+            return { start: `${d}T${sH}${sM}00`, end: `${d}T${eH}${eM}00` };
+        }
+
+        function downloadCancelIcs(booking) {
+            const { start, end } = _buildCalDates(booking.date, booking.time);
+            const uid = `${booking.id}@palestria.app`;
+            const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
+            const ics = [
+                'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//PalestrIA//IT',
+                'METHOD:CANCEL',
+                'BEGIN:VTIMEZONE','TZID:Europe/Rome',
+                'BEGIN:STANDARD','DTSTART:19701025T030000','RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10',
+                'TZOFFSETFROM:+0200','TZOFFSETTO:+0100','TZNAME:CET','END:STANDARD',
+                'BEGIN:DAYLIGHT','DTSTART:19700329T020000','RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3',
+                'TZOFFSETFROM:+0100','TZOFFSETTO:+0200','TZNAME:CEST','END:DAYLIGHT',
+                'END:VTIMEZONE',
+                'BEGIN:VEVENT',`UID:${uid}`,
+                `DTSTART;TZID=Europe/Rome:${start}`,`DTEND;TZID=Europe/Rome:${end}`,
+                `SUMMARY:${title}`,'STATUS:CANCELLED','SEQUENCE:1',
+                'END:VEVENT','END:VCALENDAR'
+            ].join('\r\n');
+            const blob = new Blob([ics], { type: 'text/calendar' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'annulla-allenamento.ics';
+            a.click(); URL.revokeObjectURL(url);
+        }
+
+        function _offerCalendarRemoval(booking) {
+            // no-op: rimozione calendario non automatizzabile senza API OAuth
+        }
+
+        // ── Date formatter ───────────────────────────────────────────────
+        function formatBookingDate(dateStr) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const d = new Date(year, month - 1, day);
+            const days   = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+            const months = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                            'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+            return `${days[d.getDay()]} ${day} ${months[month - 1]} ${year}`;
+        }
+
+        // ── State ─────────────────────────────────────────────────────────
+        let _currentTab = 'upcoming';
+
+        // ── Init ──────────────────────────────────────────────────────────
+        let _pollInterval = null;
+
+        function _initPrenoPage() {
+            const user = getCurrentUser();
+            if (!user) return;
+
+            // Fill hero
+            document.getElementById('prenoUserName').textContent = user.name.split(' ')[0];
+            document.getElementById('prenoAccessCode').innerHTML = 'Codice accesso: <strong>4729 + &#9650;</strong>';
+            document.getElementById('prenoAvatar').textContent = user.name.charAt(0).toUpperCase();
+
+            renderPrenoList();
+            renderCertWarning();
+            _startPolling();
+            _setupRealtime();
+        }
+
+        // Polling 120s — re-render se l'utente ha prenotazioni con cancellation_requested.
+        // Le re-render live arrivano da Supabase Realtime (vedi _setupRealtime).
+        function _startPolling() {
+            if (_pollInterval) return;
+            _pollInterval = setInterval(() => {
+                const user = getCurrentUser();
+                if (!user) { clearInterval(_pollInterval); _pollInterval = null; return; }
+                const _myPhone = user.whatsapp ? normalizePhone(user.whatsapp) : '';
+                const hasPending = BookingStorage.getAllBookings().some(b => {
+                    const uidMatch = b.userId && user.id && b.userId === user.id;
+                    const emailMatch = user.email && b.email && b.email.toLowerCase() === user.email.toLowerCase();
+                    const phoneMatch = _myPhone && b.whatsapp && normalizePhone(b.whatsapp) === _myPhone;
+                    return (uidMatch || emailMatch || phoneMatch) && b.status === 'cancellation_requested';
+                });
+                if (!hasPending) {
+                    clearInterval(_pollInterval);
+                    _pollInterval = null;
+                }
+                renderPrenoList();
+            }, 120000);
+        }
+        function _stopPolling() { if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; } }
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) _stopPolling();
+            else { _startPolling(); _setupRealtime(); }
+        });
+
+        // Supabase Realtime: aggiorna la lista prenotazioni in tempo reale.
+        // Handler debounced: sincronizza le prenotazioni dell'utente e ri-renderizza.
+        let _realtimeChannel = null;
+        let _rtSyncTimer = null;
+        function _debouncedFullSync() {
+            clearTimeout(_rtSyncTimer);
+            _rtSyncTimer = setTimeout(async () => {
+                await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[rt] booking sync:', e?.message || e));
+                renderPrenoList();
+            }, 600);
+        }
+        function _setupRealtime() {
+            if (typeof supabaseClient === 'undefined') return;
+            if (!_realtimeChannel) {
+                const _prenoRtFactory = () => supabaseClient
+                    .channel('preno-rt')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, _debouncedFullSync)
+                    .subscribe();
+                if (typeof window._registerRealtimeChannel === 'function') _realtimeChannel = window._registerRealtimeChannel('preno-rt', _prenoRtFactory);
+                else _realtimeChannel = _prenoRtFactory();
+            }
+        }
+        window._silentMasterRefresh = async function () {
+            if (typeof ensureValidSession === 'function') {
+                await ensureValidSession({ force: true, timeoutMs: 12000 }).catch(e => console.warn('[preno] silent session refresh:', e?.message || e));
+            }
+            _debouncedFullSync();
+        };
+        window.addEventListener('beforeunload', () => {
+            if (_realtimeChannel) supabaseClient.removeChannel(_realtimeChannel);
+        });
+
+        // Avvio: aspetta la sessione Supabase, poi controlla il guard e inizializza
+        async function _boot() {
+            // Slug org pubblico (sottodominio/?org=): serve a OrgSettings e alle RPC pubbliche
+            if (!window._orgSlug && typeof _resolveOrgSlug === 'function') {
+                window._orgSlug = _resolveOrgSlug() || null;
+            }
+            await initAuth();
+            // Se la sessione non è pronta (cold start PWA, token scaduto), riprova una volta
+            // prima di redirigere: il refresh del token potrebbe essere ancora in corso.
+            if (!getCurrentUser()) {
+                await new Promise(r => setTimeout(r, 2000));
+                const { data } = await supabaseClient.auth.getSession();
+                if (data.session) {
+                    await _loadProfile(data.session.user.id);
+                } else {
+                    try {
+                        const { data: refreshed } = await supabaseClient.auth.refreshSession();
+                        if (refreshed.session) await _loadProfile(refreshed.session.user.id);
+                    } catch {}
+                }
+                updateNavAuth();
+                // Nascondi credit link per utente specifico
+                const _cu = getCurrentUser();
+                if (_cu && _cu.id === 'b6461979-3684-4dcb-9fbb-b164862c23fa') {
+                    const _cl = document.getElementById('creditLink');
+                    if (_cl) _cl.parentElement.style.display = 'none';
+                }
+            }
+            // Settings per-org (prezzi, branding, policy): carica il layer org-scoped
+            if (typeof OrgSettings !== 'undefined') {
+                await OrgSettings.load().catch(e => console.warn('[boot] org-settings load:', e?.message || e));
+            }
+            await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[boot] booking sync:', e?.message || e));
+            await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[boot] settings sync:', e?.message || e));
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', _initPrenoPage);
+            } else {
+                _initPrenoPage();
+            }
+            // Push: mostra banner se permesso non ancora concesso, altrimenti ri-registra
+            if (typeof promptPushPermission === 'function' && getCurrentUser()) {
+                setTimeout(promptPushPermission, 1500);
+            }
+        }
+        _boot();
+        // bfcache: quando la pagina viene ripristinata dalla memoria (es. tasto Indietro)
+        // DOMContentLoaded non scatta più — usiamo pageshow con e.persisted
+        window.addEventListener('pageshow', async (e) => {
+            if (!e.persisted) return;
+            await initAuth();
+            if (!getCurrentUser()) {
+                await new Promise(r => setTimeout(r, 2000));
+                try {
+                    const { data: refreshed } = await supabaseClient.auth.refreshSession();
+                    if (refreshed.session) { await _loadProfile(refreshed.session.user.id); updateNavAuth(); }
+                } catch {}
+            }
+            await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[pageshow] booking sync:', e?.message || e));
+            await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[pageshow] settings sync:', e?.message || e));
+            _initPrenoPage();
+        });
+
+        // ── Pagination state ─────────────────────────────────────────────
+        const INITIAL_SHOW = 5;
+        const LOAD_MORE    = 20;
+        let _visibleCount  = INITIAL_SHOW;
+
+        // ── Tab switch ────────────────────────────────────────────────────
+        function switchPrenoTab(tab) {
+            _currentTab = tab;
+            _visibleCount = INITIAL_SHOW;
+            document.getElementById('tabProssime').classList.toggle('active', tab === 'upcoming');
+            document.getElementById('tabPassate').classList.toggle('active',  tab === 'past');
+            renderPrenoList();
+        }
+
+        function showMore() {
+            _visibleCount += LOAD_MORE;
+            renderPrenoList();
+        }
+
+        // ── Render ────────────────────────────────────────────────────────
+        function renderPrenoList() {
+            const { upcoming, past } = getUserBookings();
+            const list = _currentTab === 'upcoming' ? upcoming : past;
+            const container = document.getElementById('prenoList');
+
+            if (!list.length) {
+                const msg = _currentTab === 'upcoming'
+                    ? 'Nessuna prenotazione futura.'
+                    : 'Nessuna prenotazione passata.';
+                container.innerHTML = `<div class="preno-empty">${msg}</div>`;
+                return;
+            }
+
+            const visible = list.slice(0, _visibleCount);
+            const remaining = list.length - visible.length;
+            container.innerHTML = visible.map(b => buildCard(b, _currentTab === 'upcoming')).join('')
+                + (remaining > 0 ? `<button class="preno-show-more" onclick="showMore()">Mostra altro (${remaining})</button>` : '');
+        }
+
+        function buildCard(b, showCancel) {
+            const slotName = (SLOT_NAMES && SLOT_NAMES[b.slotType]) || b.slotType || '—';
+            const displayDate = formatBookingDate(b.date);
+
+            let payBadge = '';
+            if (b.status === 'cancelled') {
+                payBadge = `<span class="preno-badge preno-badge-cancelled">✕ Annullata</span>`;
+            } else if (b.paid) {
+                const methodLabels = { contanti: '💵 Pagata con Contanti', 'contanti-report': '🧾 Pagata con Contanti (Report)', carta: '💳 Pagata con Carta', iban: '🏦 Pagata con Bonifico', stripe: '💳 Pagata con Stripe', pacchetto: '🎫 Pagata con Pacchetto', abbonamento: '📅 Pagata con Abbonamento', gratuito: '🎁 Lezione Gratuita' };
+                const method = methodLabels[b.paymentMethod] || '✓ Pagata';
+                payBadge = `<span class="preno-badge preno-badge-paid">${method}</span>`;
+            } else {
+                payBadge = `<span class="preno-badge preno-badge-unpaid">Da pagare</span>`;
+            }
+
+            const _lessonStart  = new Date(`${b.date}T${b.time.split(' - ')[0].trim()}:00`);
+            const _lessonPast   = _lessonStart <= new Date();
+            const ONE_DAY_MS    = 24 * 60 * 60 * 1000;
+            const TWO_HOURS_MS  = 2 * 60 * 60 * 1000;
+            const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+            const TEN_MIN_MS    = 10 * 60 * 1000;
+            const _msToLesson   = _lessonStart - new Date();
+            const _isGroupClass = b.slotType === 'group-class';
+            // grace period: entro 10 min dalla prenotazione, annullamento sempre diretto
+            const _bookingAge   = b.createdAt ? (Date.now() - new Date(b.createdAt).getTime()) : Infinity;
+            const _inGracePeriod = _bookingAge < TEN_MIN_MS;
+            // group-class: annullamento diretto solo se > 3 giorni; altri: > 24h; grace period bypassa
+            const _canCancelDirect  = _inGracePeriod || (_isGroupClass ? _msToLesson > THREE_DAYS_MS : _msToLesson > ONE_DAY_MS);
+            // finestra ristretta: non ancora annullabile direttamente ma mancano più di 2h
+            const _inRestrictedWindow = !_canCancelDirect && _msToLesson > TWO_HOURS_MS;
+            // richiesta annullamento (il posto torna libero): solo non-group-class nella finestra ristretta
+            const _canRequestCancel = !_isGroupClass && _inRestrictedWindow;
+            // locked = nessuna opzione applicabile ma la lezione non è ancora iniziata
+            const _isLocked = !_canCancelDirect && !_canRequestCancel && _msToLesson > 0;
+
+            let cancelBtn = '';
+            if (showCancel && b.status !== 'cancelled' && !_lessonPast) {
+                if (b.status === 'cancellation_requested') {
+                    cancelBtn = `<div class="preno-cancel-pending">⏳ Annullamento in attesa</div>`;
+                } else if (_canCancelDirect) {
+                    // Più di 24h (o > 3 giorni per group-class): annullamento diretto (nessun rimborso)
+                    cancelBtn = `<button class="preno-cancel-btn" onclick="cancelDirect('${b.id}')">Annulla prenotazione</button>`;
+                } else if (_canRequestCancel) {
+                    // Ultime 24h (solo non-group-class): richiesta di annullamento, il posto torna disponibile
+                    cancelBtn = `<button class="preno-cancel-btn" onclick="requestCancellation('${b.id}')">Richiedi annullamento</button>`;
+                } else if (_isLocked) {
+                    const _lockReason = _msToLesson <= TWO_HOURS_MS ? 'meno di 2 ore' : 'slot prenotato entro 3 giorni';
+                    cancelBtn = `<div class="preno-cancel-locked">🔒 Non annullabile (${_lockReason})</div>`;
+                }
+            }
+
+            return `
+                <div class="preno-card ${b.slotType}">
+                    <div class="preno-card-left">
+                        <div class="preno-card-date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${displayDate}</div>
+                        <div class="preno-card-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${b.time}</div>
+                        <div class="preno-card-type">${slotName}</div>
+                    </div>
+                    <div class="preno-card-right">
+                        ${payBadge}
+                        ${cancelBtn}
+                    </div>
+                </div>`;
+        }
+
+        // ── Annullamento diretto (> 24h prima) ───────────────────────────
+        async function cancelDirect(id) {
+            const booking = BookingStorage.getAllBookings().find(b => b.id === id);
+            if (!booking) return;
+            if (booking.slotType === 'group-class') {
+                const msg = 'Confermare l\'annullamento?\n\n' +
+                    'La prenotazione sarà annullata e lo slot diventerà una Lezione di Gruppo aperta al pubblico.';
+                if (!confirm(msg)) return;
+            } else {
+                if (!confirm('Confermare l\'annullamento della prenotazione?')) return;
+            }
+
+            if (typeof supabaseClient !== 'undefined' && booking._sbId) {
+                // RPC server-authoritative: cambia stato a 'cancelled' + converte
+                // un eventuale group-class in small-group. NESSUN rimborso credito.
+                try {
+                    const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('cancel_booking', {
+                        p_booking_id: booking._sbId,
+                    }));
+                    if (error) {
+                        console.error('[cancelDirect] RPC error:', error.message);
+                        alert('⚠️ Errore: ' + error.message);
+                        return;
+                    }
+                    if (data && !data.success) {
+                        alert('⚠️ ' + (data.error || 'Errore sconosciuto'));
+                        return;
+                    }
+                    await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[cancel] booking sync:', e?.message || e));
+                } catch (e) {
+                    console.error('[cancelDirect] exception:', e);
+                    alert('⚠️ Errore di rete. Riprova.');
+                    return;
+                }
+            } else {
+                // Fallback offline (nessun rimborso): cambio stato + conversione slot
+                if (booking.slotType === 'group-class') {
+                    await BookingStorage.cancelAndConvertSlot(id);
+                } else {
+                    await BookingStorage.cancelDirectly(id);
+                }
+            }
+            if (typeof notifyAdminCancellation === 'function') notifyAdminCancellation(booking);
+            _offerCalendarRemoval(booking);
+            renderPrenoList();
+        }
+
+        // ── Richiesta annullamento (ultime 24h) ───────────────────────────
+        async function requestCancellation(id) {
+            const msg = 'Richiedere l\'annullamento?\n\n' +
+                '• Se qualcuno prenota al tuo posto, la prenotazione sarà annullata.\n' +
+                '• Se entro 2 ore dalla lezione nessuno ha preso il tuo posto, l\'annullamento viene negato e dovrai presentarti.';
+            if (!confirm(msg)) return;
+
+            const booking = BookingStorage.getAllBookings().find(b => b.id === id);
+            if (typeof supabaseClient !== 'undefined' && booking?._sbId) {
+                try {
+                    const { error } = await _rpcWithTimeout(supabaseClient.rpc('user_request_cancellation', {
+                        p_booking_id: booking._sbId,
+                    }));
+                    if (error) {
+                        console.error('[requestCancellation] RPC error:', error.message);
+                        alert('⚠️ Errore: ' + error.message);
+                        return;
+                    }
+                    await BookingStorage.syncFromSupabase({ ownOnly: true });
+                } catch (e) {
+                    console.error('[requestCancellation] exception:', e);
+                    alert('⚠️ Errore di rete. Riprova.');
+                    return;
+                }
+            } else {
+                BookingStorage.requestCancellation(id);
+            }
+            renderPrenoList();
+        }
+
+        // ── Anagrafica incompleta warning ────────────────────────────────
+        function renderCertWarning() {
+            const user = getCurrentUser();
+            const el   = document.getElementById('prenoCertWarning');
+            if (!user || !el) return;
+
+            const missingAnagrafica = !user.whatsapp
+                || !user.codice_fiscale
+                || !user.indirizzo_via
+                || !user.indirizzo_paese
+                || !user.indirizzo_cap;
+            const missingCert = CertEditableStorage.get() && !user.medical_cert_expiry;
+
+            let html = '';
+            if (missingAnagrafica) {
+                html += `<div class="preno-cert-warning preno-cert-expired preno-cert-clickable" onclick="openEditProfileModal()">📋 Completa anagrafica</div>`;
+            }
+            if (missingCert) {
+                html += `<div class="preno-cert-warning preno-cert-expired preno-cert-clickable" onclick="openEditProfileModal()">📋 Imposta Cert. Medico</div>`;
+            }
+
+            // Warning certificato medico in scadenza (entro 30 giorni) o scaduto
+            if (user.medical_cert_expiry) {
+                const today = new Date(); today.setHours(0,0,0,0);
+                const [cy, cm, cd] = user.medical_cert_expiry.split('-').map(Number);
+                const expiry = new Date(cy, cm - 1, cd); expiry.setHours(0,0,0,0);
+                const diffDays = Math.round((expiry - today) / (1000 * 60 * 60 * 24));
+                if (diffDays < 0) {
+                    html += `<div class="preno-cert-warning preno-cert-expired">⚠️ Certificato medico scaduto</div>`;
+                } else if (diffDays <= 30) {
+                    html += `<div class="preno-cert-warning preno-cert-expiring">⏳ Cert. medico scade fra ${diffDays} giorn${diffDays === 1 ? 'o' : 'i'}</div>`;
+                }
+            }
+
+
+            el.innerHTML = html;
+        }
+
+        // ── Edit profile modal ────────────────────────────────────────────
+        // ── Weekly / Monthly training chart ──────────────────────────────
+        let _chartView = 'weekly'; // 'weekly' | 'monthly'
+
+        function openWeeklyChartModal() {
+            _chartView = 'weekly';
+            document.getElementById('weeklyChartModal').style.display = 'flex';
+            _updateChartToggleUI();
+            setTimeout(renderCurrentChart, 50);
+        }
+        function closeWeeklyChartModal() {
+            document.getElementById('weeklyChartModal').style.display = 'none';
+        }
+        function toggleChartView() {
+            _chartView = _chartView === 'weekly' ? 'monthly' : 'weekly';
+            _updateChartToggleUI();
+            renderCurrentChart();
+        }
+        function _updateChartToggleUI() {
+            document.getElementById('chartViewTitle').textContent =
+                _chartView === 'weekly' ? 'Allenamenti settimanali' : 'Allenamenti mensili';
+            document.getElementById('chartToggleBtn').textContent =
+                _chartView === 'weekly' ? 'Vista mensile' : 'Vista settimanale';
+        }
+        function renderCurrentChart() {
+            _chartView === 'weekly' ? renderWeeklyChart() : renderMonthlyChart();
+        }
+
+        function renderMonthlyChart() {
+            const { upcoming, past } = getUserBookings();
+            const all = [...past, ...upcoming].filter(b => b.status !== 'cancelled');
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const monthMap = {};
+
+            all.forEach(b => {
+                const d = new Date(b.date + 'T00:00:00');
+                const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                if (!monthMap[key]) monthMap[key] = { past: 0, future: 0 };
+                if (d < today) monthMap[key].past++;
+                else monthMap[key].future++;
+            });
+
+            const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+            const nowMonth = today.getMonth();
+            const nowYear = today.getFullYear();
+
+            const labels = [], pastVals = [], futureVals = [], highlight = [];
+            for (let i = -5; i <= 4; i++) {
+                const m = new Date(nowYear, nowMonth + i, 1);
+                const key = m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0');
+                labels.push(MESI[m.getMonth()]);
+                pastVals.push((monthMap[key]?.past) || 0);
+                futureVals.push((monthMap[key]?.future) || 0);
+                highlight.push(i === 0);
+            }
+
+            const canvas = document.getElementById('weeklyChartCanvas');
+            const chart = new SimpleChart(canvas, { height: 250 });
+            const values = pastVals.map((p, i) => p + futureVals[i]);
+            chart.drawBarChart(
+                { labels, values, highlight },
+                { prefix: '', suffix: '', colors: ['#3b82f6'] }
+            );
+
+            // Overlay future portion in red
+            const ctx = chart.ctx;
+            const cw = canvas.width / 2;
+            const ch = canvas.height / 2;
+            const pad = { top: 24, right: 16, bottom: 44, left: 52 };
+            const chartW = cw - pad.left - pad.right;
+            const chartH = ch - pad.top - pad.bottom;
+            const n = values.length;
+            const maxVal = Math.max(...values, 1);
+            const step = Math.ceil(maxVal / 5) || 1;
+            const axisMax = step * 5;
+            const slotW = chartW / n;
+            const barW = Math.min(slotW * 0.7, 40);
+
+            futureVals.forEach((fv, i) => {
+                if (fv <= 0) return;
+                const totalH = (values[i] / axisMax) * chartH;
+                const futH = (fv / axisMax) * chartH;
+                const x = pad.left + i * slotW + (slotW - barW) / 2;
+                const y = pad.top + chartH - totalH;
+                ctx.fillStyle = '#e63946';
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(x, y, barW, futH, [3, 3, 0, 0]);
+                else ctx.rect(x, y, barW, futH);
+                ctx.fill();
+            });
+        }
+
+        function renderWeeklyChart() {
+            const { upcoming, past } = getUserBookings();
+            const all = [...past, ...upcoming].filter(b => b.status !== 'cancelled');
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const weekMap = {};
+
+            all.forEach(b => {
+                const d = new Date(b.date + 'T00:00:00');
+                const monday = new Date(d);
+                const day = monday.getDay() || 7;
+                monday.setDate(monday.getDate() - day + 1);
+                const key = monday.toISOString().slice(0, 10);
+                if (!weekMap[key]) weekMap[key] = { past: 0, future: 0 };
+                if (d < today) weekMap[key].past++;
+                else weekMap[key].future++;
+            });
+
+            // 8 weeks: 4 past + current + 3 future
+            const nowMonday = new Date(today);
+            const nowDay = nowMonday.getDay() || 7;
+            nowMonday.setDate(nowMonday.getDate() - nowDay + 1);
+
+            const labels = [], pastVals = [], futureVals = [], highlight = [];
+            for (let i = -4; i <= 3; i++) {
+                const mon = new Date(nowMonday);
+                mon.setDate(mon.getDate() + i * 7);
+                const key = mon.toISOString().slice(0, 10);
+                const dd = String(mon.getDate()).padStart(2, '0');
+                const mm = String(mon.getMonth() + 1).padStart(2, '0');
+                labels.push(`${dd}/${mm}`);
+                pastVals.push((weekMap[key]?.past) || 0);
+                futureVals.push((weekMap[key]?.future) || 0);
+                highlight.push(i === 0);
+            }
+
+            const canvas = document.getElementById('weeklyChartCanvas');
+            const chart = new SimpleChart(canvas, { height: 250 });
+
+            const values = pastVals.map((p, i) => p + futureVals[i]);
+            chart.drawBarChart(
+                { labels, values, highlight },
+                { prefix: '', suffix: '', colors: ['#3b82f6'] }
+            );
+
+            // Overlay future portion in red on top of each bar
+            const ctx = chart.ctx;
+            const cw = canvas.width / 2;
+            const ch = canvas.height / 2;
+            const pad = { top: 24, right: 16, bottom: 44, left: 52 };
+            const chartW = cw - pad.left - pad.right;
+            const chartH = ch - pad.top - pad.bottom;
+            const n = values.length;
+            const maxVal = Math.max(...values, 1);
+            const step = Math.ceil(maxVal / 5) || 1;
+            const axisMax = step * 5;
+            const slotW = chartW / n;
+            const barW = Math.min(slotW * 0.7, 40);
+
+            futureVals.forEach((fv, i) => {
+                if (fv <= 0) return;
+                const totalH = (values[i] / axisMax) * chartH;
+                const futH = (fv / axisMax) * chartH;
+                const x = pad.left + i * slotW + (slotW - barW) / 2;
+                const y = pad.top + chartH - totalH;
+                ctx.fillStyle = '#e63946';
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(x, y, barW, futH, [3, 3, 0, 0]);
+                else ctx.rect(x, y, barW, futH);
+                ctx.fill();
+            });
+        }
+
+        async function openEditProfileModal() {
+            const user = getCurrentUser();
+            if (!user) return;
+            document.getElementById('editProfileAvatar').textContent = user.name.charAt(0).toUpperCase();
+            document.getElementById('editProfileSubtitle').textContent = user.email || '';
+            document.getElementById('editName').value     = user.name || '';
+            document.getElementById('editEmail').value    = user.email || '';
+            document.getElementById('editWhatsapp').value = user.whatsapp || '';
+            document.getElementById('editCodiceFiscale').value = user.codice_fiscale || '';
+            document.getElementById('editVia').value   = user.indirizzo_via || '';
+            document.getElementById('editPaese').value = user.indirizzo_paese || '';
+            document.getElementById('editCAP').value   = user.indirizzo_cap || '';
+            const certField = document.getElementById('editCertScadenza');
+            certField.value    = user.medical_cert_expiry || '';
+            certField.disabled = !CertEditableStorage.get();
+            document.getElementById('editAssicScadenza').value = user.insurance_expiry || '';
+            document.getElementById('editPrivacyPrenotazioni').checked = user.privacy_prenotazioni !== false; // default true
+            document.getElementById('editPassword').value        = '';
+            document.getElementById('editPasswordConfirm').value = '';
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            const isOAuth = session?.user?.app_metadata?.provider !== 'email';
+            document.getElementById('editPasswordSection').style.display = isOAuth ? 'none' : 'block';
+            document.getElementById('editProfileError').style.display = 'none';
+            document.getElementById('editProfileModal').style.display = 'flex';
+        }
+
+        function closeEditProfileModal() {
+            document.getElementById('editProfileModal').style.display = 'none';
+        }
+
+        document.getElementById('editProfileForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const user = getCurrentUser();
+            if (!user) return;
+
+            const name     = user.name; // nome non modificabile dall'utente
+            const email    = document.getElementById('editEmail').value.trim();
+            const whatsapp = document.getElementById('editWhatsapp').value.trim();
+            const codiceFiscale = document.getElementById('editCodiceFiscale').value.trim();
+            const via      = document.getElementById('editVia').value.trim();
+            const paese    = document.getElementById('editPaese').value.trim();
+            const cap      = document.getElementById('editCAP').value.trim();
+            const certSc   = document.getElementById('editCertScadenza').value;
+            const privacyPrenotazioni = document.getElementById('editPrivacyPrenotazioni').checked;
+            const pass     = document.getElementById('editPassword').value;
+            const passConf = document.getElementById('editPasswordConfirm').value;
+
+            const errEl = document.getElementById('editProfileError');
+            const btn   = e.target.querySelector('button[type="submit"]');
+            function showErr(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
+
+            if (!name)  return showErr('Il nome è obbligatorio.');
+            if (!email) return showErr("L'email è obbligatoria.");
+            if (pass && pass.length < 6) return showErr('La password deve essere di almeno 6 caratteri.');
+            if (pass && pass !== passConf) return showErr('Le password non coincidono.');
+            if (cap && !/^\d{5}$/.test(cap)) return showErr('CAP non valido. Deve essere di 5 cifre.');
+
+            setLoading(btn, true, 'Salvataggio...');
+
+            try {
+                const result = await updateUserProfile(user.email, {
+                    name,
+                    email,
+                    whatsapp: whatsapp ? normalizePhone(whatsapp) : '',
+                    codiceFiscale,
+                    indirizzoVia: via,
+                    indirizzoPaese: paese,
+                    indirizzoCap: cap,
+                    certificatoMedicoScadenza: certSc,
+                    privacyPrenotazioni: privacyPrenotazioni
+                }, pass || null);
+
+                if (!result.ok) {
+                    setLoading(btn, false);
+                    return showErr(result.error);
+                }
+
+                const updated = getCurrentUser();
+                document.getElementById('prenoUserName').textContent = updated.name.split(' ')[0];
+                document.getElementById('prenoAvatar').textContent = updated.name.charAt(0).toUpperCase();
+                updateNavAuth();
+                renderCertWarning();
+                setLoading(btn, false);
+                closeEditProfileModal();
+
+                if (result.emailPendingConfirmation) {
+                    showToast('Profilo aggiornato. Controlla la tua email per confermare il cambio di indirizzo.', 'success', 6000);
+                } else {
+                    showToast('Profilo aggiornato.', 'success');
+                }
+            } catch (ex) {
+                console.error('[editProfile] exception:', ex);
+                setLoading(btn, false);
+                showErr('Errore di rete. Riprova.');
+            }
+        });
+    </script>
+    <script>
+        // M1: sync lista prenotazioni tra tab dello stesso browser
+        window.addEventListener('storage', (ev) => {
+            if (ev.key === 'gym_bookings') {
+                if (typeof renderPrenoList === 'function') renderPrenoList();
+            }
+        });
+
+    </script>
+    <script>
+        // navAllenamento gestito centralmente da updateNavAuth() in auth.js
+
+    </script>
+    <script src="js/sw-update.js"></script>
+    <script src="js/pull-to-refresh.js?v=1"></script>
+    <script src="js/pwa-install.js"></script>
+</body>
+</html>

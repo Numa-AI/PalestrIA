@@ -1,0 +1,390 @@
+/* ===== Chi Sono Page ===== */
+
+/* Hero */
+.cs-hero {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #111 50%, #1a2a2a 100%);
+    color: white;
+    padding: 4rem 0 3.5rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.cs-hero::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(139, 92, 246,0.12) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.cs-hero-photo {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid var(--primary-purple);
+    box-shadow: 0 0 0 6px rgba(139, 92, 246,0.15);
+    margin-bottom: 1.5rem;
+    color-scheme: light;
+}
+
+.cs-hero-name {
+    font-size: 2.8rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 0.3rem;
+    line-height: 1.1;
+}
+
+.cs-hero-role {
+    font-size: 0.95rem;
+    color: var(--primary-purple);
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 2rem;
+}
+
+.cs-hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.cs-stat {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 0.9rem 1.5rem;
+    text-align: center;
+    backdrop-filter: blur(4px);
+}
+
+.cs-stat-number {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--primary-purple);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+.cs-stat-label {
+    font-size: 0.8rem;
+    opacity: 0.75;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Sections shared */
+.cs-section {
+    padding: 4rem 0;
+}
+
+.cs-section:nth-child(even) {
+    background: white;
+}
+
+.cs-section-title {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--dark-bg);
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.cs-section-sub {
+    text-align: center;
+    color: #777;
+    font-size: 0.95rem;
+    margin-bottom: 3rem;
+}
+
+.cs-accent {
+    color: var(--primary-purple);
+}
+
+/* About */
+.cs-about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: center;
+}
+
+.cs-about-photo {
+    width: 100%;
+    border-radius: 16px;
+    object-fit: cover;
+    aspect-ratio: 4/5;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+
+.cs-about-photo-placeholder {
+    width: 100%;
+    aspect-ratio: 4/5;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--dark-bg), #1a2a2a);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+
+.cs-about-photo-placeholder img {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--primary-purple);
+    opacity: 0.85;
+    color-scheme: light;
+}
+
+.cs-about-text p {
+    color: #444;
+    line-height: 1.85;
+    margin-bottom: 1.25rem;
+    font-size: 1rem;
+}
+
+.cs-quote {
+    background: linear-gradient(135deg, var(--primary-purple), var(--primary-purple-dark));
+    color: white;
+    padding: 1.25rem 1.5rem;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-style: italic;
+    line-height: 1.7;
+    margin-top: 1.5rem;
+    position: relative;
+}
+
+.cs-quote::before {
+    content: '"';
+    font-size: 3.5rem;
+    line-height: 0;
+    vertical-align: -0.65rem;
+    margin-right: 0.25rem;
+    opacity: 0.5;
+    font-family: Georgia, serif;
+}
+
+/* Services */
+.cs-services-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: center;
+}
+.cs-service-card {
+    flex: 0 1 calc(33.333% - 1rem);
+    min-width: 260px;
+    background: white;
+    border-radius: 16px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid #f0f0f0;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.cs-section:nth-child(even) .cs-service-card {
+    background: var(--light-gray);
+}
+
+.cs-service-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(139, 92, 246,0.15);
+}
+
+.cs-service-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.cs-service-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--dark-bg);
+    margin-bottom: 0.5rem;
+}
+
+.cs-service-desc {
+    font-size: 0.88rem;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* Certifications */
+.cs-certs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+.cs-cert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    border-left: 4px solid var(--primary-purple);
+}
+
+.cs-cert-year {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--primary-purple);
+    white-space: nowrap;
+    margin-top: 0.1rem;
+    min-width: 42px;
+}
+
+.cs-cert-name {
+    font-weight: 700;
+    color: var(--dark-bg);
+    font-size: 0.95rem;
+    margin-bottom: 0.15rem;
+}
+
+.cs-cert-body {
+    font-size: 0.82rem;
+    color: #888;
+}
+
+/* CTA */
+.cs-cta {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #1a2a2a 100%);
+    color: white;
+    padding: 4rem 0;
+    text-align: center;
+}
+
+.cs-cta h2 {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 0.75rem;
+}
+
+.cs-cta p {
+    font-size: 1rem;
+    opacity: 0.8;
+    margin-bottom: 2rem;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.cs-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--primary-purple);
+    color: white;
+    text-decoration: none;
+    padding: 1rem 2rem;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 700;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(139, 92, 246,0.4);
+}
+
+.cs-cta-btn:hover {
+    background: var(--primary-purple-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(139, 92, 246,0.5);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .cs-hero {
+        padding: 2.5rem 0 2rem;
+    }
+
+    .cs-hero-photo {
+        width: 100px;
+        height: 100px;
+        margin-bottom: 1rem;
+    }
+
+    .cs-hero-name {
+        font-size: 2rem;
+        letter-spacing: 1px;
+    }
+
+    .cs-hero-role {
+        font-size: 0.78rem;
+        letter-spacing: 3px;
+        margin-bottom: 1.25rem;
+    }
+
+    .cs-hero-stats {
+        gap: 0.75rem;
+    }
+
+    .cs-stat {
+        padding: 0.75rem 1.1rem;
+    }
+
+    .cs-stat-number {
+        font-size: 1.4rem;
+    }
+
+    .cs-stat-label {
+        font-size: 0.72rem;
+    }
+
+    .cs-section {
+        padding: 2.5rem 0;
+    }
+
+    .cs-section-title {
+        font-size: 1.4rem;
+    }
+
+    .cs-section-sub {
+        margin-bottom: 1.75rem;
+    }
+
+    .cs-about-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+
+    .cs-about-photo-placeholder {
+        aspect-ratio: 16/9;
+        max-height: 220px;
+    }
+
+    .cs-services-grid {
+        gap: 1rem;
+    }
+
+    .cs-service-card {
+        flex: 0 1 100%;
+        min-width: 0;
+        padding: 1.5rem 1.25rem;
+    }
+
+    .cs-cta h2 {
+        font-size: 1.5rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .cs-hero-name {
+        font-size: 2.4rem;
+    }
+}
