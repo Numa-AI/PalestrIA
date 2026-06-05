@@ -53,6 +53,7 @@
                     <li><a href="chi-sono.html">Chi sono</a></li>
                     <li><a href="dove-sono.html">Dove sono</a></li>
                     <li><a href="admin.html" class="nav-admin-link">Amministrazione</a></li>
+                    <li id="superAdminNavItem" style="display:none;"><a href="super-admin.html" class="nav-admin-link" style="color:#fbbf24;">👑 Super Admin</a></li>
                 </ul>
                 <div id="navLoginLink" style="display:flex; align-items:center;">
                     <a href="login.html" class="nav-login-btn">Accedi</a>
@@ -969,6 +970,13 @@
         // Avvia auth, sincronizza i booking da Supabase, poi aggiorna la dashboard
         (async function () {
             await initAuth();
+            // ── Link Super-Admin di piattaforma: visibile solo a chi è autorizzato
+            //    (is_platform_admin lato server). Non blocca il boot. ──
+            if (typeof supabaseClient !== 'undefined') {
+                supabaseClient.rpc('is_platform_admin')
+                    .then(({ data }) => { if (data === true) { const it = document.getElementById('superAdminNavItem'); if (it) it.style.display = ''; } })
+                    .catch(() => {});
+            }
             // ── Sync in serie per evitare contention sul pool Supabase ──
             // Lanciare 5+ sync in parallelo saturava il pool: una query lenta
             // faceva andare in timeout tutte le altre.

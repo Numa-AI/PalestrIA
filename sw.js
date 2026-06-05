@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v525';
+const CACHE_NAME = 'palestria-v526';
 
 const APP_SHELL = [
     './',
@@ -8,6 +8,9 @@ const APP_SHELL = [
     'modulo_viewer.html',
     'dove-sono.html',
     'admin.html',
+    'super-admin.html',
+    'css/super-admin.css',
+    'js/super-admin.js',
     'css/style.css',
     'css/admin.css',
     'css/login.css',

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self'; form-action 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f0f14">
+    <title>PalestrIA — Super Admin</title>
+    <link rel="icon" type="image/png" href="images/logo-palestria.png">
+    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/super-admin.css?v=1">
+</head>
+<body class="sa-body">
+    <div class="sa-wrap" id="saMain">
+        <!-- Topbar -->
+        <header class="sa-topbar">
+            <div class="sa-brand">
+                <img src="images/logo-palestria-light.png" alt="PalestrIA">
+                <div class="sa-title">PalestrIA <small>Super Admin · Piattaforma</small></div>
+            </div>
+            <div class="sa-spacer"></div>
+            <button class="sa-link" id="saRefresh" type="button">⟳ Aggiorna</button>
+            <a class="sa-link" href="admin.html">← Amministrazione studio</a>
+        </header>
+
+        <!-- Banner accesso aperto (visibile solo se nessun super-admin in whitelist) -->
+        <div class="sa-banner" id="saBanner" style="display:none;">
+            <span>⚠️ <b>Accesso aperto</b>: in questa fase chiunque sia loggato può vedere questa dashboard e i dati di tutti gli studi.</span>
+            <span class="sa-spacer"></span>
+            <button type="button" id="saLock">🔒 Limita a una sola email</button>
+        </div>
+
+        <!-- KPI -->
+        <section class="sa-kpis" id="saKpis">
+            <div class="sa-spinner"></div>
+        </section>
+
+        <!-- Toolbar filtri -->
+        <div class="sa-toolbar">
+            <input type="text" id="saSearch" placeholder="🔍 Cerca per nome, slug o email owner…" autocomplete="off">
+            <select id="saStatus">
+                <option value="">Tutti gli stati</option>
+                <option value="trialing">In trial</option>
+                <option value="active">Attivi</option>
+                <option value="past_due">Insoluti</option>
+                <option value="suspended">Sospesi</option>
+                <option value="cancelled">Cancellati</option>
+            </select>
+            <select id="saPlan">
+                <option value="">Tutti i piani</option>
+                <option value="starter">Starter</option>
+                <option value="pro">Pro</option>
+                <option value="business">Business</option>
+            </select>
+            <span class="sa-count" id="saCount"></span>
+        </div>
+
+        <!-- Tabella studi -->
+        <div class="sa-table-wrap">
+            <table class="sa-table">
+                <thead>
+                    <tr>
+                        <th data-sort="name">Studio <span class="arr"></span></th>
+                        <th data-sort="status">Stato <span class="arr"></span></th>
+                        <th data-sort="plan_code">Piano <span class="arr"></span></th>
+                        <th data-sort="trial_end">Trial <span class="arr"></span></th>
+                        <th data-sort="client_count" class="num">Clienti <span class="arr"></span></th>
+                        <th data-sort="booking_count" class="num">Pren. <span class="arr"></span></th>
+                        <th data-sort="revenue_total" class="num">Incassato <span class="arr"></span></th>
+                        <th data-sort="created_at">Iscritto <span class="arr"></span></th>
+                        <th data-sort="last_activity">Ultima att. <span class="arr"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="saTbody">
+                    <tr><td colspan="9"><div class="sa-spinner"></div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Drawer dettaglio studio -->
+    <div class="sa-drawer-back" id="saDrawerBack"></div>
+    <aside class="sa-drawer" id="saDrawer">
+        <div class="sa-drawer-head">
+            <div>
+                <h2 id="saDrawerName">—</h2>
+                <div class="slug" id="saDrawerSlug"></div>
+            </div>
+            <button class="sa-drawer-close" id="saDrawerClose" type="button" aria-label="Chiudi">&times;</button>
+        </div>
+        <div class="sa-drawer-body" id="saDrawerBody"></div>
+    </aside>
+
+    <div class="sa-toast" id="saToast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/supabase-client.js?v=4"></script>
+    <script src="js/super-admin.js?v=1"></script>
+</body>
+</html>
