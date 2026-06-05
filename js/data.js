@@ -195,6 +195,180 @@ const TIME_SLOTS = [
     '20:00 - 21:20'
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG ORARI PER-ORG (runtime, dal DB). Quando popolate, queste strutture
+// hanno la precedenza sulle costanti hardcoded SLOT_TYPES/SLOT_MAX_CAPACITY/
+// SLOT_PRICES/SLOT_NAMES/TIME_SLOTS/DEFAULT_WEEKLY_SCHEDULE (tenute come fallback
+// deprecato single-tenant). Caricate da loadOrgScheduleConfig() su pageload.
+//   _ORG_SLOT_TYPES : { [key]: { id, key, label, color, defaultCapacity, defaultPrice, bookable, isActive, sortOrder } }
+//   _ORG_TIME_SLOTS : [ 'HH:MM - HH:MM', ... ]  (ordinati per sort_order)
+//   _ORG_WEEKLY     : { [weekday 0..6]: { [time]: { slotTypeId, slotTypeKey, capacity } } }
+//                     weekday: 0=Domenica .. 6=Sabato (come extract(dow))
+let _ORG_SLOT_TYPES = null;
+let _ORG_TIME_SLOTS = null;
+let _ORG_WEEKLY = null;
+
+// true se la config orari org è stata caricata dal DB (almeno gli slot_types).
+function _hasOrgScheduleConfig() {
+    return _ORG_SLOT_TYPES && Object.keys(_ORG_SLOT_TYPES).length > 0;
+}
+
+// Indice JS getDay() → nome giorno italiano usato dalle costanti legacy.
+const _WEEKDAY_NAMES_IT = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+// Risolve l'id slot_type (uuid) dalla key per la org corrente. null se sconosciuto.
+function _orgSlotTypeId(key) {
+    if (!_ORG_SLOT_TYPES) return null;
+    const st = _ORG_SLOT_TYPES[key];
+    return st ? st.id : null;
+}
+
+// Carica la config orari della org corrente dal DB e popola le strutture runtime.
+// Fonti: slot_types, time_slots_config (ordinati per sort_order) e il
+// weekly_schedule_template attivo + i suoi slot. RLS limita alla propria org;
+// per i client anonimi (nessun JWT) le tabelle non sono leggibili → si resta sui
+// fallback hardcoded e la disponibilità arriva comunque dalle RPC pubbliche.
+async function loadOrgScheduleConfig() {
+    if (typeof supabaseClient === 'undefined') return;
+    const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+    try {
+        const [stRes, tsRes, tplRes] = await Promise.allSettled([
+            _queryWithTimeout(
+                (orgId
+                    ? supabaseClient.from('slot_types').select('id, key, label, color, default_capacity, default_price, bookable, is_active, sort_order').eq('org_id', orgId)
+                    : supabaseClient.from('slot_types').select('id, key, label, color, default_capacity, default_price, bookable, is_active, sort_order')
+                ).order('sort_order')
+            ),
+            _queryWithTimeout(
+                (orgId
+                    ? supabaseClient.from('time_slots_config').select('start_time, end_time, label, sort_order, is_active').eq('org_id', orgId)
+                    : supabaseClient.from('time_slots_config').select('start_time, end_time, label, sort_order, is_active')
+                ).order('sort_order')
+            ),
+            _queryWithTimeout(
+                (orgId
+                    ? supabaseClient.from('weekly_schedule_templates').select('id').eq('org_id', orgId).eq('is_active', true)
+                    : supabaseClient.from('weekly_schedule_templates').select('id').eq('is_active', true)
+                ).order('created_at', { ascending: false }).limit(1)
+            ),
+        ]);
+
+        // 1) slot_types → mappa per key (solo attivi)
+        if (stRes.status === 'fulfilled' && !stRes.value.error && Array.isArray(stRes.value.data)) {
+            const map = {};
+            for (const r of stRes.value.data) {
+                if (r.is_active === false) continue;
+                map[r.key] = {
+                    id:              r.id,
+                    key:             r.key,
+                    label:           r.label,
+                    color:           r.color || '#8B5CF6',
+                    defaultCapacity: r.default_capacity ?? 0,
+                    defaultPrice:    r.default_price != null ? Number(r.default_price) : 0,
+                    bookable:        r.bookable !== false,
+                    isActive:        r.is_active !== false,
+                    sortOrder:       r.sort_order ?? 0,
+                };
+            }
+            if (Object.keys(map).length > 0) _ORG_SLOT_TYPES = map;
+        }
+
+        // 2) time_slots_config → array di etichette 'HH:MM - HH:MM' (formato come bookings.time)
+        if (tsRes.status === 'fulfilled' && !tsRes.value.error && Array.isArray(tsRes.value.data)) {
+            const labels = [];
+            for (const r of tsRes.value.data) {
+                if (r.is_active === false) continue;
+                const lbl = _formatTimeSlotLabel(r.start_time, r.end_time);
+                if (lbl) labels.push(lbl);
+            }
+            if (labels.length > 0) _ORG_TIME_SLOTS = labels;
+        }
+
+        // 3) template settimanale attivo + slot → _ORG_WEEKLY[weekday][time] = {slotTypeId, slotTypeKey, capacity}
+        let activeTplId = null;
+        if (tplRes.status === 'fulfilled' && !tplRes.value.error && Array.isArray(tplRes.value.data) && tplRes.value.data.length) {
+            activeTplId = tplRes.value.data[0].id;
+        }
+        if (activeTplId) {
+            const { data: slotsData, error: slotsErr } = await _queryWithTimeout(
+                supabaseClient.from('weekly_template_slots')
+                    .select('weekday, capacity, slot_type_id, time_slots_config(start_time, end_time), slot_types(key, default_capacity)')
+                    .eq('template_id', activeTplId)
+            );
+            if (!slotsErr && Array.isArray(slotsData)) {
+                const weekly = {};
+                for (const r of slotsData) {
+                    const tsc = r.time_slots_config;
+                    const stp = r.slot_types;
+                    if (!tsc || !stp) continue;
+                    const time = _formatTimeSlotLabel(tsc.start_time, tsc.end_time);
+                    if (!time) continue;
+                    const wd = Number(r.weekday);
+                    if (!weekly[wd]) weekly[wd] = {};
+                    weekly[wd][time] = {
+                        slotTypeId:  r.slot_type_id,
+                        slotTypeKey: stp.key,
+                        capacity:    r.capacity != null ? r.capacity : (stp.default_capacity ?? 0),
+                    };
+                }
+                if (Object.keys(weekly).length > 0) _ORG_WEEKLY = weekly;
+            }
+        }
+
+        console.log(`[Supabase] loadOrgScheduleConfig: ${_ORG_SLOT_TYPES ? Object.keys(_ORG_SLOT_TYPES).length : 0} slot_types, ${_ORG_TIME_SLOTS ? _ORG_TIME_SLOTS.length : 0} fasce, weekly=${_ORG_WEEKLY ? 'attivo' : 'no'}`);
+    } catch (e) {
+        console.warn('[Supabase] loadOrgScheduleConfig exception (uso fallback hardcoded):', e);
+    }
+}
+
+// Converte due valori time Postgres ('HH:MM[:SS]') nell'etichetta 'HH:MM - HH:MM'
+// (stesso formato di bookings.time e delle costanti TIME_SLOTS).
+function _formatTimeSlotLabel(startTime, endTime) {
+    const _hhmm = (t) => {
+        if (!t || typeof t !== 'string') return null;
+        const parts = t.split(':');
+        if (parts.length < 2) return null;
+        return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+    };
+    const s = _hhmm(startTime);
+    const e = _hhmm(endTime);
+    if (!s || !e) return null;
+    return `${s} - ${e}`;
+}
+
+// Etichetta (nome) di un tipo slot: preferisce la config org, fallback al
+// listino deprecato SLOT_NAMES.
+function getSlotName(slotType) {
+    if (_ORG_SLOT_TYPES && _ORG_SLOT_TYPES[slotType]) return _ORG_SLOT_TYPES[slotType].label;
+    return SLOT_NAMES[slotType] || slotType;
+}
+
+// Elenco fasce orarie attive per la org (etichette 'HH:MM - HH:MM').
+// Preferisce _ORG_TIME_SLOTS (dal DB), fallback alle costanti TIME_SLOTS.
+function getTimeSlots() {
+    return (_ORG_TIME_SLOTS && _ORG_TIME_SLOTS.length) ? _ORG_TIME_SLOTS.slice() : TIME_SLOTS.slice();
+}
+
+// Elenco tipi slot per la org (oggetti config). Preferisce _ORG_SLOT_TYPES (dal
+// DB, ordinati per sortOrder); fallback derivato dalle costanti legacy.
+function getSlotTypes() {
+    if (_hasOrgScheduleConfig()) {
+        return Object.values(_ORG_SLOT_TYPES).sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+    // Fallback: ricostruisci dai listini hardcoded single-tenant
+    return Object.values(SLOT_TYPES).map((key, i) => ({
+        id:              null,
+        key,
+        label:           SLOT_NAMES[key] || key,
+        color:           '#8B5CF6',
+        defaultCapacity: SLOT_MAX_CAPACITY[key] || 0,
+        defaultPrice:    SLOT_PRICES[key] || 0,
+        bookable:        (SLOT_MAX_CAPACITY[key] || 0) > 0,
+        isActive:        true,
+        sortOrder:       i,
+    }));
+}
+
 // Bump this whenever DEFAULT_WEEKLY_SCHEDULE changes — forces a reset for all clients
 const SCHEDULE_VERSION = 'v9';
 
@@ -301,8 +475,31 @@ const DEFAULT_WEEKLY_SCHEDULE = {
     ]
 };
 
+// Costruisce DEFAULT_WEEKLY_SCHEDULE-like ({ 'Lunedì': [{time,type}], ... })
+// dal template org caricato in _ORG_WEEKLY. Ritorna null se non disponibile.
+function _weeklyScheduleFromOrg() {
+    if (!_ORG_WEEKLY || Object.keys(_ORG_WEEKLY).length === 0) return null;
+    const result = {};
+    for (let wd = 0; wd < 7; wd++) {
+        const dayName = _WEEKDAY_NAMES_IT[wd];
+        const slotsByTime = _ORG_WEEKLY[wd] || {};
+        const slots = Object.keys(slotsByTime).map(time => ({
+            time,
+            type: slotsByTime[time].slotTypeKey,
+        }));
+        // Ordina per orario di inizio (gli oggetti non garantiscono l'ordine)
+        slots.sort((a, b) => a.time.localeCompare(b.time));
+        result[dayName] = slots;
+    }
+    return result;
+}
+
 // Function to get the current weekly schedule (from active template or default)
 function getWeeklySchedule() {
+    // Config org dal DB (template attivo): ha la precedenza sui template localStorage.
+    const orgWeekly = _weeklyScheduleFromOrg();
+    if (orgWeekly) return orgWeekly;
+
     // Try to load from WeekTemplateStorage (active template)
     const templatesRaw = localStorage.getItem('gym_week_templates');
     if (templatesRaw) {
@@ -393,14 +590,17 @@ class BookingStorage {
 
             if (!user && !isAdmin) {
                 // ── ANON: solo disponibilità aggregata, nessun dato personale ──────────
+                // Nuova firma multi-tenant: get_availability_range(p_org_slug, p_from, p_to)
                 const { data: availData, error } = await _rpcWithTimeout(
-                    supabaseClient.rpc('get_availability_range', { p_start: todayStr, p_end: endStr })
+                    supabaseClient.rpc('get_availability_range', { p_org_slug: _resolveOrgSlug(), p_from: todayStr, p_to: endStr })
                 ).catch(e => ({ data: null, error: e }));
                 if (error) {
                     console.error('[Supabase] get_availability_range error:', error.message);
                     if (typeof showToast === 'function') showToast('Errore di sincronizzazione. I dati potrebbero non essere aggiornati.', 'error', 5000);
                     return;
                 }
+                // Capienza/posti residui server-authoritative per il rendering
+                this._indexAvailability(availData);
                 const synth = this._buildSyntheticBookings(availData, {});
                 // Mantieni booking in cache non-sintetici (pending insert non ancora su Supabase)
                 const local = this._cache.filter(b => !b.id?.startsWith('_avail_'));
@@ -436,13 +636,16 @@ class BookingStorage {
                 pageFrom += PAGE;
             }
             // Utente non-admin: richiede anche la disponibilità aggregata in parallelo
+            // Nuova firma multi-tenant: get_availability_range(p_org_slug, p_from, p_to)
             const fetchAvail = !isAdmin
-                ? _rpcWithTimeout(supabaseClient.rpc('get_availability_range', { p_start: todayStr, p_end: endStr }))
+                ? _rpcWithTimeout(supabaseClient.rpc('get_availability_range', { p_org_slug: _resolveOrgSlug(), p_from: todayStr, p_to: endStr }))
                     .catch(e => ({ data: null, error: e }))
                 : Promise.resolve({ data: null, error: null });
 
             const { data: availData, error: e2 } = await fetchAvail;
             if (e2) { console.error('[Supabase] get_availability_range error:', e2.message); }
+            // Capienza/posti residui server-authoritative per il rendering (utente non-admin)
+            if (!isAdmin) this._indexAvailability(availData);
 
             const mapped = data.map(row => this._mapRow(row));
 
@@ -525,13 +728,15 @@ class BookingStorage {
     }
 
     // Crea booking sintetici (senza dati personali) per slot occupati da altri utenti.
-    // availData: array di {slot_date, slot_time, slot_type, confirmed_count} dalla RPC
+    // availData: array di {date, time, slot_type, capacity, confirmed_count, remaining}
+    //            dalla RPC multi-tenant get_availability_range/get_slot_availability.
+    //            (compat: accetta anche i vecchi nomi slot_date/slot_time single-tenant)
     // ownCounts: {date|time -> n} dei propri booking già confermati (da sottrarre)
     static _buildSyntheticBookings(availData, ownCounts) {
         const result = [];
         for (const row of availData || []) {
-            const d     = row.slot_date;
-            const t     = row.slot_time;
+            const d     = row.date ?? row.slot_date;
+            const t     = row.time ?? row.slot_time;
             const own   = ownCounts[`${d}|${t}`] || 0;
             const count = Math.max(0, Number(row.confirmed_count) - own);
             for (let i = 0; i < count; i++) {
@@ -727,55 +932,157 @@ class BookingStorage {
         return bookings.filter(b => b.date === date && b.time === time && b.status !== 'cancelled');
     }
 
-    // Capacità effettiva = base + numero di extra dello stesso tipo salvati sullo slot
+    // Capacità ASSOLUTA effettiva per (data, ora, tipo).
+    // Modello nuovo (per-org): non più "base + extras", ma un numero assoluto
+    // risolto con precedenza override → template attivo → default dello slot_type.
+    //   1) schedule_overrides.capacity per quella data/ora (se il tipo coincide
+    //      col tipo dell'override; altrimenti 0 per quel tipo);
+    //   2) template settimanale attivo (_ORG_WEEKLY) quando il tipo coincide;
+    //   3) default_capacity dello slot_type (_ORG_SLOT_TYPES, fallback SLOT_MAX_CAPACITY).
+    // Per i tipi diversi dal tipo principale dello slot (slot "misto"/diviso) la
+    // capienza resta 0 finché non viene impostata esplicitamente via override.
     static getEffectiveCapacity(date, time, slotType) {
+        // 0) Capienza server-authoritative dalla RPC availability (get_availability_range),
+        //    quando disponibile per (data, ora, tipo): è la fonte di verità del server
+        //    (override → template → default risolti server-side da resolve_slot_config).
+        const srv = this._availabilityByKey[`${date}|${time}|${slotType}`];
+        if (srv && srv.capacity != null) return Math.max(0, Number(srv.capacity));
+
         const overrides = this.getScheduleOverrides();
         const slots = overrides[date] || [];
         const slot = slots.find(s => s.time === time);
-        // Se il tipo richiesto è diverso dal tipo principale, la base è 0: contano solo gli extra
-        const isMainType = !slot || slot.type === slotType;
-        const base = isMainType ? (SLOT_MAX_CAPACITY[slotType] || 0) : 0;
-        if (!slot || !slot.extras || slot.extras.length === 0) return base;
-        return base + slot.extras.filter(e => e.type === slotType).length;
+
+        // 1) Override puntuale per data/ora
+        if (slot) {
+            if (slot.type === slotType) {
+                // capacity assoluta salvata sull'override; se assente, ricadi sul default
+                if (slot.capacity != null && !Number.isNaN(Number(slot.capacity))) {
+                    return Math.max(0, Number(slot.capacity));
+                }
+                return this._defaultCapacityFor(slotType);
+            }
+            // tipo richiesto != tipo principale dell'override → nessun posto per quel tipo
+            // (a meno che un futuro override per-tipo lo definisca esplicitamente)
+            return 0;
+        }
+
+        // 2) Template settimanale attivo (org)
+        if (_ORG_WEEKLY) {
+            const wd = this._weekdayFromDateStr(date);
+            const tplSlot = wd != null ? (_ORG_WEEKLY[wd] || {})[time] : null;
+            if (tplSlot && tplSlot.slotTypeKey === slotType) {
+                if (tplSlot.capacity != null) return Math.max(0, Number(tplSlot.capacity));
+                return this._defaultCapacityFor(slotType);
+            }
+            // Se il template definisce un tipo diverso per quello slot, l'altro tipo è 0
+            if (tplSlot && tplSlot.slotTypeKey !== slotType) return 0;
+        }
+
+        // 3) Default del tipo slot
+        return this._defaultCapacityFor(slotType);
     }
 
+    // Capienza di default del tipo slot (config org → fallback costante legacy).
+    static _defaultCapacityFor(slotType) {
+        if (_ORG_SLOT_TYPES && _ORG_SLOT_TYPES[slotType]) {
+            return Math.max(0, Number(_ORG_SLOT_TYPES[slotType].defaultCapacity) || 0);
+        }
+        return SLOT_MAX_CAPACITY[slotType] || 0;
+    }
+
+    // weekday (0=Domenica..6=Sabato, come extract(dow)) da 'YYYY-MM-DD' in fuso locale.
+    static _weekdayFromDateStr(dateStr) {
+        if (!dateStr || typeof dateStr !== 'string') return null;
+        const [y, m, d] = dateStr.split('-').map(Number);
+        if ([y, m, d].some(Number.isNaN)) return null;
+        return new Date(y, m - 1, d).getDay();
+    }
+
+    // Posti residui per (data, ora, tipo). Modello nuovo: capienza assoluta.
+    // Per gli slot futuri privi di prenotazioni reali in cache usa il dato
+    // server-authoritative 'remaining' della RPC availability (così anche i
+    // client anonimi, che non possono leggere slot_types via RLS, vedono numeri
+    // coerenti). Negli altri casi calcola capacity - confermati dalla cache.
     static getRemainingSpots(date, time, slotType) {
         const bookings = this.getBookingsForSlot(date, time);
         // Filtra per tipo: ogni "categoria" ha la propria capacità indipendente
         const confirmedCount = bookings.filter(b => b.status === 'confirmed' && (!b.slotType || b.slotType === slotType)).length;
         const maxCapacity = this.getEffectiveCapacity(date, time, slotType);
-        return Math.max(0, maxCapacity - confirmedCount);
+        const local = Math.max(0, maxCapacity - confirmedCount);
+
+        // Se non ci sono booking reali in cache per questo slot ma il server ha un
+        // 'remaining', fidati del server (evita di mostrare "pieno/disponibile"
+        // sbagliato quando la cache locale è parziale, tipico dei client anonimi).
+        const srv = this._availabilityByKey[`${date}|${time}|${slotType}`];
+        if (srv && srv.remaining != null) {
+            const hasRealLocal = bookings.some(b => !b.id?.startsWith('_avail_'));
+            if (!hasRealLocal) return Math.max(0, Number(srv.remaining));
+        }
+        return local;
     }
 
-    // Aggiunge un posto extra di tipo extraType allo slot di quella data/ora
+    // Cache availability server-authoritative: { 'date|time|slot_type': {capacity, remaining, confirmedCount} }
+    // Popolata da _indexAvailability() a partire dalle righe di get_availability_range/get_slot_availability.
+    static _availabilityByKey = {};
+
+    // Indicizza le righe availability della RPC nella cache _availabilityByKey.
+    // Accetta i nomi nuovi (date/time/capacity/remaining) con compat sui vecchi.
+    static _indexAvailability(availData) {
+        if (!Array.isArray(availData)) return;
+        for (const row of availData) {
+            const d = row.date ?? row.slot_date;
+            const t = row.time ?? row.slot_time;
+            const st = row.slot_type;
+            if (!d || !t || !st) continue;
+            this._availabilityByKey[`${d}|${t}|${st}`] = {
+                capacity:       row.capacity != null ? Number(row.capacity) : null,
+                remaining:      row.remaining != null ? Number(row.remaining) : null,
+                confirmedCount: row.confirmed_count != null ? Number(row.confirmed_count) : null,
+            };
+        }
+    }
+
+    // Aggiunge un posto allo slot di quella data/ora.
+    // Modello nuovo: la capienza è ASSOLUTA → "aggiungere un posto" = incrementare
+    // di 1 la capacity dell'override per quel tipo. Se non esiste un override per
+    // quella data/ora, ne crea uno con la capienza di default+1 del tipo richiesto.
+    // (Il nome storico addExtraSpot resta per i call-site admin; non c'è più array extras.)
     static addExtraSpot(date, time, extraType) {
         const overrides = this.getScheduleOverrides();
-        const slots = overrides[date] || [];
-        const slot = slots.find(s => s.time === time);
-        if (!slot) return false;
-        if (!slot.extras) slot.extras = [];
-        slot.extras.push({ type: extraType });
+        if (!overrides[date]) overrides[date] = [];
+        let slot = overrides[date].find(s => s.time === time);
+        if (!slot) {
+            // Nessuno slot configurato per quella data/ora: crea l'override dal tipo richiesto
+            slot = { time, type: extraType, capacity: this._defaultCapacityFor(extraType) + 1 };
+            overrides[date].push(slot);
+            this.saveScheduleOverrides(overrides, [date]);
+            return true;
+        }
+        const current = this.getEffectiveCapacity(date, time, slot.type === extraType ? extraType : slot.type);
+        if (slot.type === extraType) {
+            slot.capacity = current + 1;
+        } else {
+            // Tipo diverso dal principale: oggi il modello assoluto non supporta
+            // capienze multiple per-tipo sullo stesso slot. Convertiamo il tipo
+            // principale e impostiamo la capienza assoluta a current+1.
+            slot.type = extraType;
+            slot.capacity = this._defaultCapacityFor(extraType) + 1;
+        }
         this.saveScheduleOverrides(overrides, [date]);
         return true;
     }
 
-    // Rimuove l'ultimo extra di tipo extraType se non è già prenotato
+    // Rimuove un posto dallo slot (decrementa la capacity assoluta), se libero.
     static removeExtraSpot(date, time, extraType) {
         const overrides = this.getScheduleOverrides();
         const slots = overrides[date] || [];
         const slot = slots.find(s => s.time === time);
-        if (!slot || !slot.extras) return false;
-        const extrasOfType = slot.extras.filter(e => e.type === extraType).length;
-        if (extrasOfType === 0) return false;
-        // Controlla se c'è posto libero da rimuovere
-        const isMainType = slot.type === extraType;
-        const base = isMainType ? (SLOT_MAX_CAPACITY[extraType] || 0) : 0;
+        if (!slot || slot.type !== extraType) return false;
+        const effectiveCap = this.getEffectiveCapacity(date, time, extraType);
         const bookings = this.getBookingsForSlot(date, time);
-        const bookedCount = bookings.filter(b => b.status === 'confirmed' && b.slotType === extraType).length;
-        const effectiveCap = base + extrasOfType;
-        if (effectiveCap - bookedCount <= 0) return false; // tutti i posti occupati
-        const idx = slot.extras.map(e => e.type).lastIndexOf(extraType);
-        slot.extras.splice(idx, 1);
+        const bookedCount = bookings.filter(b => b.status === 'confirmed' && (!b.slotType || b.slotType === extraType)).length;
+        if (effectiveCap - bookedCount <= 0) return false; // nessun posto libero da rimuovere
+        slot.capacity = Math.max(0, effectiveCap - 1);
         this.saveScheduleOverrides(overrides, [date]);
         return true;
     }
@@ -1224,13 +1531,26 @@ class BookingStorage {
         // Se changedDates è specificato, sincronizza solo quelle date (molto più veloce)
         const datesToSync = changedDates || Object.keys(overrides);
 
+        // org_id obbligatorio in ogni insert (RLS *_admin via is_org_admin):
+        // senza non si scrive su schedule_overrides.
+        const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+
         const rows = [];
         for (const dateStr of datesToSync) {
             const slots = overrides[dateStr];
             if (slots && slots.length > 0) {
                 for (const slot of slots) {
+                    // capacity ASSOLUTA per slot/data (modello nuovo, non più base+extras)
+                    const capAbs = (slot.capacity != null && !Number.isNaN(Number(slot.capacity)))
+                        ? Math.max(0, Number(slot.capacity))
+                        : null;
                     rows.push({
-                        date: dateStr, time: slot.time, slot_type: slot.type, extras: slot.extras || [],
+                        org_id:          orgId,
+                        date:            dateStr,
+                        time:            slot.time,
+                        slot_type:       slot.type,
+                        slot_type_id:    _orgSlotTypeId(slot.type),   // lookup key → uuid in _ORG_SLOT_TYPES
+                        capacity:        capAbs,
                         client_name:     slot.client?.name || null,
                         client_email:    slot.client?.email || null,
                         client_whatsapp: slot.client?.whatsapp || null,
@@ -1244,7 +1564,7 @@ class BookingStorage {
             try {
                 if (rows.length > 0) {
                     const { error } = await supabaseClient.from('schedule_overrides')
-                        .upsert(rows, { onConflict: 'date,time' });
+                        .upsert(rows, { onConflict: 'org_id,date,time' });
                     if (error) { console.error('[Supabase] saveScheduleOverrides upsert error:', error.message); return; }
                 }
                 // Elimina le date svuotate e gli slot rimossi dalle date cambiate
@@ -1282,11 +1602,41 @@ class BookingStorage {
         })();
     }
 
+    // Imposta/aggiorna un singolo override (data, ora) con capienza ASSOLUTA e
+    // tipo risolto. Wrapper attorno a saveScheduleOverrides (che gestisce upsert
+    // org-scoped con slot_type_id risolto + org_id=window._orgId).
+    //   slotType: key del tipo (es. 'small-group'); capacity: numero assoluto (null=default)
+    //   extra: { client:{name,email,whatsapp}, bookingId } opzionale
+    static saveScheduleOverride(date, time, slotType, capacity, extra = {}) {
+        const overrides = this.getScheduleOverrides();
+        if (!overrides[date]) overrides[date] = [];
+        let slot = overrides[date].find(s => s.time === time);
+        if (!slot) {
+            slot = { time, type: slotType };
+            overrides[date].push(slot);
+        } else {
+            slot.type = slotType;
+        }
+        if (capacity != null && !Number.isNaN(Number(capacity))) {
+            slot.capacity = Math.max(0, Number(capacity));
+        } else {
+            delete slot.capacity;
+        }
+        if (extra.client) slot.client = extra.client; else if ('client' in extra) delete slot.client;
+        if (extra.bookingId) slot.bookingId = extra.bookingId; else if ('bookingId' in extra) delete slot.bookingId;
+        this.saveScheduleOverrides(overrides, [date]);
+        return true;
+    }
+
     // Carica tutti i dati da Supabase in parallelo e aggiorna il localStorage.
     // Fonti: tabelle dedicate (schedule_overrides, org_settings org-scoped)
     //        + app_settings solo per il segnale data_cleared_at.
     static async syncAppSettingsFromSupabase() {
         if (typeof supabaseClient === 'undefined') return;
+        // Carica la config orari per-org (slot_types/time_slots_config/template attivo)
+        // PRIMA di processare gli override: getEffectiveCapacity/getWeeklySchedule e i
+        // booking sintetici dipendono da _ORG_SLOT_TYPES/_ORG_WEEKLY.
+        await loadOrgScheduleConfig();
         try {
             // Promise.allSettled: ogni query è indipendente — se una fallisce le altre vanno avanti
             // Ogni query è wrappata in _queryWithTimeout per evitare hang infiniti
@@ -1304,7 +1654,7 @@ class BookingStorage {
                 })();
             const _results = await Promise.allSettled([
                 _queryWithTimeout(supabaseClient.from('app_settings').select('value').eq('key', 'data_cleared_at').maybeSingle()),
-                fetchAllPaginated(() => supabaseClient.from('schedule_overrides').select('date, time, slot_type, extras, client_name, client_email, client_whatsapp, booking_id').order('date').order('time')),
+                fetchAllPaginated(() => supabaseClient.from('schedule_overrides').select('date, time, slot_type, slot_type_id, capacity, client_name, client_email, client_whatsapp, booking_id').order('date').order('time')),
                 _queryWithTimeout(_settingsQuery),
             ]);
             const _syncLabels = ['app_settings', 'schedule_overrides', 'org_settings'];
@@ -1337,7 +1687,9 @@ class BookingStorage {
                 for (const r of (overridesData || [])) {
                     if (!overrides[r.date]) overrides[r.date] = [];
                     const slot = { time: r.time, type: r.slot_type };
-                    if (r.extras?.length) slot.extras = r.extras;
+                    // capacity ASSOLUTA (modello nuovo): la conserviamo se valorizzata
+                    if (r.capacity != null) slot.capacity = Number(r.capacity);
+                    if (r.slot_type_id) slot.slotTypeId = r.slot_type_id;
                     if (r.client_name) slot.client = { name: r.client_name, email: r.client_email || '', whatsapp: r.client_whatsapp || '' };
                     if (r.booking_id) slot.bookingId = r.booking_id;
                     overrides[r.date].push(slot);

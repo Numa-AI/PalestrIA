@@ -786,7 +786,7 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
         const allExtraTypes = [...new Set(extras.map(e => e.type))];
         const badges = allExtraTypes.map(t => {
             const cnt = extras.filter(e => e.type === t).length;
-            return `<span class="extra-badge ${t}">${SLOT_NAMES[t]} ×${cnt}
+            return `<span class="extra-badge ${t}">${getSlotName(t)} ×${cnt}
                 <button class="btn-remove-extra" onclick="removeExtraSpotFromSlot('${dE}','${tE}','${t}')" title="Rimuovi un posto">−</button>
             </span>`;
         }).join('');
@@ -810,7 +810,7 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
         // TODO(server): prezzo condiviso server-side (non più fisso a 15€).
         const leftColLabel = (isSharedSlot && mainType === SLOT_TYPES.GROUP_CLASS)
             ? 'Slot condiviso'
-            : SLOT_NAMES[mainType];
+            : getSlotName(mainType);
         const leftCol = `
             <div class="split-column">
                 <div class="split-col-title ${mainType}">${leftColLabel}</div>
@@ -823,7 +823,7 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
             return `
                 <div class="split-col-divider-v"></div>
                 <div class="split-column">
-                    <div class="split-col-title ${t}">${SLOT_NAMES[t]} ${eConf}/${ec}</div>
+                    <div class="split-col-title ${t}">${getSlotName(t)} ${eConf}/${ec}</div>
                     ${_buildParticipantsSection(eb)}
                 </div>`;
         }).join('');

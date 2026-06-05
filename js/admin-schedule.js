@@ -1,815 +1,893 @@
-// Schedule Manager Functions
-let scheduleWeekOffset = 0;
-let selectedScheduleDate = null;
+// ════════════════════════════════════════════════════════════════════════════
+// Gestione Orari — Editor flessibile per-org (multi-tenant)
+//
+// Pannello admin che configura le tabelle orari del nuovo schema SaaS:
+//   • slot_types            → tipi di slot (label, colore, capienza/prezzo default…)
+//   • time_slots_config     → fasce orarie (start/end → label "HH:MM - HH:MM")
+//   • weekly_schedule_templates + weekly_template_slots → griglia 7gg × N fasce
+//   • schedule_overrides    → override puntuale per-data (capienza ASSOLUTA)
+//
+// Scrittura DIRETTA via supabaseClient.from(...): la RLS (*_admin con is_org_admin)
+// autorizza solo owner/admin della org. OGNI insert include org_id = window._orgId.
+//
+// NB: alcune funzioni "ponte" legacy (getScheduleForDate / saveScheduleForDate /
+// getScheduleWeekDates) sono ancora consumate da admin-calendar.js e admin-messaggi.js
+// (dominio Agent A): restano invariate come bridge sulla cache localStorage.
+// ════════════════════════════════════════════════════════════════════════════
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Stato modulo
+// ─────────────────────────────────────────────────────────────────────────────
+let _schedActiveSection = 'types';   // 'types' | 'slots' | 'template' | 'overrides'
+let _schedData = {
+    slotTypes:  [],   // righe slot_types
+    timeSlots:  [],   // righe time_slots_config
+    templates:  [],   // righe weekly_schedule_templates
+    tplSlots:   [],   // righe weekly_template_slots (del template selezionato)
+    overrides:  []    // righe schedule_overrides (della data selezionata)
+};
+let _schedSelectedTemplateId = null;
+let _schedOverrideDate = null;       // 'YYYY-MM-DD' per l'editor override
+
+// @deprecated — fasce orarie hardcoded single-tenant. La fonte reale è ora
+// time_slots_config (per-org). Mantenuta SOLO come fallback: l'editor template
+// legacy in admin-settings.js (tab Impostazioni) vi fa ancora riferimento.
+// NON usare per nuova logica orari.
+const ALL_TIME_SLOTS = [
+    '05:20 - 06:40', '06:40 - 08:00', '08:00 - 09:20', '09:20 - 10:40',
+    '10:40 - 12:00', '12:00 - 13:20', '13:20 - 14:40', '14:40 - 16:00',
+    '16:00 - 17:20', '17:20 - 18:40', '18:40 - 20:00', '20:00 - 21:20'
+];
+
+// Nomi giorni indicizzati per weekday (0=Domenica .. 6=Sabato), come da schema DB.
+const _WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+// Ordine di visualizzazione griglia: Lun→Dom (weekday 1..6, poi 0)
+const _WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper comuni
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Etichetta fascia dalla coppia start/end → "HH:MM - HH:MM" (come bookings.time)
+function _schedSlotLabel(ts) {
+    if (!ts) return '';
+    const fmt = (t) => String(t || '').slice(0, 5);   // 'HH:MM:SS' → 'HH:MM'
+    return `${fmt(ts.start_time)} - ${fmt(ts.end_time)}`;
+}
+
+// org_id corrente (autenticato). Senza org non si può scrivere.
+function _schedOrgId() {
+    return (typeof window !== 'undefined' && window._orgId) ? window._orgId : null;
+}
+
+function _schedToast(msg, type = 'success') {
+    if (typeof showToast === 'function') showToast(msg, type);
+    else console.log('[Schedule]', msg);
+}
+
+// Guard comune sulle azioni di scrittura
+function _schedRequireOrg() {
+    const org = _schedOrgId();
+    if (!org) { _schedToast('⚠️ Organizzazione non disponibile. Riprova dopo il login.', 'error'); return null; }
+    if (typeof supabaseClient === 'undefined') { _schedToast('⚠️ Connessione non disponibile.', 'error'); return null; }
+    return org;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Caricamento dati dal DB (org-scoped via RLS)
+// ─────────────────────────────────────────────────────────────────────────────
+async function _schedLoadAll() {
+    const org = _schedOrgId();
+    if (!org || typeof supabaseClient === 'undefined') {
+        _schedData = { slotTypes: [], timeSlots: [], templates: [], tplSlots: [], overrides: [] };
+        return;
+    }
+    try {
+        const [stRes, tsRes, tplRes] = await Promise.all([
+            supabaseClient.from('slot_types').select('*').eq('org_id', org).order('sort_order', { ascending: true }),
+            supabaseClient.from('time_slots_config').select('*').eq('org_id', org).order('sort_order', { ascending: true }).order('start_time', { ascending: true }),
+            supabaseClient.from('weekly_schedule_templates').select('*').eq('org_id', org).order('created_at', { ascending: true })
+        ]);
+        _schedData.slotTypes = stRes.data || [];
+        _schedData.timeSlots = tsRes.data || [];
+        _schedData.templates = tplRes.data || [];
+
+        // Template selezionato: l'attivo, altrimenti il primo
+        if (!_schedSelectedTemplateId || !_schedData.templates.find(t => t.id === _schedSelectedTemplateId)) {
+            const active = _schedData.templates.find(t => t.is_active);
+            _schedSelectedTemplateId = active ? active.id : (_schedData.templates[0]?.id || null);
+        }
+        await _schedLoadTemplateSlots();
+    } catch (e) {
+        console.error('[Schedule] load error:', e);
+        _schedToast('⚠️ Errore nel caricamento orari.', 'error');
+    }
+}
+
+async function _schedLoadTemplateSlots() {
+    _schedData.tplSlots = [];
+    const org = _schedOrgId();
+    if (!org || !_schedSelectedTemplateId || typeof supabaseClient === 'undefined') return;
+    try {
+        const { data } = await supabaseClient
+            .from('weekly_template_slots')
+            .select('*')
+            .eq('org_id', org)
+            .eq('template_id', _schedSelectedTemplateId);
+        _schedData.tplSlots = data || [];
+    } catch (e) {
+        console.error('[Schedule] template slots error:', e);
+    }
+}
+
+async function _schedLoadOverrides(date) {
+    _schedData.overrides = [];
+    const org = _schedOrgId();
+    if (!org || !date || typeof supabaseClient === 'undefined') return;
+    try {
+        const { data } = await supabaseClient
+            .from('schedule_overrides')
+            .select('*')
+            .eq('org_id', org)
+            .eq('date', date)
+            .order('time', { ascending: true });
+        _schedData.overrides = data || [];
+    } catch (e) {
+        console.error('[Schedule] overrides error:', e);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entry point (chiamato da admin.js: setupScheduleManager / renderScheduleManager)
+// ─────────────────────────────────────────────────────────────────────────────
 function setupScheduleManager() {
     renderScheduleManager();
 }
 
-function renderScheduleManager() {
+async function renderScheduleManager() {
     const manager = document.getElementById('scheduleManager');
     if (!manager) return;
 
-    const weekDates = getScheduleWeekDates(scheduleWeekOffset);
-
-    // Resolve selected date BEFORE building HTML so the active tab gets highlighted.
-    // Reset to Monday if no date is selected or the selection belongs to a different week.
-    if (!selectedScheduleDate || !weekDates.find(d => d.formatted === selectedScheduleDate.formatted)) {
-        selectedScheduleDate = weekDates[0];
-    }
-
-    // Week navigation
-    const firstDate = weekDates[0].date;
-    const lastDate = weekDates[6].date;
-
-    const overrides = BookingStorage.getScheduleOverrides();
-    const weekHasAnySlot = weekDates.some(d => overrides[d.formatted] && overrides[d.formatted].length > 0);
-
-    const M_SHORT = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
-    const range = `${firstDate.getDate()} ${M_SHORT[firstDate.getMonth()]} — ${lastDate.getDate()} ${M_SHORT[lastDate.getMonth()]}`;
-
-    // Day selector tabs with dates — wrapped in 3 .admin-week-page for swipe
-    const monthNames = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-    let dayTabsHtml = '<div class="schedule-day-tabs" id="scheduleDayTabs">';
-    [-1, 0, 1].forEach(off => {
-        const pageDates = getScheduleWeekDates(scheduleWeekOffset + off);
-        dayTabsHtml += `<div class="admin-week-page" data-rel-offset="${off}">`;
-        pageDates.forEach(dateInfo => {
-            const isActive = (off === 0 && selectedScheduleDate && selectedScheduleDate.formatted === dateInfo.formatted) ? 'active' : '';
-            const daySlots = overrides[dateInfo.formatted] || [];
-            const hasSlots = daySlots.length > 0;
-            const hasMissingClient = daySlots.some(s => s.type === SLOT_TYPES.GROUP_CLASS && !s.client);
-            const shortName = dateInfo.dayName.slice(0, 3);
-            dayTabsHtml += `<button class="schedule-day-tab ${isActive} ${hasSlots ? 'has-slots' : ''} ${hasMissingClient ? 'missing-client' : ''}" data-date="${dateInfo.formatted}" onclick="selectScheduleDate('${dateInfo.formatted}', '${dateInfo.dayName}')">
-                <div class="admin-day-name"><span class="day-full">${dateInfo.dayName}</span><span class="day-short">${shortName}</span></div>
-                <div class="admin-day-date">${dateInfo.date.getDate()}</div>
-                <div class="admin-day-count">${monthNames[dateInfo.date.getMonth()]}</div>
-            </button>`;
-        });
-        dayTabsHtml += '</div>';
-    });
-    dayTabsHtml += '</div>';
-
-    let html = `
-        <div class="schedule-week-bar">
-            <div class="schedule-week-nav">
-                <div class="schedule-week-info">
-                    <span class="schedule-week-dates">${range}</span>
-                    <span class="schedule-week-status ${weekHasAnySlot ? 'has-slots' : 'is-blank'}">${weekHasAnySlot ? 'CONFIGURATA' : 'NON CONFIGURATA'}</span>
-                </div>
-                <div class="schedule-week-arrows">
-                    <button class="schedule-week-btn" onclick="changeScheduleWeek(-1)" aria-label="Settimana precedente" title="Settimana precedente">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    </button>
-                    <button class="schedule-week-btn" onclick="changeScheduleWeek(1)" aria-label="Settimana successiva" title="Settimana successiva">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    </button>
-                </div>
-            </div>
-            ${dayTabsHtml}
-            <div class="schedule-week-actions">
-                <button class="btn-import-week" onclick="importWeekTemplate(${scheduleWeekOffset})">📥 Importa: ${_escHtml(_getActiveTemplateName())}</button>
-                ${weekHasAnySlot ? `<button class="btn-clear-week" onclick="clearWeekSchedule(${scheduleWeekOffset})">🗑 Svuota</button>` : ''}
-            </div>
+    // Skeleton immediato (lo switchTab mostra subito il contenitore)
+    manager.innerHTML = `
+        <div class="sched-head">
+            <div class="sched-nav" id="schedNav">${_schedNavHtml()}</div>
         </div>
+        <div id="schedBody"><div class="sched-loading">⏳ Caricamento configurazione orari…</div></div>
     `;
 
-    html += '<div id="scheduleDaySlots"></div>';
-
-    manager.innerHTML = html;
-
-    setupScheduleWeekSwipe();
-    renderAllTimeSlots();
+    await _schedLoadAll();
+    _schedRenderActiveSection();
 }
 
-function setupScheduleWeekSwipe() {
-    const container = document.getElementById('scheduleDayTabs');
-    if (!container) return;
+function _schedNavHtml() {
+    const tabs = [
+        { id: 'types',     icon: '🏷️', label: 'Tipi slot' },
+        { id: 'slots',     icon: '🕐', label: 'Fasce orarie' },
+        { id: 'template',  icon: '🗓️', label: 'Settimana tipo' },
+        { id: 'overrides', icon: '📌', label: 'Override per data' }
+    ];
+    return tabs.map(t => `
+        <button class="sched-nav-btn ${_schedActiveSection === t.id ? 'active' : ''}"
+                onclick="schedSwitchSection('${t.id}')">
+            <span class="sched-nav-ico">${t.icon}</span><span class="sched-nav-lbl">${t.label}</span>
+        </button>`).join('');
+}
 
-    requestAnimationFrame(() => {
-        const w = container.clientWidth;
-        if (w > 0) {
-            const prev = container.style.scrollBehavior;
-            container.style.scrollBehavior = 'auto';
-            container.scrollLeft = w;
-            container.style.scrollBehavior = prev || '';
+function schedSwitchSection(section) {
+    _schedActiveSection = section;
+    const nav = document.getElementById('schedNav');
+    if (nav) nav.innerHTML = _schedNavHtml();
+    _schedRenderActiveSection();
+}
+
+function _schedRenderActiveSection() {
+    const body = document.getElementById('schedBody');
+    if (!body) return;
+    switch (_schedActiveSection) {
+        case 'types':     body.innerHTML = _schedRenderTypes();     break;
+        case 'slots':     body.innerHTML = _schedRenderSlots();     break;
+        case 'template':  body.innerHTML = _schedRenderTemplate();  break;
+        case 'overrides': body.innerHTML = _schedRenderOverrides(); break;
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EDITOR 1 — TIPI SLOT (slot_types)
+// ════════════════════════════════════════════════════════════════════════════
+function _schedRenderTypes() {
+    const list = _schedData.slotTypes;
+    let rows = '';
+    if (list.length === 0) {
+        rows = '<div class="sched-empty">Nessun tipo di slot configurato. Creane uno per iniziare.</div>';
+    } else {
+        rows = list.map(st => `
+            <div class="sched-row ${st.is_active ? '' : 'is-inactive'}">
+                <span class="sched-color-dot" style="background:${_escHtml(st.color || '#8B5CF6')}"></span>
+                <div class="sched-row-main">
+                    <div class="sched-row-title">${_escHtml(st.label)}
+                        ${st.bookable ? '' : '<span class="sched-badge sched-badge--muted">non prenotabile</span>'}
+                        ${st.is_active ? '' : '<span class="sched-badge sched-badge--off">disattivo</span>'}
+                    </div>
+                    <div class="sched-row-sub">
+                        <code>${_escHtml(st.key)}</code> · capienza ${st.default_capacity} · €${Number(st.default_price || 0).toFixed(2)}
+                    </div>
+                </div>
+                <div class="sched-row-actions">
+                    <button class="sched-btn-icon" title="Modifica" onclick="schedEditType('${st.id}')">✏️</button>
+                    <button class="sched-btn-icon sched-btn-icon--danger" title="Elimina" onclick="schedDeleteType('${st.id}')">🗑️</button>
+                </div>
+            </div>`).join('');
+    }
+
+    return `
+        <div class="sched-section">
+            <div class="sched-section-head">
+                <div>
+                    <h3 class="sched-section-title">Tipi di slot</h3>
+                    <p class="sched-section-desc">Le categorie di lezione (es. Personal, Small Group). Capienza e prezzo qui sono i valori di default.</p>
+                </div>
+                <button class="sched-btn-primary" onclick="schedEditType()">+ Nuovo tipo</button>
+            </div>
+            <div class="sched-list">${rows}</div>
+            <div id="schedTypeForm"></div>
+        </div>`;
+}
+
+// Form crea/modifica tipo slot (inline)
+function schedEditType(id) {
+    const st = id ? _schedData.slotTypes.find(s => s.id === id) : null;
+    const host = document.getElementById('schedTypeForm');
+    if (!host) return;
+    const v = st || { label: '', key: '', color: '#8B5CF6', default_capacity: 1, default_price: 0, bookable: true, is_active: true, sort_order: _schedData.slotTypes.length };
+
+    host.innerHTML = `
+        <div class="sched-form">
+            <h4 class="sched-form-title">${st ? 'Modifica tipo' : 'Nuovo tipo di slot'}</h4>
+            <div class="sched-form-grid">
+                <label class="sched-field">
+                    <span>Etichetta</span>
+                    <input type="text" id="stLabel" value="${_escHtml(v.label)}" placeholder="Personal Training">
+                </label>
+                <label class="sched-field">
+                    <span>Chiave (key)</span>
+                    <input type="text" id="stKey" value="${_escHtml(v.key)}" placeholder="personal-training" ${st ? 'readonly' : ''}>
+                </label>
+                <label class="sched-field">
+                    <span>Colore</span>
+                    <input type="color" id="stColor" value="${_escHtml(v.color || '#8B5CF6')}">
+                </label>
+                <label class="sched-field">
+                    <span>Capienza default</span>
+                    <input type="number" id="stCapacity" min="0" step="1" value="${v.default_capacity}">
+                </label>
+                <label class="sched-field">
+                    <span>Prezzo default (€)</span>
+                    <input type="number" id="stPrice" min="0" step="0.01" value="${v.default_price}">
+                </label>
+                <label class="sched-field">
+                    <span>Ordine</span>
+                    <input type="number" id="stSort" step="1" value="${v.sort_order}">
+                </label>
+            </div>
+            <div class="sched-form-checks">
+                <label class="sched-check"><input type="checkbox" id="stBookable" ${v.bookable ? 'checked' : ''}> Prenotabile dai clienti</label>
+                <label class="sched-check"><input type="checkbox" id="stActive" ${v.is_active ? 'checked' : ''}> Attivo</label>
+            </div>
+            <div class="sched-form-actions">
+                <button class="sched-btn-ghost" onclick="schedCloseTypeForm()">Annulla</button>
+                <button class="sched-btn-primary" onclick="schedSaveType(${st ? `'${st.id}'` : 'null'})">${st ? 'Salva modifiche' : 'Crea tipo'}</button>
+            </div>
+        </div>`;
+    host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function schedCloseTypeForm() {
+    const host = document.getElementById('schedTypeForm');
+    if (host) host.innerHTML = '';
+}
+
+// Genera una chiave "slug" da un'etichetta
+function _schedSlugify(s) {
+    return String(s || '').toLowerCase().trim()
+        .replace(/[àáâ]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i')
+        .replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+async function schedSaveType(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+
+    const label = (document.getElementById('stLabel')?.value || '').trim();
+    let key = (document.getElementById('stKey')?.value || '').trim();
+    if (!label) { _schedToast('⚠️ Inserisci un\'etichetta.', 'error'); return; }
+    if (!id && !key) key = _schedSlugify(label);
+    if (!key) { _schedToast('⚠️ Chiave non valida.', 'error'); return; }
+
+    const payload = {
+        label,
+        color: document.getElementById('stColor')?.value || '#8B5CF6',
+        default_capacity: parseInt(document.getElementById('stCapacity')?.value || '0', 10) || 0,
+        default_price: parseFloat(document.getElementById('stPrice')?.value || '0') || 0,
+        bookable: !!document.getElementById('stBookable')?.checked,
+        is_active: !!document.getElementById('stActive')?.checked,
+        sort_order: parseInt(document.getElementById('stSort')?.value || '0', 10) || 0
+    };
+
+    try {
+        if (id) {
+            const { error } = await supabaseClient.from('slot_types').update(payload).eq('id', id).eq('org_id', org);
+            if (error) throw error;
+            _schedToast('✅ Tipo aggiornato.');
+        } else {
+            const { error } = await supabaseClient.from('slot_types').insert({ ...payload, key, org_id: org });
+            if (error) throw error;
+            _schedToast('✅ Tipo creato.');
         }
-    });
-
-    let scrollTimer = null;
-    container.addEventListener('scroll', () => {
-        clearTimeout(scrollTimer);
-        scrollTimer = setTimeout(() => {
-            const pageWidth = container.clientWidth;
-            if (!pageWidth) return;
-            const idx = Math.round(container.scrollLeft / pageWidth);
-            if (idx === 1) return;
-            scheduleWeekOffset += (idx - 1);
-            selectedScheduleDate = null;
-            renderScheduleManager();
-        }, 180);
-    });
+        schedCloseTypeForm();
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] saveType:', e);
+        const dup = e?.code === '23505' || /duplicate|unique/i.test(e?.message || '');
+        _schedToast(dup ? '⚠️ Esiste già un tipo con questa chiave.' : '⚠️ Errore nel salvataggio.', 'error');
+    }
 }
 
-function _clientInitials(name) {
-    if (!name) return '?';
-    const parts = String(name).trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return '?';
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+async function schedDeleteType(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const st = _schedData.slotTypes.find(s => s.id === id);
+    if (!confirm(`Eliminare il tipo "${st?.label || ''}"? Verrà rimosso anche dalle settimane tipo.`)) return;
+    try {
+        const { error } = await supabaseClient.from('slot_types').delete().eq('id', id).eq('org_id', org);
+        if (error) throw error;
+        _schedToast('🗑️ Tipo eliminato.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] deleteType:', e);
+        _schedToast('⚠️ Impossibile eliminare (potrebbe essere usato in prenotazioni).', 'error');
+    }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// EDITOR 2 — FASCE ORARIE (time_slots_config)
+// ════════════════════════════════════════════════════════════════════════════
+function _schedRenderSlots() {
+    const list = _schedData.timeSlots;
+    let rows = '';
+    if (list.length === 0) {
+        rows = '<div class="sched-empty">Nessuna fascia oraria configurata. Aggiungine una.</div>';
+    } else {
+        rows = list.map(ts => `
+            <div class="sched-row ${ts.is_active ? '' : 'is-inactive'}">
+                <span class="sched-time-chip">🕐 ${_escHtml(_schedSlotLabel(ts))}</span>
+                <div class="sched-row-main">
+                    <div class="sched-row-title">${_escHtml(ts.label || _schedSlotLabel(ts))}
+                        ${ts.is_active ? '' : '<span class="sched-badge sched-badge--off">disattiva</span>'}
+                    </div>
+                    <div class="sched-row-sub">ordine ${ts.sort_order}</div>
+                </div>
+                <div class="sched-row-actions">
+                    <button class="sched-btn-icon" title="Modifica" onclick="schedEditSlot('${ts.id}')">✏️</button>
+                    <button class="sched-btn-icon sched-btn-icon--danger" title="Elimina" onclick="schedDeleteSlot('${ts.id}')">🗑️</button>
+                </div>
+            </div>`).join('');
+    }
+
+    return `
+        <div class="sched-section">
+            <div class="sched-section-head">
+                <div>
+                    <h3 class="sched-section-title">Fasce orarie</h3>
+                    <p class="sched-section-desc">Gli intervalli prenotabili della giornata. L'etichetta usata nelle prenotazioni è "HH:MM - HH:MM".</p>
+                </div>
+                <button class="sched-btn-primary" onclick="schedEditSlot()">+ Nuova fascia</button>
+            </div>
+            <div class="sched-list">${rows}</div>
+            <div id="schedSlotForm"></div>
+        </div>`;
+}
+
+function schedEditSlot(id) {
+    const ts = id ? _schedData.timeSlots.find(s => s.id === id) : null;
+    const host = document.getElementById('schedSlotForm');
+    if (!host) return;
+    const v = ts || { start_time: '09:00', end_time: '10:00', label: '', sort_order: _schedData.timeSlots.length };
+
+    host.innerHTML = `
+        <div class="sched-form">
+            <h4 class="sched-form-title">${ts ? 'Modifica fascia' : 'Nuova fascia oraria'}</h4>
+            <div class="sched-form-grid">
+                <label class="sched-field">
+                    <span>Inizio</span>
+                    <input type="time" id="tsStart" value="${_escHtml(String(v.start_time).slice(0,5))}">
+                </label>
+                <label class="sched-field">
+                    <span>Fine</span>
+                    <input type="time" id="tsEnd" value="${_escHtml(String(v.end_time).slice(0,5))}">
+                </label>
+                <label class="sched-field">
+                    <span>Etichetta (opzionale)</span>
+                    <input type="text" id="tsLabel" value="${_escHtml(v.label || '')}" placeholder="Mattina">
+                </label>
+                <label class="sched-field">
+                    <span>Ordine</span>
+                    <input type="number" id="tsSort" step="1" value="${v.sort_order}">
+                </label>
+            </div>
+            <div class="sched-form-actions">
+                <button class="sched-btn-ghost" onclick="schedCloseSlotForm()">Annulla</button>
+                <button class="sched-btn-primary" onclick="schedSaveSlot(${ts ? `'${ts.id}'` : 'null'})">${ts ? 'Salva' : 'Crea fascia'}</button>
+            </div>
+        </div>`;
+    host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function schedCloseSlotForm() {
+    const host = document.getElementById('schedSlotForm');
+    if (host) host.innerHTML = '';
+}
+
+async function schedSaveSlot(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+
+    const start = document.getElementById('tsStart')?.value || '';
+    const end = document.getElementById('tsEnd')?.value || '';
+    if (!start || !end) { _schedToast('⚠️ Inserisci inizio e fine.', 'error'); return; }
+    if (end <= start) { _schedToast('⚠️ La fine deve essere dopo l\'inizio.', 'error'); return; }
+
+    const payload = {
+        start_time: start,
+        end_time: end,
+        label: (document.getElementById('tsLabel')?.value || '').trim() || null,
+        sort_order: parseInt(document.getElementById('tsSort')?.value || '0', 10) || 0
+    };
+
+    try {
+        if (id) {
+            const { error } = await supabaseClient.from('time_slots_config').update(payload).eq('id', id).eq('org_id', org);
+            if (error) throw error;
+            _schedToast('✅ Fascia aggiornata.');
+        } else {
+            const { error } = await supabaseClient.from('time_slots_config').insert({ ...payload, is_active: true, org_id: org });
+            if (error) throw error;
+            _schedToast('✅ Fascia creata.');
+        }
+        schedCloseSlotForm();
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] saveSlot:', e);
+        const dup = e?.code === '23505' || /duplicate|unique/i.test(e?.message || '');
+        _schedToast(dup ? '⚠️ Esiste già una fascia con questi orari.' : '⚠️ Errore nel salvataggio.', 'error');
+    }
+}
+
+async function schedDeleteSlot(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const ts = _schedData.timeSlots.find(s => s.id === id);
+    if (!confirm(`Eliminare la fascia "${_schedSlotLabel(ts)}"? Verrà rimossa dalle settimane tipo.`)) return;
+    try {
+        const { error } = await supabaseClient.from('time_slots_config').delete().eq('id', id).eq('org_id', org);
+        if (error) throw error;
+        _schedToast('🗑️ Fascia eliminata.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] deleteSlot:', e);
+        _schedToast('⚠️ Errore eliminazione.', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EDITOR 3 — SETTIMANA TIPO (weekly_schedule_templates + weekly_template_slots)
+// Griglia 7 giorni × N fasce: ogni cella sceglie slot_type + capacity (override riga).
+// ════════════════════════════════════════════════════════════════════════════
+function _schedRenderTemplate() {
+    const templates = _schedData.templates;
+    const slots = _schedData.timeSlots.filter(t => t.is_active);
+    const types = _schedData.slotTypes.filter(t => t.is_active);
+
+    // Selettore template + azioni
+    const tplOptions = templates.map(t =>
+        `<option value="${t.id}" ${t.id === _schedSelectedTemplateId ? 'selected' : ''}>${_escHtml(t.name)}${t.is_active ? ' (attiva)' : ''}</option>`
+    ).join('');
+
+    const current = templates.find(t => t.id === _schedSelectedTemplateId);
+
+    let head = `
+        <div class="sched-section-head">
+            <div>
+                <h3 class="sched-section-title">Settimana tipo</h3>
+                <p class="sched-section-desc">Configura per ogni giorno e fascia il tipo di lezione e la capienza. La settimana <strong>attiva</strong> alimenta la disponibilità di default.</p>
+            </div>
+            <button class="sched-btn-primary" onclick="schedNewTemplate()">+ Nuova settimana</button>
+        </div>`;
+
+    if (templates.length === 0) {
+        return `<div class="sched-section">${head}
+            <div class="sched-empty">Nessuna settimana tipo. Creane una per impostare la griglia ricorrente.</div></div>`;
+    }
+
+    const tplBar = `
+        <div class="sched-tpl-bar">
+            <label class="sched-field sched-field--inline">
+                <span>Settimana</span>
+                <select id="schedTplSelect" onchange="schedSelectTemplate(this.value)">${tplOptions}</select>
+            </label>
+            <div class="sched-tpl-actions">
+                <button class="sched-btn-ghost ${current?.is_active ? 'is-on' : ''}" onclick="schedActivateTemplate('${_schedSelectedTemplateId}')" ${current?.is_active ? 'disabled' : ''}>
+                    ${current?.is_active ? '✅ Attiva' : 'Attiva questa'}
+                </button>
+                <button class="sched-btn-icon" title="Rinomina" onclick="schedRenameTemplate('${_schedSelectedTemplateId}')">✏️</button>
+                <button class="sched-btn-icon sched-btn-icon--danger" title="Elimina settimana" onclick="schedDeleteTemplate('${_schedSelectedTemplateId}')">🗑️</button>
+            </div>
+        </div>`;
+
+    if (slots.length === 0 || types.length === 0) {
+        return `<div class="sched-section">${head}${tplBar}
+            <div class="sched-empty">Per comporre la griglia servono almeno una <strong>fascia oraria</strong> e un <strong>tipo di slot</strong> attivi.</div></div>`;
+    }
+
+    // Mappa rapida cella → riga template (chiave "weekday|time_slot_id")
+    const cellMap = {};
+    _schedData.tplSlots.forEach(ws => { cellMap[`${ws.weekday}|${ws.time_slot_id}`] = ws; });
+
+    // Header colonne = giorni
+    let grid = '<div class="sched-grid-wrap"><table class="sched-grid"><thead><tr><th class="sched-grid-corner">Fascia</th>';
+    _WEEKDAY_ORDER.forEach(wd => {
+        grid += `<th>${_escHtml(_WEEKDAY_SHORT[wd])}</th>`;
+    });
+    grid += '</tr></thead><tbody>';
+
+    // Righe = fasce orarie
+    slots.forEach(ts => {
+        const label = _schedSlotLabel(ts);
+        grid += `<tr><th class="sched-grid-time">${_escHtml(label)}</th>`;
+        _WEEKDAY_ORDER.forEach(wd => {
+            const cell = cellMap[`${wd}|${ts.id}`];
+            const stId = cell ? cell.slot_type_id : '';
+            const cap = cell && cell.capacity != null ? cell.capacity : '';
+            const st = types.find(t => t.id === stId);
+            const dot = st ? `<span class="sched-cell-dot" style="background:${_escHtml(st.color || '#8B5CF6')}"></span>` : '';
+            const typeOpts = `<option value="">—</option>` + types.map(t =>
+                `<option value="${t.id}" ${t.id === stId ? 'selected' : ''}>${_escHtml(t.label)}</option>`).join('');
+            grid += `
+                <td class="sched-cell ${st ? 'has-type' : ''}">
+                    <div class="sched-cell-inner">
+                        ${dot}
+                        <select class="sched-cell-type" onchange="schedSetCell(${wd}, '${ts.id}', this.value, null)">${typeOpts}</select>
+                        <input class="sched-cell-cap" type="number" min="0" step="1" placeholder="cap"
+                               value="${cap}" title="Capienza (vuoto = default del tipo)"
+                               onchange="schedSetCellCapacity(${wd}, '${ts.id}', this.value)" ${st ? '' : 'disabled'}>
+                    </div>
+                </td>`;
+        });
+        grid += '</tr>';
+    });
+    grid += '</tbody></table></div>';
+
+    return `<div class="sched-section">${head}${tplBar}
+        <p class="sched-grid-hint">Seleziona il tipo per ogni cella. Il campo numerico imposta la capienza solo per quella cella (vuoto = capienza di default del tipo).</p>
+        ${grid}</div>`;
+}
+
+function schedSelectTemplate(id) {
+    _schedSelectedTemplateId = id || null;
+    _schedLoadTemplateSlots().then(() => _schedRenderActiveSection());
+}
+
+async function schedNewTemplate() {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const name = (prompt('Nome della nuova settimana tipo:', `Settimana ${_schedData.templates.length + 1}`) || '').trim();
+    if (!name) return;
+    try {
+        const isFirst = _schedData.templates.length === 0;
+        const { data, error } = await supabaseClient
+            .from('weekly_schedule_templates')
+            .insert({ org_id: org, name, is_active: isFirst })
+            .select('id')
+            .single();
+        if (error) throw error;
+        _schedSelectedTemplateId = data.id;
+        _schedToast('✅ Settimana creata.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] newTemplate:', e);
+        _schedToast('⚠️ Errore creazione settimana.', 'error');
+    }
+}
+
+async function schedRenameTemplate(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const tpl = _schedData.templates.find(t => t.id === id);
+    const name = (prompt('Nuovo nome:', tpl?.name || '') || '').trim();
+    if (!name) return;
+    try {
+        const { error } = await supabaseClient.from('weekly_schedule_templates').update({ name }).eq('id', id).eq('org_id', org);
+        if (error) throw error;
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] renameTemplate:', e);
+        _schedToast('⚠️ Errore rinomina.', 'error');
+    }
+}
+
+// Attiva una settimana (disattiva le altre della org → resta una sola attiva)
+async function schedActivateTemplate(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    try {
+        await supabaseClient.from('weekly_schedule_templates').update({ is_active: false }).eq('org_id', org).neq('id', id);
+        const { error } = await supabaseClient.from('weekly_schedule_templates').update({ is_active: true }).eq('id', id).eq('org_id', org);
+        if (error) throw error;
+        _schedToast('✅ Settimana attivata.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] activateTemplate:', e);
+        _schedToast('⚠️ Errore attivazione.', 'error');
+    }
+}
+
+async function schedDeleteTemplate(id) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const tpl = _schedData.templates.find(t => t.id === id);
+    if (!confirm(`Eliminare la settimana "${tpl?.name || ''}" e tutte le sue celle?`)) return;
+    try {
+        // weekly_template_slots ha ON DELETE CASCADE sul template
+        const { error } = await supabaseClient.from('weekly_schedule_templates').delete().eq('id', id).eq('org_id', org);
+        if (error) throw error;
+        _schedSelectedTemplateId = null;
+        _schedToast('🗑️ Settimana eliminata.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] deleteTemplate:', e);
+        _schedToast('⚠️ Errore eliminazione.', 'error');
+    }
+}
+
+// Imposta il tipo di una cella (upsert/delete riga weekly_template_slots).
+// stId vuoto → rimuove la riga (cella "—").
+async function schedSetCell(weekday, timeSlotId, stId, capacity) {
+    const org = _schedRequireOrg();
+    if (!org || !_schedSelectedTemplateId) return;
+    const existing = _schedData.tplSlots.find(w => w.weekday === weekday && w.time_slot_id === timeSlotId);
+
+    try {
+        if (!stId) {
+            if (existing) {
+                const { error } = await supabaseClient.from('weekly_template_slots').delete().eq('id', existing.id).eq('org_id', org);
+                if (error) throw error;
+            }
+        } else if (existing) {
+            const patch = { slot_type_id: stId };
+            if (capacity !== null) patch.capacity = capacity;
+            const { error } = await supabaseClient.from('weekly_template_slots').update(patch).eq('id', existing.id).eq('org_id', org);
+            if (error) throw error;
+        } else {
+            const { error } = await supabaseClient.from('weekly_template_slots').insert({
+                org_id: org,
+                template_id: _schedSelectedTemplateId,
+                weekday,
+                time_slot_id: timeSlotId,
+                slot_type_id: stId,
+                capacity: capacity
+            });
+            if (error) throw error;
+        }
+        await _schedLoadTemplateSlots();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] setCell:', e);
+        _schedToast('⚠️ Errore aggiornamento cella.', 'error');
+    }
+}
+
+// Aggiorna SOLO la capienza di una cella esistente (vuoto = null = default tipo)
+async function schedSetCellCapacity(weekday, timeSlotId, rawValue) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const existing = _schedData.tplSlots.find(w => w.weekday === weekday && w.time_slot_id === timeSlotId);
+    if (!existing) return;   // nessun tipo selezionato: niente da fare
+    const trimmed = String(rawValue).trim();
+    const capacity = trimmed === '' ? null : (parseInt(trimmed, 10) || 0);
+    try {
+        const { error } = await supabaseClient.from('weekly_template_slots').update({ capacity }).eq('id', existing.id).eq('org_id', org);
+        if (error) throw error;
+        await _schedLoadTemplateSlots();
+        // niente re-render completo: aggiorna solo lo stato in memoria (evita flicker dell'input)
+    } catch (e) {
+        console.error('[Schedule] setCellCapacity:', e);
+        _schedToast('⚠️ Errore capienza cella.', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EDITOR 4 — OVERRIDE PER DATA (schedule_overrides)
+// Capienza ASSOLUTA per uno specifico slot/data (sostituisce i +/- extra legacy).
+// ════════════════════════════════════════════════════════════════════════════
+function _schedRenderOverrides() {
+    const slots = _schedData.timeSlots.filter(t => t.is_active);
+    const types = _schedData.slotTypes;
+
+    // Data di default: oggi
+    if (!_schedOverrideDate) {
+        const d = new Date();
+        _schedOverrideDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // Mappa override per orario
+    const ovrMap = {};
+    _schedData.overrides.forEach(o => { ovrMap[o.time] = o; });
+
+    let rows = '';
+    if (slots.length === 0) {
+        rows = '<div class="sched-empty">Configura prima le fasce orarie per impostare gli override.</div>';
+    } else {
+        rows = '<div class="sched-list">' + slots.map(ts => {
+            const label = _schedSlotLabel(ts);
+            const ovr = ovrMap[label];
+            const stId = ovr ? (ovr.slot_type_id || '') : '';
+            const st = types.find(t => t.id === stId);
+            const cap = ovr && ovr.capacity != null ? ovr.capacity : '';
+            const typeOpts = `<option value="">— Nessun override —</option>` + types.map(t =>
+                `<option value="${t.id}" ${t.id === stId ? 'selected' : ''}>${_escHtml(t.label)}</option>`).join('');
+            return `
+                <div class="sched-row sched-ovr-row ${ovr ? 'has-ovr' : ''}">
+                    <span class="sched-time-chip">🕐 ${_escHtml(label)}</span>
+                    <div class="sched-ovr-controls">
+                        <select id="ovrType-${ts.id}" class="sched-ovr-type">${typeOpts}</select>
+                        <input id="ovrCap-${ts.id}" class="sched-ovr-cap" type="number" min="0" step="1"
+                               placeholder="capienza" value="${cap}" title="Capienza assoluta per questa data">
+                        <button class="sched-btn-primary sched-btn-sm" onclick="schedSaveOverride('${label}', '${ts.id}')">Salva</button>
+                        ${ovr ? `<button class="sched-btn-icon sched-btn-icon--danger" title="Rimuovi override" onclick="schedDeleteOverride('${label}')">🗑️</button>` : ''}
+                    </div>
+                    ${st ? `<span class="sched-ovr-badge" style="background:${_escHtml(st.color || '#8B5CF6')}1a;color:${_escHtml(st.color || '#8B5CF6')}">${_escHtml(st.label)}${cap !== '' ? ` · cap ${cap}` : ''}</span>` : ''}
+                </div>`;
+        }).join('') + '</div>';
+    }
+
+    return `
+        <div class="sched-section">
+            <div class="sched-section-head">
+                <div>
+                    <h3 class="sched-section-title">Override per data</h3>
+                    <p class="sched-section-desc">Per una data specifica forza tipo e <strong>capienza assoluta</strong> di uno slot. Ha la precedenza sulla settimana tipo.</p>
+                </div>
+                <label class="sched-field sched-field--inline">
+                    <span>Data</span>
+                    <input type="date" id="schedOvrDate" value="${_escHtml(_schedOverrideDate)}" onchange="schedChangeOverrideDate(this.value)">
+                </label>
+            </div>
+            ${rows}
+        </div>`;
+}
+
+function schedChangeOverrideDate(date) {
+    _schedOverrideDate = date;
+    _schedLoadOverrides(date).then(() => _schedRenderActiveSection());
+}
+
+// Salva/aggiorna un override puntuale (upsert su UNIQUE(org_id,date,time))
+async function schedSaveOverride(timeLabel, tsId) {
+    const org = _schedRequireOrg();
+    if (!org || !_schedOverrideDate) return;
+    const stId = document.getElementById(`ovrType-${tsId}`)?.value || '';
+    const rawCap = (document.getElementById(`ovrCap-${tsId}`)?.value || '').trim();
+
+    if (!stId) { _schedToast('⚠️ Seleziona un tipo di slot per l\'override.', 'error'); return; }
+    const st = _schedData.slotTypes.find(t => t.id === stId);
+    const capacity = rawCap === '' ? null : (parseInt(rawCap, 10) || 0);
+
+    const payload = {
+        org_id: org,
+        date: _schedOverrideDate,
+        time: timeLabel,
+        slot_type: st ? st.key : null,
+        slot_type_id: stId,
+        capacity
+    };
+
+    try {
+        // upsert sul vincolo unico (org_id, date, time)
+        const { error } = await supabaseClient
+            .from('schedule_overrides')
+            .upsert(payload, { onConflict: 'org_id,date,time' });
+        if (error) throw error;
+        _schedToast('✅ Override salvato.');
+        await _schedLoadOverrides(_schedOverrideDate);
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] saveOverride:', e);
+        _schedToast('⚠️ Errore nel salvataggio override.', 'error');
+    }
+}
+
+async function schedDeleteOverride(timeLabel) {
+    const org = _schedRequireOrg();
+    if (!org || !_schedOverrideDate) return;
+    if (!confirm(`Rimuovere l'override delle ${timeLabel} del ${_schedOverrideDate}?`)) return;
+    try {
+        const { error } = await supabaseClient
+            .from('schedule_overrides')
+            .delete()
+            .eq('org_id', org)
+            .eq('date', _schedOverrideDate)
+            .eq('time', timeLabel);
+        if (error) throw error;
+        _schedToast('🗑️ Override rimosso.');
+        await _schedLoadOverrides(_schedOverrideDate);
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] deleteOverride:', e);
+        _schedToast('⚠️ Errore rimozione override.', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BRIDGE LEGACY — consumati da admin-calendar.js / admin-messaggi.js (dominio Agent A)
+// Mantengono il contratto sulla cache localStorage degli override (BookingStorage):
+// restituiscono/salvano lo schedule per-data nel vecchio formato [{time,type,...}].
+// NON rimuovere finché Agent A non migra quei call-site alle nuove RPC.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Schedule effettivo per una data (slot configurati). Vecchio formato per il calendario.
+function getScheduleForDate(dateFormatted, dayName) {
+    try {
+        const overrides = BookingStorage.getScheduleOverrides();
+        return overrides[dateFormatted] || [];
+    } catch {
+        return [];
+    }
+}
+
+// Salva lo schedule di una data nella cache localStorage (vecchio formato).
+function saveScheduleForDate(dateFormatted, dayName, slots) {
+    try {
+        const overrides = BookingStorage.getScheduleOverrides();
+        if (!slots || slots.length === 0) {
+            delete overrides[dateFormatted];
+        } else {
+            overrides[dateFormatted] = slots;
+        }
+        BookingStorage.saveScheduleOverrides(overrides, [dateFormatted]);
+    } catch (e) {
+        console.error('[Schedule] saveScheduleForDate:', e);
+    }
+}
+
+// Date della settimana (Lun→Dom) per un dato offset. Usata da bridge/calendario.
 function getScheduleWeekDates(offset = 0) {
     const today = new Date();
     const currentDay = today.getDay();
     const diff = currentDay === 0 ? -6 : 1 - currentDay;
-
     const monday = new Date(today);
     monday.setDate(today.getDate() + diff + (offset * 7));
 
     const dates = [];
     const dayNames = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
-
     for (let i = 0; i < 7; i++) {
         const date = new Date(monday);
         date.setDate(monday.getDate() + i);
         dates.push({
-            date: date,
+            date,
             dayName: dayNames[i],
-            formatted: formatAdminDate(date)
+            formatted: (typeof formatAdminDate === 'function')
+                ? formatAdminDate(date)
+                : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
         });
     }
-
     return dates;
-}
-
-function changeScheduleWeek(direction) {
-    scheduleWeekOffset += direction;
-    selectedScheduleDate = null;
-    renderScheduleManager();
-}
-
-function weekHasBookings(weekOffset) {
-    const weekDates = getScheduleWeekDates(weekOffset);
-    const weekDateSet = new Set(weekDates.map(d => d.formatted));
-    const allBookings = BookingStorage.getAllBookings();
-    return allBookings.some(b => weekDateSet.has(b.date) && b.status !== 'cancelled');
-}
-
-function importWeekTemplate(weekOffset) {
-    if (weekHasBookings(weekOffset)) {
-        alert('Non è possibile importare la settimana standard: ci sono prenotazioni in questa settimana.');
-        return;
-    }
-    const weekDates = getScheduleWeekDates(weekOffset);
-    const overrides = BookingStorage.getScheduleOverrides();
-    const dayNames = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
-
-    weekDates.forEach(dateInfo => {
-        const jsDay = dateInfo.date.getDay(); // 0=Dom, 1=Lun, ...
-        const templateSlots = WEEKLY_SCHEDULE_TEMPLATE[dayNames[jsDay]] || [];
-        if (templateSlots.length > 0) {
-            // Don't overwrite days already customized
-            if (!overrides[dateInfo.formatted]) {
-                overrides[dateInfo.formatted] = templateSlots;
-            }
-        }
-    });
-
-    BookingStorage.saveScheduleOverrides(overrides, weekDates.map(d => d.formatted));
-    renderScheduleManager();
-}
-
-function clearWeekSchedule(weekOffset) {
-    if (weekHasBookings(weekOffset)) {
-        alert('Non è possibile svuotare la settimana: ci sono prenotazioni in questa settimana.');
-        return;
-    }
-    if (!confirm('Svuotare tutti i giorni di questa settimana?')) return;
-    const weekDates = getScheduleWeekDates(weekOffset);
-    const overrides = BookingStorage.getScheduleOverrides();
-    weekDates.forEach(dateInfo => { delete overrides[dateInfo.formatted]; });
-    BookingStorage.saveScheduleOverrides(overrides, weekDates.map(d => d.formatted));
-    selectedScheduleDate = null;
-    renderScheduleManager();
-}
-
-function selectScheduleDate(dateFormatted, dayName) {
-    const weekDates = getScheduleWeekDates(scheduleWeekOffset);
-    selectedScheduleDate = weekDates.find(d => d.formatted === dateFormatted);
-
-    // Aggiorna solo i tab attivi + slot, senza ricostruire l'intera UI della settimana
-    document.querySelectorAll('.schedule-day-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.date === dateFormatted);
-    });
-
-    renderAllTimeSlots();
-}
-
-// All possible time slots — 80 min each, 05:20 → 21:20
-const ALL_TIME_SLOTS = [
-    '05:20 - 06:40',
-    '06:40 - 08:00',
-    '08:00 - 09:20',
-    '09:20 - 10:40',
-    '10:40 - 12:00',
-    '12:00 - 13:20',
-    '13:20 - 14:40',
-    '14:40 - 16:00',
-    '16:00 - 17:20',
-    '17:20 - 18:40',
-    '18:40 - 20:00',
-    '20:00 - 21:20'
-];
-
-// Get schedule for a specific date (uses overrides if exist, otherwise template)
-function getScheduleForDate(dateFormatted, dayName) {
-    // Only return slots that have been explicitly configured for this date.
-    // Weeks with no override are blank and won't appear in the calendar.
-    const overrides = BookingStorage.getScheduleOverrides();
-    return overrides[dateFormatted] || [];
-}
-
-// Save schedule override for a specific date
-function saveScheduleForDate(dateFormatted, dayName, slots) {
-    const overrides = BookingStorage.getScheduleOverrides();
-
-    if (slots.length === 0) {
-        // If empty, remove override (will fall back to template)
-        delete overrides[dateFormatted];
-    } else {
-        overrides[dateFormatted] = slots;
-    }
-
-    BookingStorage.saveScheduleOverrides(overrides, [dateFormatted]);
-}
-
-function renderAllTimeSlots() {
-    const container = document.getElementById('scheduleDaySlots');
-    if (!container || !selectedScheduleDate) return;
-
-    // Get slots for this specific date
-    const daySlots = getScheduleForDate(selectedScheduleDate.formatted, selectedScheduleDate.dayName);
-
-    const M_SHORT = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
-    const dayShort = selectedScheduleDate.dayName.slice(0, 3);
-    const dateShort = `${dayShort} · ${selectedScheduleDate.date.getDate()} ${M_SHORT[selectedScheduleDate.date.getMonth()]}`;
-    let html = `<p class="schedule-day-h">
-                  <strong>Slot del giorno</strong>
-                  <span class="schedule-day-h-d">${dateShort}</span>
-                </p>`;
-
-    html += '<div class="schedule-slots-list">';
-
-    ALL_TIME_SLOTS.forEach(timeSlot => {
-        // Find if this time slot already has a lesson assigned
-        const existingSlot = daySlots.find(slot => slot.time === timeSlot);
-        const currentType = existingSlot ? existingSlot.type : '';
-        const isGroupClass = currentType === SLOT_TYPES.GROUP_CLASS;
-        const safeId = sanitizeSlotId(timeSlot);
-        const typeClass = currentType ? `is-${currentType}` : 'is-empty';
-
-        // Client picker HTML — only for "Slot prenotato"
-        let clientPickerHtml = '';
-        if (isGroupClass) {
-            const client = existingSlot?.client;
-            const selectedClientHtml = client
-                ? `<div class="slot-client-selected">
-                       <span class="slot-client-avatar" aria-hidden="true">${_escHtml(_clientInitials(client.name))}</span>
-                       <span class="slot-client-name">${_escHtml(client.name)}</span>
-                       <button class="btn-clear-client" onclick="clearSlotClient('${timeSlot}')" aria-label="Rimuovi cliente" title="Rimuovi cliente">✕</button>
-                   </div>`
-                : `<div class="slot-client-warning">⚠️ Cliente obbligatorio — cerca e seleziona un iscritto</div>`;
-
-            clientPickerHtml = `
-                <div class="slot-client-picker">
-                    ${selectedClientHtml}
-                    <div class="slot-client-search">
-                        <input type="text"
-                            class="slot-client-input"
-                            id="client-input-${safeId}"
-                            placeholder="Cerca per nome, email o telefono..."
-                            oninput="searchClientsForSlot('${timeSlot}', this.value)"
-                            autocomplete="off">
-                        <div class="slot-client-results" id="client-results-${safeId}"></div>
-                    </div>
-                </div>`;
-        }
-
-        if (isGroupClass) {
-            // Group-class: column layout with client picker below the row
-            html += `
-                <div class="schedule-slot-item-selector ${typeClass} has-client-picker">
-                    <div class="schedule-slot-top-row">
-                        <div class="schedule-slot-time">🕐 ${timeSlot}</div>
-                        <div class="schedule-slot-dropdown">
-                            <select onchange="updateSlotType('${timeSlot}', this.value)" class="slot-type-select">
-                                <option value="">-- Nessuna lezione --</option>
-                                <option value="${SLOT_TYPES.PERSONAL}">Autonomia</option>
-                                <option value="${SLOT_TYPES.SMALL_GROUP}">Lezione di Gruppo</option>
-                                <option value="${SLOT_TYPES.GROUP_CLASS}" selected>Slot prenotato</option>
-                                <option value="${SLOT_TYPES.CLEANING}">Pulizie</option>
-                            </select>
-                        </div>
-                        <div class="current-type-badge ${SLOT_TYPES.GROUP_CLASS}">${SLOT_NAMES[SLOT_TYPES.GROUP_CLASS]}</div>
-                    </div>
-                    ${clientPickerHtml}
-                </div>
-            `;
-        } else {
-            html += `
-                <div class="schedule-slot-item-selector ${typeClass}">
-                    <div class="schedule-slot-time">🕐 ${timeSlot}</div>
-                    <div class="schedule-slot-dropdown">
-                        <select onchange="updateSlotType('${timeSlot}', this.value)" class="slot-type-select">
-                            <option value="">-- Nessuna lezione --</option>
-                            <option value="${SLOT_TYPES.PERSONAL}" ${currentType === SLOT_TYPES.PERSONAL ? 'selected' : ''}>Autonomia</option>
-                            <option value="${SLOT_TYPES.SMALL_GROUP}" ${currentType === SLOT_TYPES.SMALL_GROUP ? 'selected' : ''}>Lezione di Gruppo</option>
-                            <option value="${SLOT_TYPES.GROUP_CLASS}">Slot prenotato</option>
-                            <option value="${SLOT_TYPES.CLEANING}" ${currentType === SLOT_TYPES.CLEANING ? 'selected' : ''}>Pulizie</option>
-                        </select>
-                    </div>
-                    ${currentType ? `<div class="current-type-badge ${currentType}">${SLOT_NAMES[currentType]}</div>` : ''}
-                </div>
-            `;
-        }
-    });
-
-    html += '</div>';
-
-    container.innerHTML = html;
-}
-
-function updateSlotType(timeSlot, newType) {
-    if (!selectedScheduleDate) return;
-
-    const dateFormatted = selectedScheduleDate.formatted;
-
-    // Check if there are existing bookings in this slot
-    const existingBookings = BookingStorage.getBookingsForSlot(dateFormatted, timeSlot);
-    // Filter to only confirmed / cancellation_requested (getBookingsForSlot already excludes cancelled)
-    const activeBookings = existingBookings.filter(b => b.status === 'confirmed' || b.status === 'cancellation_requested');
-
-    if (activeBookings.length > 0) {
-        // Show confirmation popup with booked people
-        _showSlotChangePopup(timeSlot, newType, activeBookings);
-    } else {
-        // No bookings — apply change directly
-        _applySlotTypeChange(timeSlot, newType);
-    }
-}
-
-// Actually applies the slot type change (called directly or after popup confirmation)
-function _applySlotTypeChange(timeSlot, newType) {
-    if (!selectedScheduleDate) return;
-
-    // Get current slots for this date
-    let daySlots = getScheduleForDate(selectedScheduleDate.formatted, selectedScheduleDate.dayName);
-
-    // Make a copy to modify
-    daySlots = JSON.parse(JSON.stringify(daySlots));
-
-    // Find existing slot
-    const existingSlotIndex = daySlots.findIndex(slot => slot.time === timeSlot);
-
-    if (newType === '') {
-        // Remove slot if "Nessuna lezione" is selected
-        if (existingSlotIndex !== -1) {
-            // Remove the associated booking if this was a group-class slot
-            if (daySlots[existingSlotIndex].bookingId) {
-                BookingStorage.removeBookingById(daySlots[existingSlotIndex].bookingId);
-            }
-            daySlots.splice(existingSlotIndex, 1);
-        }
-    } else {
-        // Add or update slot
-        if (existingSlotIndex !== -1) {
-            // When switching away from group-class, remove client and booking
-            if (daySlots[existingSlotIndex].type === SLOT_TYPES.GROUP_CLASS && newType !== SLOT_TYPES.GROUP_CLASS) {
-                if (daySlots[existingSlotIndex].bookingId) {
-                    BookingStorage.removeBookingById(daySlots[existingSlotIndex].bookingId);
-                }
-                delete daySlots[existingSlotIndex].client;
-                delete daySlots[existingSlotIndex].bookingId;
-            }
-            daySlots[existingSlotIndex].type = newType;
-        } else {
-            // Add new slot
-            daySlots.push({
-                time: timeSlot,
-                type: newType
-            });
-        }
-    }
-
-    // Sort by time
-    daySlots.sort((a, b) => a.time.localeCompare(b.time));
-
-    // Save as override for this specific date
-    saveScheduleForDate(selectedScheduleDate.formatted, selectedScheduleDate.dayName, daySlots);
-
-    // Refresh display
-    renderAllTimeSlots();
-
-    console.log(`Slot ${timeSlot} per ${selectedScheduleDate.formatted} aggiornato: ${newType || 'rimosso'}`);
-}
-
-// ── Slot Change Confirmation Popup ────────────────────────────────────────────
-// Shows a popup when admin tries to change/remove a slot that has active bookings.
-// Lists the booked people, allows sending a notification, and confirms cancellation.
-
-function _showSlotChangePopup(timeSlot, newType, bookings) {
-    // Remove any previous popup
-    const old = document.getElementById('slotChangeOverlay');
-    if (old) old.remove();
-    const oldPopup = document.getElementById('slotChangePopup');
-    if (oldPopup) oldPopup.remove();
-
-    const dateDisplay = `${selectedScheduleDate.dayName} ${selectedScheduleDate.date.getDate()}/${selectedScheduleDate.date.getMonth() + 1}/${selectedScheduleDate.date.getFullYear()}`;
-    const changeLabel = newType ? SLOT_NAMES[newType] : 'Nessuna lezione';
-
-    // Build people list HTML
-    let peopleHtml = '';
-    bookings.forEach(b => {
-        peopleHtml += `
-            <div style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; background:#fef2f2; border-radius:8px; margin-bottom:0.4rem;">
-                <span style="font-size:1.1rem;">👤</span>
-                <div style="flex:1; min-width:0;">
-                    <div style="font-weight:600; font-size:0.95rem;">${_escHtml(b.name)}</div>
-                    <div style="font-size:0.8rem; color:#666;">${_escHtml(b.whatsapp || b.email || '')}</div>
-                </div>
-                <span style="font-size:0.75rem; color:#dc2626; font-weight:500;">${b.status === 'cancellation_requested' ? 'Annullamento richiesto' : 'Confermata'}</span>
-            </div>`;
-    });
-
-    const defaultMsg = '';
-
-    const overlay = document.createElement('div');
-    overlay.id = 'slotChangeOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;';
-
-    const popup = document.createElement('div');
-    popup.id = 'slotChangePopup';
-    popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:0;max-width:460px;width:92%;max-height:85vh;overflow:hidden;z-index:9999;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column;';
-
-    popup.innerHTML = `
-        <div style="padding:1.25rem 1.5rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-                <h3 style="margin:0; font-size:1.1rem; color:#dc2626;">⚠️ Prenotazioni attive</h3>
-                <p style="margin:0.25rem 0 0; font-size:0.85rem; color:#666;">Slot ${timeSlot} — ${dateDisplay}</p>
-            </div>
-            <button id="slotChangeClose" style="background:none;border:none;font-size:1.3rem;cursor:pointer;padding:0.25rem;color:#666;">✕</button>
-        </div>
-        <div style="padding:1rem 1.5rem; overflow-y:auto; flex:1;">
-            <p style="margin:0 0 0.75rem; font-size:0.9rem; color:#374151;">
-                Ci sono <strong>${bookings.length} persona/e</strong> prenotate in questo slot.
-                Cambiando in <strong>"${_escHtml(changeLabel)}"</strong>, le prenotazioni verranno annullate.
-            </p>
-            <div style="margin-bottom:1rem;">
-                ${peopleHtml}
-            </div>
-            <div style="margin-bottom:0.75rem;">
-                <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.9rem; font-weight:500; color:#374151; cursor:pointer;">
-                    <input type="checkbox" id="slotChangeSendNotify" checked style="width:18px; height:18px; accent-color:#2563eb;">
-                    Invia notifica push ai prenotati
-                </label>
-            </div>
-            <div id="slotChangeMsgContainer">
-                <label style="font-size:0.85rem; font-weight:600; color:#374151; display:block; margin-bottom:0.4rem;">Messaggio:</label>
-                <textarea id="slotChangeMsgText" rows="3" placeholder="Scrivi il messaggio da inviare ai prenotati..." style="width:100%; box-sizing:border-box; padding:0.6rem 0.75rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.9rem; resize:vertical; font-family:inherit;"></textarea>
-            </div>
-            <div id="slotChangeResult" style="margin-top:0.75rem;"></div>
-        </div>
-        <div style="padding:1rem 1.5rem; border-top:1px solid #e5e7eb; display:flex; gap:0.75rem; justify-content:flex-end;">
-            <button id="slotChangeCancelBtn" style="padding:0.6rem 1.2rem; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-size:0.9rem; cursor:pointer; color:#374151;">Annulla</button>
-            <button id="slotChangeConfirmBtn" style="padding:0.6rem 1.2rem; border:none; border-radius:8px; background:#dc2626; color:#fff; font-size:0.9rem; cursor:pointer; font-weight:600;">Conferma annullamento</button>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-    document.body.appendChild(popup);
-
-    // Toggle message field visibility based on checkbox
-    const notifyCheckbox = document.getElementById('slotChangeSendNotify');
-    const msgContainer = document.getElementById('slotChangeMsgContainer');
-    notifyCheckbox.addEventListener('change', () => {
-        msgContainer.style.display = notifyCheckbox.checked ? 'block' : 'none';
-    });
-
-    // Close handlers
-    const closePopup = () => {
-        overlay.remove();
-        popup.remove();
-        // Reset the select dropdown since we're cancelling
-        renderAllTimeSlots();
-    };
-
-    document.getElementById('slotChangeClose').addEventListener('click', closePopup);
-    document.getElementById('slotChangeCancelBtn').addEventListener('click', closePopup);
-    overlay.addEventListener('click', e => { e.stopPropagation(); });
-
-    // Confirm handler
-    document.getElementById('slotChangeConfirmBtn').addEventListener('click', async () => {
-        const confirmBtn = document.getElementById('slotChangeConfirmBtn');
-        const resultDiv = document.getElementById('slotChangeResult');
-        const sendNotify = document.getElementById('slotChangeSendNotify').checked;
-        const msgText = document.getElementById('slotChangeMsgText').value.trim();
-
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = '⏳ Elaborazione...';
-
-        try {
-            // Step 1: Send notifications if checked
-            if (sendNotify && msgText) {
-                resultDiv.innerHTML = '<div style="color:#6b7280; font-size:0.85rem;">⏳ Invio notifiche in corso...</div>';
-
-                const { data: { session: _schedSession } } = await supabaseClient.auth.getSession();
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/send-admin-message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (_schedSession?.access_token || '') },
-                    body: JSON.stringify({
-                        title: `📢 Lezione annullata di ${dateDisplay} alle ${timeSlot.split(' - ')[0]}`,
-                        body: msgText,
-                        mode: 'ora',
-                        date: selectedScheduleDate.formatted,
-                        time: timeSlot
-                    })
-                });
-                const data = await res.json();
-
-                let notifyHtml = '';
-                if (data.ok) {
-                    if ((data.recipients || []).length > 0) {
-                        notifyHtml += `<div style="color:#16a34a; font-size:0.85rem; margin-bottom:0.3rem;">✅ Notifica inviata a (${data.recipients.length}):</div>`;
-                        notifyHtml += '<ul style="margin:0 0 0.5rem; padding-left:1.2rem; list-style:none;">';
-                        (data.recipients || []).forEach(name => {
-                            notifyHtml += `<li style="font-size:0.85rem; padding:0.15rem 0;">👤 ${_escHtml(name)}</li>`;
-                        });
-                        notifyHtml += '</ul>';
-                    }
-                    if ((data.failed || []).length > 0) {
-                        notifyHtml += `<div style="color:#dc2626; font-size:0.85rem; margin-bottom:0.3rem;">❌ Non recapitate (${data.failed.length}):</div>`;
-                        notifyHtml += '<ul style="margin:0 0 0.5rem; padding-left:1.2rem; list-style:none;">';
-                        (data.failed || []).forEach(name => {
-                            notifyHtml += `<li style="font-size:0.85rem; padding:0.15rem 0;">👤 ${_escHtml(name)}</li>`;
-                        });
-                        notifyHtml += '</ul>';
-                    }
-                    if ((data.recipients || []).length === 0 && (data.failed || []).length === 0) {
-                        notifyHtml = '<div style="color:#f59e0b; font-size:0.85rem;">⚠️ Nessun destinatario con notifiche push attive.</div>';
-                    }
-                } else {
-                    notifyHtml = `<div style="color:#dc2626; font-size:0.85rem;">❌ Errore invio notifiche: ${_escHtml(data.error || 'sconosciuto')}</div>`;
-                }
-
-                resultDiv.innerHTML = notifyHtml;
-            }
-
-            // Step 2: Cancel all bookings in this slot (with await on Supabase)
-            if (!sendNotify || !msgText) {
-                resultDiv.innerHTML = '<div style="color:#6b7280; font-size:0.85rem;">⏳ Annullamento prenotazioni...</div>';
-            } else {
-                resultDiv.innerHTML += '<div style="color:#6b7280; font-size:0.85rem; margin-top:0.5rem;">⏳ Annullamento prenotazioni...</div>';
-            }
-
-            let cancelledCount = 0;
-            let cancelErrors = [];
-            for (const b of bookings) {
-                // Aggiorna cache locale: solo cambio stato (nessun rimborso/mora/bonus)
-                const all = BookingStorage.getAllBookings();
-                const idx = all.findIndex(bk => bk.id === b.id);
-                if (idx === -1) continue;
-                const bk = all[idx];
-                bk.cancelledPaymentMethod = bk.paymentMethod;
-                bk.cancelledPaidAt = bk.paidAt;
-                bk.status = 'cancelled';
-                bk.cancelledAt = new Date().toISOString();
-                bk.paid = false;
-                bk.paymentMethod = null;
-                bk.paidAt = null;
-
-                // Cancellazione server via RPC atomica cancel_booking
-                // (cambio stato + conversione group-class -> small-group lato server)
-                if (typeof supabaseClient !== 'undefined' && bk._sbId) {
-                    try {
-                        const { data: rpcData, error: rpcErr } = await _rpcWithTimeout(
-                            supabaseClient.rpc('cancel_booking', { p_booking_id: bk._sbId })
-                        );
-                        if (rpcErr) {
-                            console.error('[SlotChange] cancel_booking error:', rpcErr.message);
-                            cancelErrors.push(b.name);
-                        } else if (rpcData && !rpcData.success && rpcData.error !== 'already_cancelled') {
-                            console.warn('[SlotChange] cancel_booking fallita per', bk._sbId, rpcData.error);
-                            cancelErrors.push(b.name);
-                        } else {
-                            cancelledCount++;
-                        }
-                    } catch (e) {
-                        console.error('[SlotChange] RPC exception:', e);
-                        cancelErrors.push(b.name);
-                    }
-                } else {
-                    cancelledCount++;
-                }
-            }
-            // Commit local cache (single write)
-            BookingStorage.replaceAllBookings(BookingStorage.getAllBookings());
-
-            // Step 3: Apply the slot type change
-            _applySlotTypeChange(timeSlot, newType);
-
-            // Update button to show success
-            confirmBtn.textContent = '✅ Fatto';
-            confirmBtn.style.background = '#16a34a';
-
-            // Add final message
-            let doneHtml = `<div style="color:#16a34a; font-size:0.85rem; font-weight:600; margin-top:0.5rem;">✅ ${cancelledCount} prenotazione/i annullata/e. Slot aggiornato.</div>`;
-            if (cancelErrors.length > 0) {
-                doneHtml += `<div style="color:#dc2626; font-size:0.85rem; margin-top:0.3rem;">⚠️ Errore annullamento per: ${cancelErrors.map(n => _escHtml(n)).join(', ')}</div>`;
-            }
-            resultDiv.innerHTML += doneHtml;
-
-            // Auto-close after a short delay
-            setTimeout(() => {
-                overlay.remove();
-                popup.remove();
-            }, 2500);
-
-        } catch (e) {
-            resultDiv.innerHTML = `<div style="color:#dc2626; font-size:0.85rem;">❌ Errore: ${_escHtml(e.message)}</div>`;
-        } finally {
-            // Ri-abilita il bottone solo se non siamo già nello stato successo
-            // (stato successo: testo cambiato e popup si auto-chiude dopo 2.5s)
-            if (confirmBtn && confirmBtn.textContent !== '✅ Fatto') {
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = 'Conferma annullamento';
-            }
-        }
-    });
-}
-
-// ── Client Picker for "Slot prenotato" ────────────────────────────────────────
-
-// Sanitize a time slot string to use as an HTML element ID
-function sanitizeSlotId(timeSlot) {
-    return timeSlot.replace(/[^a-z0-9]/gi, '_');
-}
-
-// Holds last search results per time slot to avoid JSON in onclick attributes
-const _clientSearchResults = {};
-
-// Called on input — searches registered users and renders the dropdown list
-var searchClientsForSlot = _debounce(function(timeSlot, query) {
-    const safeId = sanitizeSlotId(timeSlot);
-    const resultsDiv = document.getElementById(`client-results-${safeId}`);
-    if (!resultsDiv) return;
-
-    if (!query || query.trim().length < 2) {
-        resultsDiv.innerHTML = '';
-        _clientSearchResults[timeSlot] = [];
-        return;
-    }
-
-    const results = UserStorage.search(query);
-    _clientSearchResults[timeSlot] = results;
-
-    if (results.length === 0) {
-        resultsDiv.innerHTML = '<div class="slot-client-no-results">Nessun iscritto trovato</div>';
-        return;
-    }
-
-    resultsDiv.innerHTML = results.map((user, i) => `
-        <div class="slot-client-result" onclick="selectSlotClient('${timeSlot}', ${i})">
-            <span class="slot-client-result-name">${user.name}</span>
-        </div>
-    `).join('');
-}, 250);
-
-// Formats YYYY-MM-DD to display string (e.g. "Lunedì 26 Febbraio 2026")
-function formatAdminBookingDate(dateStr) {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const d = new Date(year, month - 1, day);
-    const days = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
-    const months = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
-                    'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
-    return `${days[d.getDay()]} ${day} ${months[month - 1]} ${year}`;
-}
-
-// Called when a user clicks a result — creates a real booking and links it to the slot
-async function selectSlotClient(timeSlot, index) {
-    const user = (_clientSearchResults[timeSlot] || [])[index];
-    if (!user || !selectedScheduleDate) return;
-
-    if (!confirm(`Confermare la prenotazione di ${user.name} per lo slot ${timeSlot} del ${selectedScheduleDate.formatted}?`)) return;
-
-    const overrides = BookingStorage.getScheduleOverrides();
-    const dateSlots = overrides[selectedScheduleDate.formatted];
-    if (!dateSlots) return;
-
-    const slot = dateSlots.find(s => s.time === timeSlot);
-    if (!slot) return;
-
-    // Remove previous booking for this slot (if admin changed the client)
-    if (slot.bookingId) {
-        BookingStorage.removeBookingById(slot.bookingId);
-    }
-
-    // Create the real booking — visible in Prenotazioni, Clienti, Pagamenti, Le mie prenotazioni
-    const booking = {
-        name: user.name,
-        email: user.email,
-        whatsapp: user.whatsapp || '',
-        date: selectedScheduleDate.formatted,
-        time: timeSlot,
-        slotType: slot.type || SLOT_TYPES.GROUP_CLASS,
-        notes: '',
-        dateDisplay: formatAdminBookingDate(selectedScheduleDate.formatted)
-    };
-    // Admin assigns client to slot: ensure capacity allows the booking
-    const currentCount = BookingStorage.getBookingsForSlot(booking.date, booking.time)
-        .filter(b => b.status === 'confirmed' && b.slotType === booking.slotType).length;
-    const result = await BookingStorage.saveBooking(booking, currentCount + 1);
-    if (!result.ok) {
-        showToast('⚠️ Errore: prenotazione non riuscita. Riprova.', 'error');
-        renderAllTimeSlots();
-        return;
-    }
-
-    // Store client and bookingId in the override for display purposes
-    slot.client = { name: user.name, email: user.email, whatsapp: user.whatsapp || '' };
-    slot.bookingId = result.booking.id;
-    BookingStorage.saveScheduleOverrides(overrides, [selectedScheduleDate.formatted]);
-    invalidateStatsCache();
-    renderAllTimeSlots();
-}
-
-// Rimuove cliente e prenotazione da uno "Slot prenotato" (group-class).
-// La cancellazione e' solo cambio stato via RPC cancel_booking (la conversione
-// group-class -> small-group la fa il server). NESSUN rimborso credito, mora o bonus.
-async function clearSlotClient(timeSlot) {
-    if (!selectedScheduleDate) return;
-
-    const overrides = BookingStorage.getScheduleOverrides();
-    const dateSlots = overrides[selectedScheduleDate.formatted];
-    if (!dateSlots) return;
-
-    const slot = dateSlots.find(s => s.time === timeSlot);
-    if (!slot || !slot.bookingId) return;
-
-    const allBookings = [...BookingStorage.getAllBookings()];
-    const index = allBookings.findIndex(b => b.id === slot.bookingId);
-    if (index === -1) {
-        // Booking not found in cache — just clear the slot
-        delete slot.client;
-        delete slot.bookingId;
-        BookingStorage.saveScheduleOverrides(overrides, [selectedScheduleDate.formatted]);
-        renderAllTimeSlots();
-        return;
-    }
-
-    const booking = allBookings[index];
-    const bookingName = booking.name || slot.client?.name || '';
-
-    if (!confirm(`Confermare l'annullamento della prenotazione di ${bookingName}?`)) return;
-
-    // Helper to finalize: clear slot override + render
-    const finalizeSlotClear = () => {
-        const ov = BookingStorage.getScheduleOverrides();
-        const ds = ov[selectedScheduleDate.formatted];
-        if (ds) {
-            const s = ds.find(x => x.time === timeSlot);
-            if (s) { delete s.client; delete s.bookingId; }
-            BookingStorage.saveScheduleOverrides(ov, [selectedScheduleDate.formatted]);
-        }
-        renderAllTimeSlots();
-    };
-
-    // Cancellazione server via RPC atomica (cambio stato + conversione slot lato server)
-    if (typeof supabaseClient !== 'undefined' && booking._sbId) {
-        try {
-            const { data, error } = await _rpcWithTimeout(
-                supabaseClient.rpc('cancel_booking', { p_booking_id: booking._sbId })
-            );
-            if (error) throw new Error(error.message);
-            if (data && !data.success && data.error !== 'already_cancelled') {
-                throw new Error(data.error || 'Errore sconosciuto');
-            }
-        } catch (e) {
-            console.error('[clearSlotClient] cancel_booking error:', e);
-            if (typeof showToast === 'function') showToast('⚠️ Errore annullamento. Riprova.', 'error', 5000);
-            return;
-        }
-    }
-
-    // Aggiorna cache locale: solo cambio stato (nessun rimborso/mora/bonus)
-    allBookings[index] = {
-        ...booking,
-        cancelledPaymentMethod: booking.paymentMethod,
-        cancelledPaidAt: booking.paidAt,
-        status: 'cancelled',
-        cancelledAt: new Date().toISOString(),
-        paid: false, paymentMethod: null, paidAt: null,
-    };
-    BookingStorage.replaceAllBookings(allBookings);
-    finalizeSlotClear();
 }

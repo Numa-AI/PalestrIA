@@ -67,7 +67,8 @@ function _convertCronToAdminFormat(cron) {
         for (const r of cron.schedule_overrides) {
             if (!overrides[r.date]) overrides[r.date] = [];
             const slot = { time: r.time, type: r.slot_type };
-            if (r.extras?.length) slot.extras = r.extras;
+            if (r.slot_type_id) slot.slotTypeId = r.slot_type_id;
+            if (r.capacity != null) slot.capacity = r.capacity;   // capienza assoluta (nuovo schema)
             overrides[r.date].push(slot);
         }
         data['scheduleOverrides'] = JSON.stringify(overrides);
@@ -363,11 +364,14 @@ function importBackup(input) {
                     const oRows = [];
                     for (const [dateStr, slots] of Object.entries(overrides)) {
                         for (const slot of (Array.isArray(slots) ? slots : [])) {
-                            oRows.push({ date: dateStr, time: slot.time, slot_type: slot.type, extras: slot.extras || [] });
+                            const row = { org_id: window._orgId, date: dateStr, time: slot.time, slot_type: slot.type };
+                            if (slot.slotTypeId) row.slot_type_id = slot.slotTypeId;
+                            if (slot.capacity != null) row.capacity = slot.capacity;   // capienza assoluta
+                            oRows.push(row);
                         }
                     }
                     if (oRows.length > 0) {
-                        promises.push(_queryWithTimeout(supabaseClient.from('schedule_overrides').upsert(oRows, { onConflict: 'date,time' }), _T).catch(e => { _restoreErrors.push('schedule_overrides'); }));
+                        promises.push(_queryWithTimeout(supabaseClient.from('schedule_overrides').upsert(oRows, { onConflict: 'org_id,date,time' }), _T).catch(e => { _restoreErrors.push('schedule_overrides'); }));
                     }
 
                     // 6. Scheduling config (slot_types, time_slots_config, weekly templates)

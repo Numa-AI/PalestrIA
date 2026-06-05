@@ -238,8 +238,8 @@ function renderCalendar() {
         calendarGrid.appendChild(header);
     });
 
-    // Create time slots rows
-    TIME_SLOTS.forEach(timeSlot => {
+    // Create time slots rows (fasce per-org dal DB, fallback alle costanti)
+    getTimeSlots().forEach(timeSlot => {
         // Time label
         const timeLabel = createDiv('calendar-time', timeSlot);
         calendarGrid.appendChild(timeLabel);
@@ -295,7 +295,7 @@ function createSlot(dateInfo, timeSlot) {
         if (loggedIn && isFull) slot.classList.add('slot-full');
         if (enrolled) slot.classList.add('user-enrolled');
         slot.innerHTML = `
-            <div class="slot-type">${SLOT_NAMES[mainType]}</div>
+            <div class="slot-type">${getSlotName(mainType)}</div>
             ${enrolled ? '<div class="slot-enrolled-badge">Qui ti alleni 💪🏼</div>' : (loggedIn && !_isNonBookable(mainType) ? `<div class="slot-spots ${spotsColorClass(remainingSpots)}">${isFull ? 'Completo' : remainingSpots + (remainingSpots === 1 ? ' disponibile' : ' disponibili')}</div>` : '')}
         `;
         if (loggedIn) {
@@ -322,7 +322,7 @@ function createSlot(dateInfo, timeSlot) {
             const half = document.createElement('div');
             half.className = `split-slot-half ${type}${loggedInSplit && full ? ' slot-full' : ''}${enrolledHalf ? ' user-enrolled' : ''}`;
             half.innerHTML = `
-                <div class="slot-type">${SLOT_NAMES[type]}</div>
+                <div class="slot-type">${getSlotName(type)}</div>
                 ${enrolledHalf ? '<div class="slot-enrolled-badge">Qui ti alleni 💪🏼</div>' : (loggedInSplit && !_isNonBookable(type) ? `<div class="slot-spots ${spotsColorClass(rem)}">${full ? 'Completo' : rem + ' disp.'}</div>` : '')}
             `;
             if (loggedInSplit) {
@@ -555,7 +555,7 @@ function createMobileSlotCard(dateInfo, scheduledSlot) {
             <span class="mobile-slot-time">🕐 ${timeSlot}</span>
             ${enrolled ? '<span class="mobile-slot-enrolled">Qui ti alleni 💪🏼</span>' : (loggedIn && !_isNonBookable(slotType) ? `<span class="mobile-slot-available ${spotsColorClass(remainingSpots)}">${isFull ? 'Completo' : remainingSpots + (remainingSpots === 1 ? ' disponibile' : ' disponibili')}</span>` : '')}
         </div>
-        <div class="mobile-slot-type">${SLOT_NAMES[slotType]}</div>
+        <div class="mobile-slot-type">${getSlotName(slotType)}</div>
     `;
 
     // Allow booking if not full and less than 30 min have passed since lesson start
