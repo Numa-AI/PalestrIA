@@ -1061,9 +1061,9 @@ begin
     -- settings di base
     insert into org_settings (org_id, key, value) values
         (v_org, 'branding.studio_name', to_jsonb(trim(p_name))),
-        (v_org, 'branding.primary_color', to_jsonb('#8B5CF6')),
-        (v_org, 'locale.timezone', to_jsonb('Europe/Rome')),
-        (v_org, 'locale.currency', to_jsonb('EUR')),
+        (v_org, 'branding.primary_color', to_jsonb('#8B5CF6'::text)),
+        (v_org, 'locale.timezone', to_jsonb('Europe/Rome'::text)),
+        (v_org, 'locale.currency', to_jsonb('EUR'::text)),
         (v_org, 'booking.policy.free_cancel_hours', to_jsonb(24)),
         (v_org, 'booking.policy.penalty_pct', to_jsonb(50))
     on conflict do nothing;
