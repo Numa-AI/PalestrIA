@@ -43,6 +43,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ──────────────────────────────────────────────────────────────────────
+      # Tripwire STATICO anti-USING(true): nessuna policy RLS deve usare
+      # USING(true) / WITH CHECK(true) su una tabella business (= la riga sarebbe
+      # visibile/scrivibile a OGNI tenant → data-leak cross-tenant). È un controllo
+      # veloce (niente DB) complementare al test runtime più sotto: intercetta una
+      # policy non org-scoped già allo statico, anche su tabelle non esercitate dal
+      # test. Unica eccezione ammessa: 'plans' (catalogo globale dei piani SaaS,
+      # senza org_id). Se aggiungi una nuova tabella GLOBALE legittima con
+      # USING(true), estendi la whitelist nel `grep -vi` qui sotto.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Guard statico — nessuna policy USING(true) fuori whitelist
+        run: |
+          set -euo pipefail
+          hits=$(grep -rniE 'using[[:space:]]*\([[:space:]]*true[[:space:]]*\)|with[[:space:]]+check[[:space:]]*\([[:space:]]*true[[:space:]]*\)' \
+                   supabase/migrations/*.sql | grep -vi 'plans' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Policy RLS con USING(true)/WITH CHECK(true) fuori whitelist (possibile data-leak cross-tenant):"
+            echo "$hits"
+            exit 1
+          fi
+          echo "OK: nessuna policy USING(true)/WITH CHECK(true) inattesa (sola eccezione: plans)."
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -70,53 +92,44 @@ jobs:
         run: supabase db reset --debug
 
       # ──────────────────────────────────────────────────────────────────────
-      # PLACEHOLDER — TEST RLS CROSS-TENANT (da implementare)
+      # Applica le migration post-baseline (00000000000001+) sopra la baseline.
       #
-      # Obiettivo: dimostrare l'isolamento multi-tenant garantito da RLS +
-      # current_org_id(). Tutte le tabelle business hanno org_id NOT NULL e
-      # policy org-scoped: un membro della org A NON deve mai leggere/scrivere
-      # dati della org B.
-      #
-      # Setup suggerito (via psql contro lo stack locale, connessione su
-      #   postgresql://postgres:postgres@127.0.0.1:54322/postgres):
-      #
-      #   1. Crea 2 utenti in auth.users (org A e org B), es.:
-      #        insert into auth.users (id, email, ...) values (:uid_a, 'a@test.dev', ...);
-      #        insert into auth.users (id, email, ...) values (:uid_b, 'b@test.dev', ...);
-      #
-      #   2. Crea 2 org con i rispettivi owner. Si può chiamare la RPC
-      #      create_organization(name, slug) impersonando ciascun utente
-      #      (set request.jwt.claims con sub = uid + app_metadata.org_id), oppure
-      #      inserire direttamente in organizations + org_members(role='owner').
-      #
-      #   3. Inserisci dati org-scoped in entrambe (es. una riga in client_packages
-      #      o payments per org A e una per org B).
-      #
-      #   4. Simula la sessione dell'utente A impostando i claim JWT che
-      #      current_org_id()/is_org_admin() leggono:
-      #        set local role authenticated;
-      #        set local request.jwt.claims = '{"sub":"<uid_a>",
-      #            "app_metadata":{"org_id":"<org_a>","org_role":"owner"}}';
-      #
-      #   5. ASSERZIONI di isolamento:
-      #        - select count(*) from profiles;            -- vede SOLO org A (>=1, mai righe di B)
-      #        - select count(*) from payments where org_id = '<org_b>';  -- atteso 0
-      #        - update profiles set name='x' where org_id='<org_b>';     -- 0 righe toccate
-      #        - insert con org_id della org B            -- deve violare la WITH CHECK
-      #      Ripeti speculare impersonando l'utente B verso la org A.
-      #
-      #   6. Verifica che NESSUNA policy usi USING(true) e che le RPC
-      #      SECURITY DEFINER filtrino sempre su current_org_id().
-      #
-      # Implementazione consigliata: uno script tests/rls/cross_tenant.sql con
-      # `do $$ ... raise exception ... $$;` sulle asserzioni, eseguito con
-      #   psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/rls/cross_tenant.sql
-      # (exit code != 0 ⇒ il job fallisce). In alternativa pgTAP.
-      # ──────────────────────────────────────────────────────────────────────
-      - name: RLS cross-tenant isolation tests (placeholder)
+      # `db reset` (step precedente) applica SOLO la baseline (le altre migration
+      # SaaS — operational_rpcs, post_deploy_fixes, fix_create_organization,
+      # platform_admin, stripe_connect — erano state spostate in /tmp per validare
+      # la baseline in isolamento). Le ri-applichiamo qui in ordine, esattamente
+      # come sul progetto remoto, così il test RLS gira sullo schema COMPLETO ed
+      # esercita davvero le RPC (get_availability_range/get_slot_attendees/
+      # get_all_profiles) e la versione corrente di create_organization
+      # (00000000000003). Il test resta comunque robusto: salta in modo pulito le
+      # RPC assenti. La baseline-isolation resta validata dallo step `db reset`.
+      - name: Applica le migration post-baseline (RPC e fix)
         run: |
-          echo "TODO: implementare tests/rls/cross_tenant.sql ed eseguirlo qui."
-          echo "DB locale disponibile su postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          set -euo pipefail
+          DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          for f in $(ls -1 /tmp/legacy-migrations/*.sql 2>/dev/null | sort); do
+            echo "→ applico $(basename "$f")"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      # ──────────────────────────────────────────────────────────────────────
+      # TEST RLS CROSS-TENANT — isolamento multi-tenant (RLS + org_id).
+      #
+      # Esegue tests/rls/cross_tenant.sql contro lo stack locale. Lo script:
+      #   • crea 2 org (A/B) con i rispettivi owner via create_organization;
+      #   • popola dati REALI in ENTRAMBE (profiles, payments, packages, bookings);
+      #   • impersona l'owner di A (claim JWT + `set local role authenticated`) e
+      #     verifica che NON veda/aggiorni/cancelli/inserisca dati di B (e viceversa);
+      #   • verifica il contratto di scoping delle RPC pubbliche per-slug e
+      #     l'isolamento di get_all_profiles() via current_org_id();
+      #   • prova anche che una scrittura LEGITTIMA nella propria org riesce.
+      # Una qualsiasi `raise exception` ⇒ exit code != 0 ⇒ il job fallisce.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: RLS cross-tenant isolation tests
+        run: |
+          set -euo pipefail
+          DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/rls/cross_tenant.sql
 
   # ────────────────────────────────────────────────────────────────────────────
   # 2) Type-check delle Edge Function (Deno 2). Risolve gli import npm:.
