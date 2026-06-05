@@ -1,5 +1,11 @@
 /* Admin Styles */
 
+/* Nome studio nell'header admin (popolato da OrgSettings.applyBranding via
+   [data-org-name]). Quando vuoto si collassa per non lasciare un gap nel flex. */
+.adm-brand-org:empty {
+    display: none;
+}
+
 .dashboard-section .container {
     max-width: 620px;
 }

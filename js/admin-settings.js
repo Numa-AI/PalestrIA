@@ -74,6 +74,9 @@ async function renderSettingsTab() {
     // Assicura che la cache OrgSettings sia popolata.
     try { if (window.OrgSettings && OrgSettings.load) await OrgSettings.load(); } catch (_) {}
 
+    // Applica il branding persistito (nome/logo/favicon/colore/titolo) all'apertura del tab.
+    _settApplyBrandingExtras();
+
     // Se la sezione attiva non è più visibile (es. cambio ruolo), torna a branding.
     const visible = _settSections().map(s => s.id);
     if (!visible.includes(_settActiveSection)) _settActiveSection = 'branding';
@@ -98,13 +101,16 @@ function settSwitchSection(section) {
     _settRenderActiveSection();
 }
 
-function _settRenderActiveSection() {
+async function _settRenderActiveSection() {
     const body = document.getElementById('settBody');
     if (!body) return;
     const sec = _settSections().find(s => s.id === _settActiveSection);
     if (!sec) { body.innerHTML = ''; return; }
     try {
-        sec.render(body);
+        // I render possono essere sync o async (payments/staff/billing-saas): await
+        // copre entrambi i casi e cattura i reject che altrimenti lascerebbero il
+        // placeholder "Caricamento…" senza messaggio d'errore.
+        await sec.render(body);
     } catch (e) {
         console.error('[Settings] render error:', e);
         body.innerHTML = `<div class="sett-card"><p class="sett-card-desc">Errore nel caricamento della sezione.</p></div>`;
@@ -137,6 +143,35 @@ async function _settSave(key, value, okMsg) {
 // ════════════════════════════════════════════════════════════════════════════
 // 1 — BRANDING
 // ════════════════════════════════════════════════════════════════════════════
+//
+// Applicazione del branding a runtime. La fonte di verità è la globale
+// OrgSettings.applyBranding() (js/org-settings.js), che gestisce nome studio
+// ([data-org-name]), logo (img[data-org-logo]), favicon, colore primario (+ dark
+// derivata e <meta theme-color>) e titolo/nome PWA. Qui ci limitiamo a invocarla,
+// con un fallback minimo per logo/favicon/colore nel caso (improbabile) in cui
+// fosse caricata una versione più vecchia della funzione globale.
+function _settApplyBrandingExtras() {
+    try {
+        if (window.OrgSettings && typeof OrgSettings.applyBranding === 'function') {
+            OrgSettings.applyBranding();
+            return;
+        }
+        // Fallback difensivo (versione legacy di applyBranding senza logo/favicon).
+        const logo    = OrgSettings.getString('branding.logo_url', '');
+        const favicon = OrgSettings.getString('branding.favicon_url', '');
+        const color   = OrgSettings.getString('branding.primary_color', '');
+        if (logo) document.querySelectorAll('img[data-org-logo]').forEach(img => { img.src = logo; });
+        if (favicon) { const fav = document.querySelector('link[rel="icon"]'); if (fav) fav.href = favicon; }
+        if (color && /^#[0-9a-fA-F]{6}$/.test(color)) {
+            document.documentElement.style.setProperty('--primary-purple', color);
+            const themeMeta = document.querySelector('meta[name="theme-color"]');
+            if (themeMeta) themeMeta.content = color;
+        }
+    } catch (e) {
+        console.warn('[Settings] applyBrandingExtras error:', e);
+    }
+}
+
 function _settRenderBranding(body) {
     const name    = OrgSettings.getString('branding.studio_name', '');
     const logo    = OrgSettings.getString('branding.logo_url', '');
@@ -184,6 +219,10 @@ function _settRenderBranding(body) {
                 <button class="sett-action-btn sett-action-btn--purple" onclick="saveBrandingSettings()">💾 Salva branding</button>
             </div>
         </div>`;
+
+    // Applica subito il branding persistito (logo/favicon/titolo/colore) così
+    // l'admin vede lo stato reale anche aprendo il tab senza salvare.
+    _settApplyBrandingExtras();
 }
 
 async function saveBrandingSettings() {
@@ -200,7 +239,8 @@ async function saveBrandingSettings() {
         await OrgSettings.set('branding.logo_url', logo);
         await OrgSettings.set('branding.favicon_url', favicon);
         await OrgSettings.set('branding.primary_color', color);
-        if (OrgSettings.applyBranding) OrgSettings.applyBranding();
+        // Applica subito il branding (nome, logo, favicon, colore, titolo) a runtime.
+        _settApplyBrandingExtras();
         showToast('✅ Branding salvato', 'success');
     } catch (e) {
         console.error('[Settings] branding save error:', e);
@@ -533,29 +573,40 @@ async function savePaymentsSettings() {
     };
 
     try {
-        // 1) billing_settings (RLS admin)
+        // 1) billing_settings (RLS admin): modello, soglie e flag.
         const { error: bErr } = await _queryWithTimeout(
             supabaseClient.from('billing_settings').upsert(billingRow, { onConflict: 'org_id' })
         );
         if (bErr) throw bErr;
 
-        // 2) listino prezzi: aggiorna slot_types.default_price + org_settings 'billing_client.prices'
+        // 2) listino prezzi: aggiorna slot_types.default_price (prezzo autoritativo)
+        //    + org_settings 'billing_client.prices' (display pubblico).
+        //    Tutti gli update in PARALLELO con raccolta errori: niente più stop a
+        //    metà loop che lasciava il DB parzialmente aggiornato.
         const priceInputs = Array.from(document.querySelectorAll('.sett-price-input'));
         const pricesMap = {};
-        for (const inp of priceInputs) {
+        const updates = priceInputs.map(inp => {
             const id  = inp.dataset.slotId;
             const key = inp.dataset.slotKey;
             const val = parseFloat(inp.value) || 0;
-            pricesMap[key] = val;
-            const { error: sErr } = await _queryWithTimeout(
+            if (key) pricesMap[key] = val;
+            return _queryWithTimeout(
                 supabaseClient.from('slot_types').update({ default_price: val }).eq('id', id).eq('org_id', orgId)
-            );
-            if (sErr) throw sErr;
-        }
-        // display pubblico prezzi (whitelisted per anon)
+            ).then(res => res, err => ({ error: err }));
+        });
+        const results = await Promise.all(updates);
+        const priceErrors = results.filter(r => r && r.error);
+
+        // Allinea il display pubblico al valore impostato in ogni caso (è la fonte
+        // mostrata ai clienti; gli slot_types andati a buon fine combaciano).
         await OrgSettings.set('billing_client.prices', pricesMap);
 
-        showToast('✅ Pagamenti salvati', 'success');
+        if (priceErrors.length) {
+            console.error('[Settings] payments price errors:', priceErrors);
+            showToast(`Salvato, ma ${priceErrors.length} prezzo/i non aggiornati`, 'error');
+        } else {
+            showToast('✅ Pagamenti salvati', 'success');
+        }
     } catch (e) {
         console.error('[Settings] payments save error:', e);
         showToast('Errore salvataggio pagamenti', 'error');
@@ -1437,9 +1488,58 @@ async function saveMaintenanceMessage() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TOGGLE LEGACY (cert / assicurazione / badge) — invariati, riusano le Storage
-// classes in data.js. Popolati dalle render*UI() chiamate in _settRenderPolicy.
+// TOGGLE LEGACY (cert / assicurazione / badge)
+//
+// Le Storage classes in data.js (CertEditableStorage, CertBookingStorage, …) sono
+// fire-and-forget: scrivono su localStorage (chiave gym_*) e lanciano _upsertSetting
+// senza await né gestione errori UI. Qui le avvolgiamo per ottenere i 3 criteri:
+//   - gate admin (con rollback del checkbox in caso di permesso negato)
+//   - persistenza AWAITABLE: scriviamo via OrgSettings.set(dbKey, bool) — org-scoped,
+//     cache localStorage NAMESPACED (org_<id>_<key>) → niente bleed cross-tenant —
+//     e in PARALLELO aggiorniamo anche la chiave legacy gym_* via la Storage class
+//     così i consumer in-session (gating book_slot lato client, render badge) restano
+//     coerenti senza ricaricare la pagina.
+//   - feedback toast success/error + rollback del toggle se la RPC fallisce.
+//
+// dbKey = chiave org_settings SENZA prefisso gym_ (combacia con syncAppSettingsFromSupabase
+// in data.js, che ripopola le gym_* da queste chiavi al boot).
 // ══════════════════════════════════════════════════════════════════════════════
+
+// Salva un toggle booleano legacy con gate admin, persistenza awaitable e feedback.
+//  - toggleId : id del <input type=checkbox>
+//  - textId   : id dello <span> di stato (può essere null)
+//  - dbKey    : chiave org_settings (senza gym_)
+//  - val      : nuovo valore (bool)
+//  - labels   : { on, off } testo di stato
+//  - legacySetter(val) : applica anche alla Storage class legacy (sync in-session)
+//  - after()  : callback opzionale post-successo (es. refresh calendario)
+async function _settSaveLegacyToggle(toggleId, textId, dbKey, val, labels, legacySetter, after) {
+    const toggle = document.getElementById(toggleId);
+    const text   = textId ? document.getElementById(textId) : null;
+
+    if (!_settIsAdmin()) {
+        showToast('Permesso negato', 'error');
+        if (toggle) toggle.checked = !val;               // rollback UI
+        return;
+    }
+
+    // Aggiornamento ottimistico dello stato testuale.
+    if (text) text.textContent = val ? labels.on : labels.off;
+
+    try {
+        // Persistenza autoritativa awaitable (org-scoped, namespaced).
+        await OrgSettings.set(dbKey, val);
+        // Allinea la cache legacy in-session per i consumer di data.js.
+        try { if (typeof legacySetter === 'function') legacySetter(val); } catch (_) {}
+        if (typeof after === 'function') { try { after(); } catch (_) {} }
+        showToast('✅ Impostazione salvata', 'success');
+    } catch (e) {
+        console.error('[Settings] legacy toggle save error', dbKey, e);
+        if (toggle) toggle.checked = !val;               // rollback UI
+        if (text) text.textContent = !val ? labels.on : labels.off;
+        showToast('Errore salvataggio impostazione', 'error');
+    }
+}
 
 function renderCertEditableUI() {
     const editable = CertEditableStorage.get();
@@ -1450,9 +1550,9 @@ function renderCertEditableUI() {
 }
 
 function saveCertEditable(val) {
-    CertEditableStorage.set(val);
-    const text = document.getElementById('certEditableText');
-    if (text) text.textContent = val ? 'Modificabile dal cliente' : 'Non modificabile';
+    return _settSaveLegacyToggle('certEditableToggle', 'certEditableText', 'cert_scadenza_editable', val,
+        { on: 'Modificabile dal cliente', off: 'Non modificabile' },
+        (v) => CertEditableStorage.set(v));
 }
 
 function renderCertBlockUI() {
@@ -1467,15 +1567,15 @@ function renderCertBlockUI() {
 }
 
 function saveCertBlockExpired(val) {
-    CertBookingStorage.setBlockIfExpired(val);
-    const text = document.getElementById('certBlockExpiredText');
-    if (text) text.textContent = val ? 'Bloccato' : 'Non bloccato';
+    return _settSaveLegacyToggle('certBlockExpiredToggle', 'certBlockExpiredText', 'cert_block_expired', val,
+        { on: 'Bloccato', off: 'Non bloccato' },
+        (v) => CertBookingStorage.setBlockIfExpired(v));
 }
 
 function saveCertBlockNotSet(val) {
-    CertBookingStorage.setBlockIfNotSet(val);
-    const text = document.getElementById('certBlockNotSetText');
-    if (text) text.textContent = val ? 'Bloccato' : 'Non bloccato';
+    return _settSaveLegacyToggle('certBlockNotSetToggle', 'certBlockNotSetText', 'cert_block_not_set', val,
+        { on: 'Bloccato', off: 'Non bloccato' },
+        (v) => CertBookingStorage.setBlockIfNotSet(v));
 }
 
 function renderAssicBlockUI() {
@@ -1490,15 +1590,15 @@ function renderAssicBlockUI() {
 }
 
 function saveAssicBlockExpired(val) {
-    AssicBookingStorage.setBlockIfExpired(val);
-    const text = document.getElementById('assicBlockExpiredText');
-    if (text) text.textContent = val ? 'Bloccato' : 'Non bloccato';
+    return _settSaveLegacyToggle('assicBlockExpiredToggle', 'assicBlockExpiredText', 'assic_block_expired', val,
+        { on: 'Bloccato', off: 'Non bloccato' },
+        (v) => AssicBookingStorage.setBlockIfExpired(v));
 }
 
 function saveAssicBlockNotSet(val) {
-    AssicBookingStorage.setBlockIfNotSet(val);
-    const text = document.getElementById('assicBlockNotSetText');
-    if (text) text.textContent = val ? 'Bloccato' : 'Non bloccato';
+    return _settSaveLegacyToggle('assicBlockNotSetToggle', 'assicBlockNotSetText', 'assic_block_not_set', val,
+        { on: 'Bloccato', off: 'Non bloccato' },
+        (v) => AssicBookingStorage.setBlockIfNotSet(v));
 }
 
 function renderBookingBadgesUI() {
@@ -1516,15 +1616,22 @@ function renderBookingBadgesUI() {
     }
 }
 
-function _setBadgeText(id, val) {
-    const x = document.getElementById(id);
-    if (x) x.textContent = val ? 'Visibile' : 'Nascosto';
+function saveShowCertBadge(val)  {
+    return _settSaveLegacyToggle('showCertBadgeToggle', 'showCertBadgeText', 'show_cert_badge', val,
+        { on: 'Visibile', off: 'Nascosto' }, (v) => BookingBadgesStorage.setShowCert(v), _refreshAdminCalendarIfVisible);
 }
-
-function saveShowCertBadge(val)  { BookingBadgesStorage.setShowCert(val);  _setBadgeText('showCertBadgeText',  val); _refreshAdminCalendarIfVisible(); }
-function saveShowAssicBadge(val) { BookingBadgesStorage.setShowAssic(val); _setBadgeText('showAssicBadgeText', val); _refreshAdminCalendarIfVisible(); }
-function saveShowDocBadge(val)   { BookingBadgesStorage.setShowDoc(val);   _setBadgeText('showDocBadgeText',   val); _refreshAdminCalendarIfVisible(); }
-function saveShowAnagBadge(val)  { BookingBadgesStorage.setShowAnag(val);  _setBadgeText('showAnagBadgeText',  val); _refreshAdminCalendarIfVisible(); }
+function saveShowAssicBadge(val) {
+    return _settSaveLegacyToggle('showAssicBadgeToggle', 'showAssicBadgeText', 'show_assic_badge', val,
+        { on: 'Visibile', off: 'Nascosto' }, (v) => BookingBadgesStorage.setShowAssic(v), _refreshAdminCalendarIfVisible);
+}
+function saveShowDocBadge(val)   {
+    return _settSaveLegacyToggle('showDocBadgeToggle', 'showDocBadgeText', 'show_doc_badge', val,
+        { on: 'Visibile', off: 'Nascosto' }, (v) => BookingBadgesStorage.setShowDoc(v), _refreshAdminCalendarIfVisible);
+}
+function saveShowAnagBadge(val)  {
+    return _settSaveLegacyToggle('showAnagBadgeToggle', 'showAnagBadgeText', 'show_anag_badge', val,
+        { on: 'Visibile', off: 'Nascosto' }, (v) => BookingBadgesStorage.setShowAnag(v), _refreshAdminCalendarIfVisible);
+}
 
 function _refreshAdminCalendarIfVisible() {
     if (typeof renderAdminDayView === 'function' && window._currentAdminDate) {

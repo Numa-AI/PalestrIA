@@ -137,16 +137,83 @@
     function onChange(cb) { _listeners.add(cb); return () => _listeners.delete(cb); }
     function _emit(key, value) { for (const cb of _listeners) { try { cb(key, value); } catch (_) {} } }
 
-    // ── branding: applica colore primario e nome studio a runtime ─────────────
+    // ── branding helpers ──────────────────────────────────────────────────────
+    // Oscura un colore HEX di una percentuale (per derivare --primary-purple-dark)
+    function _darkenHex(hex, pct) {
+        try {
+            let h = String(hex).trim().replace('#', '');
+            if (h.length === 3) h = h.split('').map(c => c + c).join('');
+            if (h.length !== 6) return '';
+            const f = 1 - (pct / 100);
+            const r = Math.max(0, Math.min(255, Math.round(parseInt(h.slice(0, 2), 16) * f)));
+            const g = Math.max(0, Math.min(255, Math.round(parseInt(h.slice(2, 4), 16) * f)));
+            const b = Math.max(0, Math.min(255, Math.round(parseInt(h.slice(4, 6), 16) * f)));
+            const to2 = n => n.toString(16).padStart(2, '0');
+            return `#${to2(r)}${to2(g)}${to2(b)}`;
+        } catch (_) { return ''; }
+    }
+
+    // ── branding: applica nome studio, logo, colore e favicon a runtime ───────
+    // Robusta: ogni canale è opzionale e protetto da guard. Quando una chiave
+    // branding è vuota NON sovrascrive il default statico già presente nell'HTML.
     function applyBranding() {
         try {
-            const color = getString('branding.primary_color', '');
-            if (color) document.documentElement.style.setProperty('--primary-purple', color);
-            const name = getString('branding.studio_name', '');
+            const name    = getString('branding.studio_name', '');
+            const logo    = getString('branding.logo_url', '');
+            const color   = getString('branding.primary_color', '');
+            const favicon = getString('branding.favicon_url', '');
+            const pwaName = getString('branding.pwa_name', '');
+
+            // 1) NOME STUDIO → elementi [data-org-name] e .hero-name (se non già
+            //    sovrascritto manualmente da ?pt=, vedi flag dataset.brandLocked)
             if (name) {
-                document.querySelectorAll('[data-org-name]').forEach(el => { el.textContent = name; });
+                document.querySelectorAll('[data-org-name]').forEach(el => {
+                    if (el.dataset && el.dataset.brandLocked === '1') return; // override manuale ?pt=
+                    el.textContent = name;
+                });
             }
-        } catch (_) {}
+
+            // 2) LOGO → ogni <img data-org-logo> (navbar, sidebar, login). Fallback
+            //    al default statico (src già presente nell'HTML) quando logo è vuoto.
+            if (logo) {
+                document.querySelectorAll('img[data-org-logo]').forEach(img => {
+                    if (!img.dataset.brandDefault) img.dataset.brandDefault = img.getAttribute('src') || '';
+                    img.src = logo;
+                });
+            }
+
+            // 3) COLORE PRIMARIO → CSS var + derivata dark + <meta theme-color>
+            if (color) {
+                const root = document.documentElement;
+                root.style.setProperty('--primary-purple', color);
+                const dark = _darkenHex(color, 10);
+                if (dark) root.style.setProperty('--primary-purple-dark', dark);
+                const themeMeta = document.querySelector('meta[name="theme-color"]');
+                if (themeMeta) themeMeta.setAttribute('content', color);
+            }
+
+            // 4) FAVICON → riscrive l'href del <link rel=icon> esistente
+            if (favicon) {
+                let fav = document.querySelector('link[rel="icon"]');
+                if (!fav) {
+                    fav = document.createElement('link');
+                    fav.setAttribute('rel', 'icon');
+                    document.head.appendChild(fav);
+                }
+                fav.setAttribute('href', favicon);
+            }
+
+            // 5) TITOLO PAGINA / nome PWA iOS → usa pwa_name se valorizzato,
+            //    altrimenti il nome studio. Non sovrascrive se entrambi vuoti.
+            const docTitle = pwaName || name;
+            if (docTitle) {
+                document.title = docTitle;
+                const appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+                if (appTitle) appTitle.setAttribute('content', docTitle);
+            }
+        } catch (e) {
+            console.warn('[OrgSettings] applyBranding fallito:', e && e.message);
+        }
     }
 
     // helper localizzazione usati altrove (timezone/currency per-org)
