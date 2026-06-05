@@ -123,6 +123,11 @@
         return `${d}g`;
     }
 
+    function stripeConnectLabel(r) {
+        if (!r.stripe_account_id) return '— non collegato';
+        return r.stripe_charges_enabled ? '✅ attivo' : '⏳ onboarding incompleto';
+    }
+
     function renderTable(rows) {
         const tb = document.getElementById('saTbody');
         if (!rows.length) {
@@ -173,7 +178,8 @@
                 <dt>Abbonamento</dt><dd>${esc(r.sub_status || '—')}</dd>
                 <dt>Fine trial</dt><dd>${trialInfo}</dd>
                 <dt>Rinnovo</dt><dd>${fmtDate(r.current_period_end)}${r.cancel_at_period_end ? ' · disdetto' : ''}</dd>
-                <dt>Stripe</dt><dd>${r.stripe_customer_id ? '✓ collegato' : '—'}</dd>
+                <dt>Stripe abbonamento</dt><dd>${r.stripe_customer_id ? '✓ collegato' : '—'}</dd>
+                <dt>Stripe incassi clienti</dt><dd>${stripeConnectLabel(r)}</dd>
                 <dt>Iscritto il</dt><dd>${fmtDate(r.created_at)} · ${esc(r.created_via || '')}</dd>
             </dl>
 

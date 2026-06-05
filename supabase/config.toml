@@ -394,6 +394,12 @@ verify_jwt = true
 [functions.billing-portal]
 verify_jwt = true
 
+# Stripe Connect (pagamenti-cliente al conto del trainer): verify_jwt=false perché
+# il callback OAuth è un redirect del browser senza Bearer; start/disconnect
+# validano il Bearer internamente.
+[functions.stripe-connect]
+verify_jwt = false
+
 # Webhook Stripe (SaaS + pagamenti-cliente): autenticato dalla firma Stripe.
 [functions.stripe-webhook]
 verify_jwt = false

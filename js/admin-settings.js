@@ -422,14 +422,16 @@ async function saveCompanySettings() {
 async function _settRenderPayments(body) {
     body.innerHTML = `<div class="sett-loading">⏳ Caricamento configurazione pagamenti…</div>`;
 
-    let billing = null, slotTypes = [];
+    let billing = null, slotTypes = [], orgStripe = null;
     try {
-        const [bRes, sRes] = await Promise.all([
+        const [bRes, sRes, oRes] = await Promise.all([
             _queryWithTimeout(supabaseClient.from('billing_settings').select('*').eq('org_id', window._orgId).maybeSingle()),
             _queryWithTimeout(supabaseClient.from('slot_types').select('id,key,label,default_price,is_active').eq('org_id', window._orgId).order('sort_order')),
+            _queryWithTimeout(supabaseClient.from('organizations').select('stripe_account_id,stripe_charges_enabled,stripe_account_email').eq('id', window._orgId).maybeSingle()),
         ]);
         billing = bRes && bRes.data;
         slotTypes = (sRes && sRes.data) || [];
+        orgStripe = (oRes && oRes.data) || null;
     } catch (e) {
         console.warn('[Settings] payments load error:', e);
     }
@@ -463,7 +465,39 @@ async function _settRenderPayments(body) {
             </div>`;
     }).join('');
 
+    // ── Card Stripe Connect: il trainer collega il PROPRIO account Stripe ──────
+    const _hasAcct   = !!(orgStripe && orgStripe.stripe_account_id);
+    const _chOk      = !!(orgStripe && orgStripe.stripe_charges_enabled);
+    const _acctEmail = (orgStripe && orgStripe.stripe_account_email) || '';
+    const stripeConnectCard = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">🔗</span>
+                <div>
+                    <h4 class="sett-card-title">Incassi online — Stripe</h4>
+                    <p class="sett-card-desc">Collega il TUO account Stripe: i pagamenti dei clienti arrivano direttamente a te, la piattaforma non trattiene nulla.</p>
+                </div>
+            </div>
+            ${_hasAcct ? `
+                <div class="sett-stripe-status ${_chOk ? 'ok' : 'pending'}">
+                    ${_chOk
+                        ? `✅ <strong>Account collegato e attivo.</strong>`
+                        : `⏳ <strong>Account collegato — onboarding da completare</strong> su Stripe per poter ricevere pagamenti.`}
+                    ${_acctEmail ? `<div class="sett-stripe-acct">${_escHtml(_acctEmail)}</div>` : ''}
+                </div>
+                <div class="sett-btn-row">
+                    ${_chOk ? '' : `<button class="sett-action-btn sett-action-btn--green" onclick="connectStripeAccount()">↗ Completa su Stripe</button>`}
+                    <button class="sett-action-btn sett-action-btn--ghost" onclick="disconnectStripeAccount()">Scollega</button>
+                </div>
+            ` : `
+                <div class="sett-btn-row">
+                    <button class="sett-action-btn sett-action-btn--green" onclick="connectStripeAccount()">🔗 Collega il mio account Stripe</button>
+                </div>
+            `}
+        </div>`;
+
     body.innerHTML = `
+        ${stripeConnectCard}
         <div class="sett-card">
             <div class="sett-card-header sett-card-header--top">
                 <span class="sett-card-icon sett-card-icon--green">💳</span>
@@ -551,6 +585,34 @@ async function _settRenderPayments(body) {
         <div class="sett-btn-row">
             <button class="sett-action-btn sett-action-btn--green" onclick="savePaymentsSettings()">💾 Salva pagamenti</button>
         </div>`;
+}
+
+// ── Stripe Connect: collega / scollega il conto Stripe del trainer ───────────
+async function connectStripeAccount() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        const { data, error } = await supabaseClient.functions.invoke('stripe-connect', { body: { action: 'start' } });
+        if (error) throw error;
+        if (!data || !data.url) throw new Error((data && data.error) || 'Avvio collegamento non riuscito');
+        window.location.href = data.url;   // → pagina di autorizzazione Stripe
+    } catch (e) {
+        console.error('[Settings] stripe connect error:', e);
+        showToast('Errore collegamento Stripe: ' + (e.message || e), 'error');
+    }
+}
+
+async function disconnectStripeAccount() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    if (!confirm('Scollegare il tuo account Stripe? I clienti non potranno più pagarti online finché non lo ricolleghi.')) return;
+    try {
+        const { error } = await supabaseClient.functions.invoke('stripe-connect', { body: { action: 'disconnect' } });
+        if (error) throw error;
+        showToast('Account Stripe scollegato', 'success');
+        setTimeout(() => location.reload(), 700);
+    } catch (e) {
+        console.error('[Settings] stripe disconnect error:', e);
+        showToast('Errore: ' + (e.message || e), 'error');
+    }
 }
 
 async function savePaymentsSettings() {

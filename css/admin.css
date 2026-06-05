@@ -9571,6 +9571,18 @@ img.schede-ex-icon { background: #fff; padding: 0; }
 .sett-action-btn--green:hover  { box-shadow: 0 4px 14px rgba(5,150,105,0.4); }
 .sett-action-btn--red    { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 2px 8px rgba(239,68,68,0.3); }
 .sett-action-btn--red:hover    { box-shadow: 0 4px 14px rgba(239,68,68,0.4); }
+.sett-action-btn--ghost  { background: rgba(255,255,255,0.06); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.14); box-shadow: none; }
+.sett-action-btn--ghost:hover { background: rgba(255,255,255,0.1); }
+
+/* Stato Stripe Connect (card incassi online) */
+.sett-stripe-status {
+    margin: 0.4rem 0 0.2rem; padding: 0.75rem 0.9rem; border-radius: 10px;
+    font-size: 0.9rem; line-height: 1.4;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+}
+.sett-stripe-status.ok      { background: rgba(6,214,160,0.10);  border-color: rgba(6,214,160,0.35); }
+.sett-stripe-status.pending { background: rgba(247,127,0,0.10);  border-color: rgba(247,127,0,0.35); }
+.sett-stripe-acct { margin-top: 0.25rem; font-size: 0.8rem; opacity: 0.8; }
 
 .sett-status-text {
     margin-top: 0.6rem;
