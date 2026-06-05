@@ -1,6 +1,6 @@
 // Supabase client — shared across all pages that need it
-const SUPABASE_URL = 'https://qlbdblkkuxqqrodqojjf.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_hjHOuG4L02-YDn4mq50iFA_ds2u5Po0';
+const SUPABASE_URL = 'https://rwaiekhllujximrqftmp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_SDlyqyh2C78ZlQ42hQJClA_e1LIp2x5';
 
 // Serializzazione intra-tab per-nome usata quando navigator.locks non è
 // disponibile oppure quando il lock request va in timeout. Una Promise chain
