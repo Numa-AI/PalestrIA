@@ -56,11 +56,28 @@ function _authError(error) {
 // Imposta window._orgId / window._orgRole dai claim app_metadata (org_id/org_role)
 // e propaga adminAuth a sessionStorage se il ruolo è owner/admin.
 // Risoluzione org lato client: window._orgId (autenticato), window._orgSlug (slug pubblico).
-function _applyOrgContext(sessionUser) {
+async function _applyOrgContext(sessionUser) {
     const meta = sessionUser?.app_metadata || {};
-    window._orgId   = meta.org_id   || null;
-    window._orgRole = meta.org_role || null;
-    const isOrgAdmin = window._orgRole === 'owner' || window._orgRole === 'admin';
+    let orgId   = meta.org_id   || null;
+    let orgRole = meta.org_role || null;
+    // Fallback se l'auth hook non è attivo (claim org_id/org_role assenti nel JWT):
+    // ricava org e ruolo da org_members (la RLS lo consente via current_org_id()).
+    if ((!orgId || !orgRole) && sessionUser?.id && typeof supabaseClient !== 'undefined') {
+        try {
+            const { data: m } = await supabaseClient
+                .from('org_members')
+                .select('org_id, role')
+                .eq('user_id', sessionUser.id)
+                .eq('status', 'active')
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (m) { orgId = orgId || m.org_id; orgRole = orgRole || m.role; }
+        } catch (_) { /* offline / nessuna membership */ }
+    }
+    window._orgId   = orgId;
+    window._orgRole = orgRole;
+    const isOrgAdmin = orgRole === 'owner' || orgRole === 'admin';
     if (isOrgAdmin) {
         sessionStorage.setItem('adminAuth', 'true');
     } else {
@@ -76,7 +93,7 @@ function _applyOrgContext(sessionUser) {
 async function _loadProfile(userId) {
     const { data: profile, error } = await supabaseClient
         .from('profiles')
-        .select('id, name, email, whatsapp, medical_cert_expiry, medical_cert_history, insurance_expiry, insurance_history, codice_fiscale, indirizzo_via, indirizzo_paese, indirizzo_cap, documento_firmato, privacy_prenotazioni, stripe_enabled, created_at')
+        .select('id, name, email, whatsapp, medical_cert_expiry, medical_cert_history, insurance_expiry, insurance_history, codice_fiscale, indirizzo_via, indirizzo_paese, indirizzo_cap, documento_firmato, privacy_prenotazioni, created_at')
         .eq('id', userId)
         .single();
 
@@ -286,7 +303,7 @@ async function initAuth() {
             };
         }
         // Imposta org context (org_id/org_role dai claim) e propaga adminAuth
-        _applyOrgContext(session.user);
+        await _applyOrgContext(session.user);
     } else {
         window._currentUser = null;
         window._orgId = null;
@@ -307,7 +324,7 @@ async function initAuth() {
                 _isManualLogout = false;
                 if (session) {
                     await _loadProfile(session.user.id);
-                    _applyOrgContext(session.user);
+                    await _applyOrgContext(session.user);
                 }
             } else if (event === 'SIGNED_OUT') {
                 if (_isManualLogout) {
@@ -324,7 +341,7 @@ async function initAuth() {
                         const recovered = await ensureValidSession();
                         if (recovered) {
                             await _loadProfile(recovered.user.id);
-                            _applyOrgContext(recovered.user);
+                            await _applyOrgContext(recovered.user);
                             console.log('[Auth] Sessione recuperata dopo SIGNED_OUT spurio');
                         } else {
                             // Refresh fallito definitivamente — sessione realmente persa
@@ -356,7 +373,7 @@ async function initAuth() {
             const session = await ensureValidSession();
             if (session) {
                 await _loadProfile(session.user.id);
-                _applyOrgContext(session.user);
+                await _applyOrgContext(session.user);
             }
             updateNavAuth();
 
@@ -412,7 +429,9 @@ async function _trackLoginEvent(userId, eventType) {
             .map(b => b.toString(16).padStart(2, '0')).join('');
 
         await supabaseClient.from('login_events').insert({
+            org_id: window._orgId || null,
             user_id: userId,
+            event: eventType || 'login',
             event_type: eventType || 'login',
             device_hash,
             user_agent: ua.slice(0, 500),
@@ -469,7 +488,7 @@ async function loginWithPassword(email, password) {
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) return { ok: false, error: _authError(error) };
     await _loadProfile(data.user.id);
-    _applyOrgContext(data.user);
+    await _applyOrgContext(data.user);
     _trackLoginEvent(data.user.id, 'login');
     return { ok: true };
 }

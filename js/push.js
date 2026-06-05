@@ -365,7 +365,9 @@ function _syncPushEnabled() {
         try {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session?.user?.id) {
-                await supabaseClient.rpc('set_push_enabled', { p_enabled: enabled });
+                // Aggiorna il proprio profilo (RLS consente l'update di id = auth.uid()).
+                // Per trainer/staff senza riga profiles → 0 righe, nessun errore.
+                await supabaseClient.from('profiles').update({ push_enabled: enabled }).eq('id', session.user.id);
                 console.log('[Push] push_enabled salvato:', enabled);
             }
         } catch (e) {

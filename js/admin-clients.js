@@ -909,7 +909,6 @@ async function _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName
         if (ef.paese !== undefined) _supaFields.indirizzo_paese  = ef.paese || null;
         if (ef.cap !== undefined)   _supaFields.indirizzo_cap    = ef.cap || null;
         if (ef.documentoFirmato !== undefined) _supaFields.documento_firmato = !!ef.documentoFirmato;
-        if (ef.stripeEnabled !== undefined)    _supaFields.stripe_enabled    = !!ef.stripeEnabled;
         // Usa i VECCHI valori per trovare il record nel DB (non i nuovi che non esistono ancora)
         const profileResult = await _updateSupabaseProfile(oldEmail, normOld, _supaFields);
         if (!profileResult.ok) {
