@@ -1,4 +1,5 @@
 {
+    "_comment": "Manifest STATICO single-tenant: name/short_name/theme_color/icons sono i default della piattaforma e NON sono per-org. Il branding PWA per-tenant (nome studio, colore, icona) richiede un manifest DINAMICO servito per-org — es. un endpoint /manifest?org=<slug> o un manifest costruito a runtime e iniettato come data-URL nel <link rel=manifest>, popolato da org_settings (branding.pwa_name, branding.primary_color, branding.logo_url). Non implementato in questa fase: TODO de-hardcode PWA per-tenant. theme_color allineato al viola di default --primary-purple (#8B5CF6).",
     "name": "PalestrIA Demo",
     "short_name": "PalestrIA",
     "description": "Demo PalestrIA — gestionale per personal trainer",

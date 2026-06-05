@@ -1064,8 +1064,8 @@ begin
         (v_org, 'branding.primary_color', to_jsonb('#8B5CF6')),
         (v_org, 'locale.timezone', to_jsonb('Europe/Rome')),
         (v_org, 'locale.currency', to_jsonb('EUR')),
-        (v_org, 'booking.free_cancel_hours', to_jsonb(24)),
-        (v_org, 'booking.penalty_pct', to_jsonb(50))
+        (v_org, 'booking.policy.free_cancel_hours', to_jsonb(24)),
+        (v_org, 'booking.policy.penalty_pct', to_jsonb(50))
     on conflict do nothing;
 
     return v_org;
@@ -1094,7 +1094,7 @@ returns jsonb language sql stable security definer set search_path = public as $
     select coalesce(jsonb_object_agg(key, value), '{}'::jsonb)
     from org_settings
     where org_id = org_id_for_slug(p_org_slug)
-      and key like any (array['branding.%','locale.%','booking.policy.%','billing_client.prices%']);
+      and key like any (array['branding.%','locale.%','booking.policy.%','billing_client.prices%','maintenance.%']);
 $$;
 grant execute on function get_public_org_settings to anon, authenticated;
 

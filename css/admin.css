@@ -13206,3 +13206,260 @@ body.extra-picker-open .payments-fab {
     .sched-nav-ico { font-size: 1.15rem; }
     .sched-ovr-controls { width: 100%; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   IMPOSTAZIONI — nav 11 sotto-tab + componenti (Agent S)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Nav sotto-sezioni (stesso pattern di .sched-nav) ─────────────────────── */
+.sett-nav {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    background: #f1f5f9;
+    padding: 0.3rem;
+    border-radius: 12px;
+    margin: 0.8rem 0 1.1rem;
+}
+.sett-nav-btn {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.7rem;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+.sett-nav-btn:hover { background: rgba(139, 92, 246, 0.08); color: #7C3AED; }
+.sett-nav-btn.active {
+    background: #fff;
+    color: #7C3AED;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+.sett-nav-ico { font-size: 1rem; }
+
+.sett-loading {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.9rem;
+}
+
+/* ── Form grid ────────────────────────────────────────────────────────────── */
+.sett-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem 1rem;
+    margin-top: 0.9rem;
+}
+.sett-field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.sett-field--wide { grid-column: 1 / -1; }
+.sett-subheader {
+    margin-top: 1.1rem;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sett-select {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-family: inherit;
+    color: #0f172a;
+    background: #f8fafc;
+    outline: none;
+    transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+.sett-select:focus { border-color: #8B5CF6; box-shadow: 0 0 0 3px rgba(139,92,246,0.1); background: #fff; }
+.sett-select--sm { padding: 0.35rem 0.5rem; font-size: 0.8rem; width: auto; }
+.sett-text-input--sm { flex: 0 0 auto; width: 90px; }
+
+/* ── Color picker ─────────────────────────────────────────────────────────── */
+.sett-color-row { display: flex; gap: 0.5rem; align-items: center; }
+.sett-color-input {
+    width: 46px; height: 38px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 2px;
+    background: #fff;
+    cursor: pointer;
+}
+.sett-text-input--hex { flex: 0 0 110px; text-transform: uppercase; }
+
+/* ── Modello pagamento (radio cards) ──────────────────────────────────────── */
+.sett-model-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-top: 0.9rem;
+}
+.sett-model-opt {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.8rem;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    background: #f8fafc;
+}
+.sett-model-opt:hover { border-color: #c4b5fd; }
+.sett-model-opt.active { border-color: #8B5CF6; background: #faf5ff; box-shadow: 0 0 0 3px rgba(139,92,246,0.08); }
+.sett-model-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.sett-model-title { font-weight: 700; font-size: 0.9rem; color: #1e293b; }
+.sett-model-desc { font-size: 0.78rem; color: #64748b; line-height: 1.3; }
+
+/* ── Listino prezzi ───────────────────────────────────────────────────────── */
+.sett-price-list { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.sett-price-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #f1f5f9;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.sett-price-label { font-weight: 600; font-size: 0.88rem; color: #1e293b; }
+.sett-price-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #fff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 9px;
+    padding: 0.15rem 0.5rem;
+}
+.sett-price-cur { color: #64748b; font-weight: 700; font-size: 0.85rem; }
+.sett-price-input {
+    width: 80px;
+    border: none;
+    outline: none;
+    font-size: 0.88rem;
+    font-family: inherit;
+    text-align: right;
+    background: transparent;
+    color: #0f172a;
+}
+.sett-badge-off {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #94a3b8;
+    background: #f1f5f9;
+    padding: 0.1rem 0.4rem;
+    border-radius: 6px;
+    text-transform: uppercase;
+}
+
+/* ── Staff / membri ───────────────────────────────────────────────────────── */
+.sett-staff-list { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.sett-staff-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #f1f5f9;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.sett-staff-info { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.sett-staff-name { font-weight: 700; font-size: 0.9rem; color: #1e293b; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.sett-staff-email { font-size: 0.8rem; color: #64748b; }
+.sett-staff-actions { display: flex; align-items: center; gap: 0.4rem; }
+.sett-role-badge {
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 0.12rem 0.45rem;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.sett-role-badge--owner { background: #fef3c7; color: #b45309; }
+.sett-role-badge--admin { background: #ede9fe; color: #6d28d9; }
+.sett-role-badge--staff { background: #e0f2fe; color: #0369a1; }
+.sett-action-btn--sm { padding: 0.4rem 0.7rem; font-size: 0.74rem; }
+
+/* ── Pulsanti aggiuntivi (cyan / muted) ───────────────────────────────────── */
+.sett-action-btn--cyan { background: linear-gradient(135deg, #0891b2, #0e7490); box-shadow: 0 2px 8px rgba(8,145,178,0.3); }
+.sett-action-btn--cyan:hover { box-shadow: 0 4px 14px rgba(8,145,178,0.4); }
+.sett-action-btn--muted { background: #e2e8f0; color: #64748b; cursor: default; box-shadow: none; }
+.sett-action-btn--muted:hover { transform: none; }
+
+/* ── Billing SaaS ─────────────────────────────────────────────────────────── */
+.sett-saas-status {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+}
+.sett-saas-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid #f1f5f9;
+    border-radius: 10px;
+    background: #f8fafc;
+    text-align: center;
+}
+.sett-saas-stat-lbl { font-size: 0.72rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+.sett-saas-stat-val { font-size: 1.05rem; font-weight: 800; color: #1e293b; }
+.sett-saas-period { margin-top: 0.7rem; font-size: 0.85rem; color: #64748b; }
+
+.sett-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+    margin-top: 0.9rem;
+}
+.sett-plan-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1rem;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    background: #fff;
+}
+.sett-plan-card.current { border-color: #8B5CF6; box-shadow: 0 0 0 3px rgba(139,92,246,0.08); }
+.sett-plan-name { font-weight: 800; font-size: 1rem; color: #1e293b; }
+.sett-plan-price { font-size: 1.4rem; font-weight: 800; color: #7c3aed; }
+.sett-plan-price span { font-size: 0.78rem; font-weight: 600; color: #94a3b8; }
+.sett-plan-limit { font-size: 0.82rem; color: #64748b; font-weight: 600; }
+.sett-plan-feats { list-style: none; margin: 0.3rem 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.sett-plan-feats li { font-size: 0.8rem; color: #475569; padding-left: 1.1rem; position: relative; }
+.sett-plan-feats li::before { content: '✓'; position: absolute; left: 0; color: #059669; font-weight: 800; }
+.sett-plan-card .sett-action-btn { justify-content: center; margin-top: auto; }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    .sett-form-grid,
+    .sett-model-grid { grid-template-columns: 1fr; }
+    .sett-saas-status { grid-template-columns: 1fr; }
+    .sett-plan-grid { grid-template-columns: 1fr; }
+    .sett-nav-lbl { display: none; }
+    .sett-nav-ico { font-size: 1.2rem; }
+    .sett-nav-btn { padding: 0.5rem 0.4rem; }
+    .sett-staff-row { align-items: flex-start; }
+    .sett-staff-actions { width: 100%; }
+}

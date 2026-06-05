@@ -114,8 +114,8 @@ begin
         (v_org, 'branding.primary_color',   to_jsonb('#8B5CF6'::text)),
         (v_org, 'locale.timezone',          to_jsonb('Europe/Rome'::text)),
         (v_org, 'locale.currency',          to_jsonb('EUR'::text)),
-        (v_org, 'booking.free_cancel_hours',to_jsonb(24)),
-        (v_org, 'booking.penalty_pct',      to_jsonb(50))
+        (v_org, 'booking.policy.free_cancel_hours',to_jsonb(24)),
+        (v_org, 'booking.policy.penalty_pct',      to_jsonb(50))
     on conflict (org_id, key) do nothing;
 
     raise notice 'seed: org demo-studio pronta (id=%).', v_org;

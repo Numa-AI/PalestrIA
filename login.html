@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="Palestra">
     <title>Accedi – PalestrIA</title>
     <link rel="icon" type="image/png" href="images/logo-palestria.png">
-    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/style.css?v=9">
     <link rel="stylesheet" href="css/login.css?v=4">
 </head>
 <body>
@@ -53,7 +53,7 @@
                 <p class="login-subtitle">Accedi per vedere le tue prenotazioni</p>
 
                 <!-- Social login buttons -->
-                <div style="background:#eef7ff;border:1px solid #8B5CF6;border-radius:10px;padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.88rem;line-height:1.5;">
+                <div style="background:#eef7ff;border:1px solid var(--primary-purple, #8B5CF6);border-radius:10px;padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.88rem;line-height:1.5;">
                     <div style="font-weight:700;color:#0076a3;margin-bottom:0.4rem;">🎬 Demo mode</div>
                     <div style="color:#333;">
                         <strong>Admin (PT):</strong> <code style="background:#fff;padding:1px 5px;border-radius:4px;">admin@palestria.app</code> · <code style="background:#fff;padding:1px 5px;border-radius:4px;">Demo2026Admin!</code><br>
@@ -261,12 +261,13 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/supabase-client.js?v=4"></script>
+    <script src="js/org-settings.js?v=1"></script>
     <script src="js/ui.js?v=2"></script>
-    <script src="js/data.js?v=74"></script>
+    <script src="js/data.js?v=75"></script>
     <script src="js/auth.js?v=24"></script>
     <script src="js/silent-refresh.js?v=1"></script>
     <script src="js/maintenance.js?v=1"></script>
-    <script src="js/push.js?v=19"></script>
+    <script src="js/push.js?v=21"></script>
     <script>
         // Prevent iOS Safari auto-zoom on input focus.
         // touchstart fires before iOS decides to zoom, so setting
@@ -649,6 +650,18 @@
                 window._isEmailConfirmation = true;
             }
         })();
+
+        // Slug org pubblico (sottodominio/?org=): serve a OrgSettings e alle RPC pubbliche.
+        // Risolto prima dell'auth perché la pagina di login è brandizzabile per-tenant.
+        if (!window._orgSlug && typeof _resolveOrgSlug === 'function') {
+            window._orgSlug = _resolveOrgSlug() || null;
+        }
+        // Settings per-org (branding): carica il layer org-scoped e applica branding al boot.
+        if (typeof OrgSettings !== 'undefined') {
+            OrgSettings.load()
+                .then(() => { if (typeof OrgSettings.applyBranding === 'function') OrgSettings.applyBranding(); })
+                .catch(e => console.warn('[login] org-settings load:', e?.message || e));
+        }
 
         // ── Init: redirect se già loggato, oppure gestisci OAuth return ──
         initAuth().then(async session => {

@@ -1,57 +1,1418 @@
-// ── Settings Tab ──────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// admin-settings.js — Tab Impostazioni org-aware, riorganizzato in 11 sotto-tab.
+//
+// Pattern lazy a sezioni (come schedSwitchSection / _schedeSwitchSection):
+//   - nav interna in #settNav
+//   - corpo renderizzato in #settBody dalla sezione attiva (settSwitchSection)
+//
+// Tutte le sezioni leggono/scrivono via:
+//   - OrgSettings (js/org-settings.js)  → org_settings(key, value jsonb)
+//   - from('billing_settings'|'slot_types'|'org_members') diretto (RLS admin)
+//   - RPC invite_org_member / get_tenant_entitlements / admin_clear_all_data
+//   - edge functions billing-checkout / billing-portal
+//
+// Gating UI: solo owner/admin vedono Staff, Billing SaaS, Sicurezza (window._orgRole).
+// Le funzioni globali invocate dal markup sono definite qui.
+// ══════════════════════════════════════════════════════════════════════════════
 
-function renderSettingsTab() {
-    const mode = CancellationModeStorage.get();
-    document.querySelectorAll('input[name="cancellationMode"]').forEach(radio => {
-        radio.checked = radio.value === mode;
-    });
+// ── Stato sezione attiva ──────────────────────────────────────────────────────
+let _settActiveSection = 'branding';
+
+// Timezone IANA comuni (lista breve, copre i casi reali per studi italiani/UE).
+const SETT_TIMEZONES = [
+    'Europe/Rome', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+    'Europe/Madrid', 'Europe/Lisbon', 'Europe/Zurich', 'Europe/Athens',
+    'Europe/Bucharest', 'Europe/Moscow', 'America/New_York', 'America/Chicago',
+    'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo', 'UTC'
+];
+const SETT_CURRENCIES   = ['EUR', 'USD', 'GBP', 'CHF'];
+const SETT_LANGUAGES    = [['it', 'Italiano'], ['en', 'English'], ['es', 'Español'], ['de', 'Deutsch'], ['fr', 'Français']];
+const SETT_DATE_FORMATS = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
+const SETT_WEEK_DAYS    = [[1, 'Lunedì'], [0, 'Domenica']];
+
+// Solo owner/admin possono vedere/modificare le sezioni sensibili.
+function _settIsAdmin() {
+    return window._orgRole === 'owner' || window._orgRole === 'admin';
+}
+
+// ── Definizione sezioni (id, icona, label, render fn, gating) ──────────────────
+function _settSections() {
+    const adminOnly = _settIsAdmin();
+    return [
+        { id: 'branding',     icon: '🎨', label: 'Branding',       render: _settRenderBranding },
+        { id: 'locale',       icon: '🌍', label: 'Localizzazione', render: _settRenderLocale },
+        { id: 'company',      icon: '🏢', label: 'Azienda',        render: _settRenderCompany },
+        { id: 'payments',     icon: '💳', label: 'Pagamenti',      render: _settRenderPayments },
+        { id: 'policy',       icon: '🛡️', label: 'Prenotazioni',   render: _settRenderPolicy },
+        { id: 'notif',        icon: '🔔', label: 'Notifiche',      render: _settRenderNotif },
+        { id: 'staff',        icon: '👥', label: 'Staff',          render: _settRenderStaff,    adminOnly: true },
+        { id: 'gdpr',         icon: '📜', label: 'GDPR',           render: _settRenderGdpr },
+        { id: 'features',     icon: '🧩', label: 'Funzionalità',   render: _settRenderFeatures },
+        { id: 'billing-saas', icon: '💎', label: 'Abbonamento',    render: _settRenderBillingSaas, adminOnly: true },
+        { id: 'security',     icon: '⚠️', label: 'Sicurezza',      render: _settRenderSecurity, adminOnly: true },
+    ].filter(s => !s.adminOnly || adminOnly);
+}
+
+// ── Bootstrap del tab (chiamato da switchTab) ─────────────────────────────────
+async function renderSettingsTab() {
+    const root = document.getElementById('tab-settings');
+    if (!root) return;
+
+    // Shell: nav + corpo. Idempotente: ricrea solo se mancante.
+    if (!document.getElementById('settNav')) {
+        root.innerHTML = `
+            <div class="sett-hub">
+                <div class="sett-header">
+                    <h3>Impostazioni</h3>
+                    <span class="sett-header-badge">🔧 Configurazione</span>
+                </div>
+                <div class="sett-nav" id="settNav"></div>
+                <div id="settBody"><div class="sett-loading">⏳ Caricamento impostazioni…</div></div>
+            </div>`;
+    }
+
+    // Assicura che la cache OrgSettings sia popolata.
+    try { if (window.OrgSettings && OrgSettings.load) await OrgSettings.load(); } catch (_) {}
+
+    // Se la sezione attiva non è più visibile (es. cambio ruolo), torna a branding.
+    const visible = _settSections().map(s => s.id);
+    if (!visible.includes(_settActiveSection)) _settActiveSection = 'branding';
+
+    _settRenderNav();
+    _settRenderActiveSection();
+}
+
+function _settRenderNav() {
+    const nav = document.getElementById('settNav');
+    if (!nav) return;
+    nav.innerHTML = _settSections().map(s => `
+        <button class="sett-nav-btn ${s.id === _settActiveSection ? 'active' : ''}"
+                onclick="settSwitchSection('${s.id}')">
+            <span class="sett-nav-ico">${s.icon}</span><span class="sett-nav-lbl">${s.label}</span>
+        </button>`).join('');
+}
+
+function settSwitchSection(section) {
+    _settActiveSection = section;
+    _settRenderNav();
+    _settRenderActiveSection();
+}
+
+function _settRenderActiveSection() {
+    const body = document.getElementById('settBody');
+    if (!body) return;
+    const sec = _settSections().find(s => s.id === _settActiveSection);
+    if (!sec) { body.innerHTML = ''; return; }
+    try {
+        sec.render(body);
+    } catch (e) {
+        console.error('[Settings] render error:', e);
+        body.innerHTML = `<div class="sett-card"><p class="sett-card-desc">Errore nel caricamento della sezione.</p></div>`;
+    }
+}
+
+// Helper: valore di un campo input/select per id.
+function _settVal(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+}
+function _settChecked(id) {
+    const el = document.getElementById(id);
+    return !!(el && el.checked);
+}
+
+// Helper salvataggio OrgSettings con feedback toast.
+async function _settSave(key, value, okMsg) {
+    try {
+        await OrgSettings.set(key, value);
+        if (okMsg !== false) showToast(okMsg || '✅ Impostazione salvata', 'success');
+        return true;
+    } catch (e) {
+        console.error('[Settings] save error', key, e);
+        showToast('Errore salvataggio impostazione', 'error');
+        return false;
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 1 — BRANDING
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderBranding(body) {
+    const name    = OrgSettings.getString('branding.studio_name', '');
+    const logo    = OrgSettings.getString('branding.logo_url', '');
+    const color   = OrgSettings.getString('branding.primary_color', '#8B5CF6');
+    const favicon = OrgSettings.getString('branding.favicon_url', '');
+    const pwaName = OrgSettings.getString('branding.pwa_name', '');
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">🎨</span>
+                <div>
+                    <h4 class="sett-card-title">Branding studio</h4>
+                    <p class="sett-card-desc">Nome, logo e colore mostrati ai clienti e nell'app installabile.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field">
+                    <label class="sett-input-label">Nome studio</label>
+                    <input type="text" id="brandStudioName" class="sett-text-input" value="${_escHtml(name)}" placeholder="Es. Studio Fitness Rossi">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Nome PWA (app installata)</label>
+                    <input type="text" id="brandPwaName" class="sett-text-input" value="${_escHtml(pwaName)}" placeholder="Es. PalestrIA">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">URL logo</label>
+                    <input type="url" id="brandLogoUrl" class="sett-text-input" value="${_escHtml(logo)}" placeholder="https://…/logo.png">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">URL favicon</label>
+                    <input type="url" id="brandFaviconUrl" class="sett-text-input" value="${_escHtml(favicon)}" placeholder="https://…/favicon.png">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Colore primario</label>
+                    <div class="sett-color-row">
+                        <input type="color" id="brandPrimaryColor" class="sett-color-input" value="${_escHtml(color || '#8B5CF6')}"
+                               oninput="document.getElementById('brandPrimaryColorHex').value=this.value">
+                        <input type="text" id="brandPrimaryColorHex" class="sett-text-input sett-text-input--hex" value="${_escHtml(color || '#8B5CF6')}"
+                               oninput="document.getElementById('brandPrimaryColor').value=this.value" maxlength="7">
+                    </div>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--purple" onclick="saveBrandingSettings()">💾 Salva branding</button>
+            </div>
+        </div>`;
+}
+
+async function saveBrandingSettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    const name    = _settVal('brandStudioName').trim();
+    const pwaName = _settVal('brandPwaName').trim();
+    const logo    = _settVal('brandLogoUrl').trim();
+    const favicon = _settVal('brandFaviconUrl').trim();
+    const color   = (_settVal('brandPrimaryColorHex') || _settVal('brandPrimaryColor')).trim();
+
+    try {
+        await OrgSettings.set('branding.studio_name', name);
+        await OrgSettings.set('branding.pwa_name', pwaName);
+        await OrgSettings.set('branding.logo_url', logo);
+        await OrgSettings.set('branding.favicon_url', favicon);
+        await OrgSettings.set('branding.primary_color', color);
+        if (OrgSettings.applyBranding) OrgSettings.applyBranding();
+        showToast('✅ Branding salvato', 'success');
+    } catch (e) {
+        console.error('[Settings] branding save error:', e);
+        showToast('Errore salvataggio branding', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 2 — LOCALIZZAZIONE
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderLocale(body) {
+    const tz     = OrgSettings.getString('locale.timezone', 'Europe/Rome');
+    const cur    = OrgSettings.getString('locale.currency', 'EUR');
+    const lang   = OrgSettings.getString('locale.language', 'it');
+    const dfmt   = OrgSettings.getString('locale.date_format', 'DD/MM/YYYY');
+    const fdow   = OrgSettings.getNumber('locale.first_day_of_week', 1);
+
+    const tzOpts   = SETT_TIMEZONES.map(t => `<option value="${t}" ${t === tz ? 'selected' : ''}>${t}</option>`).join('');
+    const curOpts  = SETT_CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('');
+    const langOpts = SETT_LANGUAGES.map(([v, l]) => `<option value="${v}" ${v === lang ? 'selected' : ''}>${l}</option>`).join('');
+    const dfmtOpts = SETT_DATE_FORMATS.map(f => `<option value="${f}" ${f === dfmt ? 'selected' : ''}>${f}</option>`).join('');
+    const fdowOpts = SETT_WEEK_DAYS.map(([v, l]) => `<option value="${v}" ${v === fdow ? 'selected' : ''}>${l}</option>`).join('');
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--blue">🌍</span>
+                <div>
+                    <h4 class="sett-card-title">Localizzazione</h4>
+                    <p class="sett-card-desc">Fuso orario, valuta, lingua e formati usati in tutta la piattaforma.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field">
+                    <label class="sett-input-label">Fuso orario</label>
+                    <select id="locTimezone" class="sett-select">${tzOpts}</select>
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Valuta</label>
+                    <select id="locCurrency" class="sett-select">${curOpts}</select>
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Lingua</label>
+                    <select id="locLanguage" class="sett-select">${langOpts}</select>
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Formato data</label>
+                    <select id="locDateFormat" class="sett-select">${dfmtOpts}</select>
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Primo giorno settimana</label>
+                    <select id="locFirstDay" class="sett-select">${fdowOpts}</select>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--blue" onclick="saveLocaleSettings()">💾 Salva localizzazione</button>
+            </div>
+        </div>`;
+}
+
+async function saveLocaleSettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        await OrgSettings.set('locale.timezone', _settVal('locTimezone'));
+        await OrgSettings.set('locale.currency', _settVal('locCurrency'));
+        await OrgSettings.set('locale.language', _settVal('locLanguage'));
+        await OrgSettings.set('locale.date_format', _settVal('locDateFormat'));
+        await OrgSettings.set('locale.first_day_of_week', parseInt(_settVal('locFirstDay'), 10));
+        showToast('✅ Localizzazione salvata', 'success');
+    } catch (e) {
+        console.error('[Settings] locale save error:', e);
+        showToast('Errore salvataggio localizzazione', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 3 — DATI AZIENDA / FISCALI
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderCompany(body) {
+    const legal   = OrgSettings.getString('company.legal_name', '');
+    const vat     = OrgSettings.getString('company.vat_number', '');
+    const tax     = OrgSettings.getString('company.tax_code', '');
+    const addr    = OrgSettings.get('company.address', {}) || {};
+    const pec     = OrgSettings.getString('company.pec', '');
+    const sdi     = OrgSettings.getString('company.sdi_code', '');
+    const prefix  = OrgSettings.getString('company.invoice_prefix', '');
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">🏢</span>
+                <div>
+                    <h4 class="sett-card-title">Dati azienda &amp; fiscali</h4>
+                    <p class="sett-card-desc">Ragione sociale, partita IVA e dati per la fatturazione.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field">
+                    <label class="sett-input-label">Ragione sociale</label>
+                    <input type="text" id="coLegalName" class="sett-text-input" value="${_escHtml(legal)}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Partita IVA</label>
+                    <input type="text" id="coVatNumber" class="sett-text-input" value="${_escHtml(vat)}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Codice fiscale</label>
+                    <input type="text" id="coTaxCode" class="sett-text-input" value="${_escHtml(tax)}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">PEC</label>
+                    <input type="email" id="coPec" class="sett-text-input" value="${_escHtml(pec)}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Codice SDI</label>
+                    <input type="text" id="coSdiCode" class="sett-text-input" value="${_escHtml(sdi)}" maxlength="7">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Prefisso fattura</label>
+                    <input type="text" id="coInvoicePrefix" class="sett-text-input" value="${_escHtml(prefix)}" placeholder="Es. 2026/">
+                </div>
+            </div>
+            <div class="sett-subheader">Indirizzo</div>
+            <div class="sett-form-grid">
+                <div class="sett-field sett-field--wide">
+                    <label class="sett-input-label">Via</label>
+                    <input type="text" id="coAddrVia" class="sett-text-input" value="${_escHtml(addr.via || '')}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">CAP</label>
+                    <input type="text" id="coAddrCap" class="sett-text-input" value="${_escHtml(addr.cap || '')}" maxlength="5">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Città</label>
+                    <input type="text" id="coAddrCitta" class="sett-text-input" value="${_escHtml(addr.citta || '')}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Provincia</label>
+                    <input type="text" id="coAddrProvincia" class="sett-text-input" value="${_escHtml(addr.provincia || '')}" maxlength="2">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Paese</label>
+                    <input type="text" id="coAddrPaese" class="sett-text-input" value="${_escHtml(addr.paese || 'Italia')}">
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--green" onclick="saveCompanySettings()">💾 Salva dati azienda</button>
+            </div>
+        </div>`;
+}
+
+async function saveCompanySettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    const address = {
+        via:       _settVal('coAddrVia').trim(),
+        cap:       _settVal('coAddrCap').trim(),
+        citta:     _settVal('coAddrCitta').trim(),
+        provincia: _settVal('coAddrProvincia').trim().toUpperCase(),
+        paese:     _settVal('coAddrPaese').trim(),
+    };
+    try {
+        await OrgSettings.set('company.legal_name', _settVal('coLegalName').trim());
+        await OrgSettings.set('company.vat_number', _settVal('coVatNumber').trim());
+        await OrgSettings.set('company.tax_code', _settVal('coTaxCode').trim());
+        await OrgSettings.set('company.pec', _settVal('coPec').trim());
+        await OrgSettings.set('company.sdi_code', _settVal('coSdiCode').trim().toUpperCase());
+        await OrgSettings.set('company.invoice_prefix', _settVal('coInvoicePrefix').trim());
+        await OrgSettings.set('company.address', address);
+        showToast('✅ Dati azienda salvati', 'success');
+    } catch (e) {
+        console.error('[Settings] company save error:', e);
+        showToast('Errore salvataggio dati azienda', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 4 — PAGAMENTI CLIENTE (billing_settings + listino slot_types)
+// ════════════════════════════════════════════════════════════════════════════
+async function _settRenderPayments(body) {
+    body.innerHTML = `<div class="sett-loading">⏳ Caricamento configurazione pagamenti…</div>`;
+
+    let billing = null, slotTypes = [];
+    try {
+        const [bRes, sRes] = await Promise.all([
+            _queryWithTimeout(supabaseClient.from('billing_settings').select('*').eq('org_id', window._orgId).maybeSingle()),
+            _queryWithTimeout(supabaseClient.from('slot_types').select('id,key,label,default_price,is_active').eq('org_id', window._orgId).order('sort_order')),
+        ]);
+        billing = bRes && bRes.data;
+        slotTypes = (sRes && sRes.data) || [];
+    } catch (e) {
+        console.warn('[Settings] payments load error:', e);
+    }
+
+    const model     = (billing && billing.default_model) || 'pay_per_session';
+    const threshold = (billing && billing.block_unpaid_threshold) || 0;
+    const blockMemb = billing ? !!billing.block_if_membership_expired : true;
+    const blockPkg  = billing ? !!billing.block_if_no_package : true;
+    const graceDays = (billing && billing.grace_days) || 0;
+    const autoDec   = billing ? !!billing.package_auto_decrement : true;
+
+    const MODELS = [
+        ['pay_per_session', '🎟️ A entrata',   'Il cliente paga ogni singola lezione.'],
+        ['monthly',         '📆 Mensile',      'Abbonamento mensile a tariffa fissa.'],
+        ['package',         '🎫 Pacchetto',    'Carnet di ingressi prepagato (decremento automatico).'],
+        ['free',            '🎁 Gratuito',     'Nessun pagamento richiesto.'],
+    ];
+
+    const pricesCache = OrgSettings.get('billing_client.prices', {}) || {};
+    const priceRows = slotTypes.map(st => {
+        const price = (st.default_price != null) ? st.default_price : (pricesCache[st.key] != null ? pricesCache[st.key] : 0);
+        return `
+            <div class="sett-price-row">
+                <span class="sett-price-label">${_escHtml(st.label)} ${st.is_active ? '' : '<span class="sett-badge-off">disattivo</span>'}</span>
+                <div class="sett-price-input-wrap">
+                    <span class="sett-price-cur">€</span>
+                    <input type="number" min="0" step="0.01" class="sett-price-input"
+                           data-slot-id="${st.id}" data-slot-key="${_escHtml(st.key)}"
+                           value="${Number(price).toFixed(2)}">
+                </div>
+            </div>`;
+    }).join('');
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">💳</span>
+                <div>
+                    <h4 class="sett-card-title">Modello di pagamento predefinito</h4>
+                    <p class="sett-card-desc">Modalità applicata di default ai nuovi clienti (sovrascrivibile per-cliente).</p>
+                </div>
+            </div>
+            <div class="sett-model-grid">
+                ${MODELS.map(([v, lbl, desc]) => `
+                    <label class="sett-model-opt ${v === model ? 'active' : ''}">
+                        <input type="radio" name="payDefaultModel" value="${v}" ${v === model ? 'checked' : ''}
+                               onchange="document.querySelectorAll('.sett-model-opt').forEach(e=>e.classList.remove('active'));this.closest('.sett-model-opt').classList.add('active')">
+                        <span class="sett-model-title">${lbl}</span>
+                        <span class="sett-model-desc">${desc}</span>
+                    </label>`).join('')}
+            </div>
+        </div>
+
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--red">🚫</span>
+                <div>
+                    <h4 class="sett-card-title">Blocco prenotazioni per pagamenti</h4>
+                    <p class="sett-card-desc">Condizioni che impediscono al cliente di prenotare.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field">
+                    <label class="sett-input-label">Soglia debito massimo (€, 0 = nessun blocco)</label>
+                    <input type="number" min="0" step="0.01" id="payThreshold" class="sett-text-input" value="${Number(threshold).toFixed(2)}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Giorni di tolleranza (grace)</label>
+                    <input type="number" min="0" step="1" id="payGraceDays" class="sett-text-input" value="${graceDays}">
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Abbonamento scaduto</strong>
+                        <span>Blocca se l'abbonamento mensile è scaduto.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="payBlockMemb" ${blockMemb ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Pacchetto esaurito</strong>
+                        <span>Blocca se il carnet di ingressi è terminato.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="payBlockPkg" ${blockPkg ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Decremento automatico pacchetto</strong>
+                        <span>Scala un ingresso dal pacchetto ad ogni prenotazione.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="payAutoDecrement" ${autoDec ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--blue">💶</span>
+                <div>
+                    <h4 class="sett-card-title">Listino prezzi per tipo di slot</h4>
+                    <p class="sett-card-desc">Prezzo cliente autoritativo per ciascun tipo di lezione (sincronizzato col display pubblico).</p>
+                </div>
+            </div>
+            <div class="sett-price-list">
+                ${priceRows || '<p class="sett-card-desc">Nessun tipo di slot configurato. Aggiungili da Gestione Orari → Tipi slot.</p>'}
+            </div>
+        </div>
+
+        <div class="sett-btn-row">
+            <button class="sett-action-btn sett-action-btn--green" onclick="savePaymentsSettings()">💾 Salva pagamenti</button>
+        </div>`;
+}
+
+async function savePaymentsSettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    const orgId = window._orgId;
+    if (!orgId) { showToast('Organizzazione non identificata', 'error'); return; }
+
+    const modelEl = document.querySelector('input[name="payDefaultModel"]:checked');
+    const model = modelEl ? modelEl.value : 'pay_per_session';
+
+    const billingRow = {
+        org_id: orgId,
+        default_model: model,
+        block_unpaid_threshold: parseFloat(_settVal('payThreshold')) || 0,
+        block_if_membership_expired: _settChecked('payBlockMemb'),
+        block_if_no_package: _settChecked('payBlockPkg'),
+        grace_days: parseInt(_settVal('payGraceDays'), 10) || 0,
+        package_auto_decrement: _settChecked('payAutoDecrement'),
+        updated_at: new Date().toISOString(),
+    };
+
+    try {
+        // 1) billing_settings (RLS admin)
+        const { error: bErr } = await _queryWithTimeout(
+            supabaseClient.from('billing_settings').upsert(billingRow, { onConflict: 'org_id' })
+        );
+        if (bErr) throw bErr;
+
+        // 2) listino prezzi: aggiorna slot_types.default_price + org_settings 'billing_client.prices'
+        const priceInputs = Array.from(document.querySelectorAll('.sett-price-input'));
+        const pricesMap = {};
+        for (const inp of priceInputs) {
+            const id  = inp.dataset.slotId;
+            const key = inp.dataset.slotKey;
+            const val = parseFloat(inp.value) || 0;
+            pricesMap[key] = val;
+            const { error: sErr } = await _queryWithTimeout(
+                supabaseClient.from('slot_types').update({ default_price: val }).eq('id', id).eq('org_id', orgId)
+            );
+            if (sErr) throw sErr;
+        }
+        // display pubblico prezzi (whitelisted per anon)
+        await OrgSettings.set('billing_client.prices', pricesMap);
+
+        showToast('✅ Pagamenti salvati', 'success');
+    } catch (e) {
+        console.error('[Settings] payments save error:', e);
+        showToast('Errore salvataggio pagamenti', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 5 — POLICY PRENOTAZIONE / CANCELLAZIONE
+//     (include cert/assicurazione/badge migrati dalle card legacy)
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderPolicy(body) {
+    const freeHours = OrgSettings.getNumber('booking.policy.free_cancel_hours', 24);
+    const penalty   = OrgSettings.getNumber('booking.policy.penalty_pct', 50);
+    const maxAdv    = OrgSettings.getNumber('booking.policy.max_advance_days', 0);
+    const reqAcc    = OrgSettings.getBool('booking.policy.requires_account', false);
+    const cancelMd  = OrgSettings.getString('booking.policy.cancel_mode', 'penalty');
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">🛡️</span>
+                <div>
+                    <h4 class="sett-card-title">Policy prenotazione &amp; cancellazione</h4>
+                    <p class="sett-card-desc">Regole su anticipo, finestra di cancellazione gratuita e penali.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field">
+                    <label class="sett-input-label">Ore di cancellazione gratuita</label>
+                    <input type="number" min="0" step="1" id="polFreeHours" class="sett-text-input" value="${freeHours}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Penale cancellazione tardiva (%)</label>
+                    <input type="number" min="0" max="100" step="1" id="polPenalty" class="sett-text-input" value="${penalty}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Anticipo massimo prenotazione (giorni, 0 = illimitato)</label>
+                    <input type="number" min="0" step="1" id="polMaxAdvance" class="sett-text-input" value="${maxAdv}">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Modalità cancellazione</label>
+                    <select id="polCancelMode" class="sett-select">
+                        <option value="penalty"  ${cancelMd === 'penalty'  ? 'selected' : ''}>Penale percentuale</option>
+                        <option value="block"    ${cancelMd === 'block'    ? 'selected' : ''}>Blocca cancellazione tardiva</option>
+                        <option value="free"     ${cancelMd === 'free'     ? 'selected' : ''}>Sempre gratuita</option>
+                    </select>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Richiedi account per prenotare</strong>
+                        <span>Se attivo, solo i clienti registrati possono prenotare.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="polRequiresAccount" ${reqAcc ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--purple" onclick="savePolicySettings()">💾 Salva policy</button>
+            </div>
+        </div>
+
+        <!-- Certificato medico (modificabile dal cliente) -->
+        <div class="sett-card">
+            <div class="sett-card-header">
+                <span class="sett-card-icon sett-card-icon--cyan">🏥</span>
+                <div>
+                    <h4 class="sett-card-title">Certificato medico</h4>
+                    <p class="sett-card-desc">Se attivo, i clienti possono modificare la scadenza del proprio certificato nel profilo.</p>
+                </div>
+                <label class="settings-toggle-wrap">
+                    <input type="checkbox" id="certEditableToggle" onchange="saveCertEditable(this.checked)">
+                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    <span class="settings-toggle-text" id="certEditableText"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Blocco prenotazioni cert -->
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--red">🚫</span>
+                <div>
+                    <h4 class="sett-card-title">Blocco prenotazioni per certificato medico</h4>
+                    <p class="sett-card-desc">Impedisci ai clienti di prenotare in base allo stato del certificato medico.</p>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Certificato scaduto</strong>
+                        <span>Blocca la prenotazione se il certificato medico risulta scaduto.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="certBlockExpiredToggle" onchange="saveCertBlockExpired(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="certBlockExpiredText"></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Certificato non impostato</strong>
+                        <span>Blocca la prenotazione se il cliente non ha ancora inserito la scadenza.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="certBlockNotSetToggle" onchange="saveCertBlockNotSet(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="certBlockNotSetText"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blocco prenotazioni assicurazione -->
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--red">🚫</span>
+                <div>
+                    <h4 class="sett-card-title">Blocco prenotazioni per assicurazione</h4>
+                    <p class="sett-card-desc">Impedisci ai clienti di prenotare in base allo stato dell'assicurazione.</p>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Assicurazione scaduta</strong>
+                        <span>Blocca la prenotazione se l'assicurazione risulta scaduta.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="assicBlockExpiredToggle" onchange="saveAssicBlockExpired(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="assicBlockExpiredText"></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Assicurazione non impostata</strong>
+                        <span>Blocca la prenotazione se il cliente non ha ancora inserito la scadenza.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="assicBlockNotSetToggle" onchange="saveAssicBlockNotSet(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="assicBlockNotSetText"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualizza badge partecipante -->
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--cyan">👁️</span>
+                <div>
+                    <h4 class="sett-card-title">Badge sulla card partecipante</h4>
+                    <p class="sett-card-desc">Quali badge mostrare nella vista Prenotazioni admin.</p>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>🏥 Certificato medico</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="showCertBadgeToggle" onchange="saveShowCertBadge(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="showCertBadgeText"></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>📋 Assicurazione</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="showAssicBadgeToggle" onchange="saveShowAssicBadge(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="showAssicBadgeText"></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>📝 Documento non firmato</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="showDocBadgeToggle" onchange="saveShowDocBadge(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="showDocBadgeText"></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>📋 Completa anagrafica</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="showAnagBadgeToggle" onchange="saveShowAnagBadge(this.checked)">
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        <span class="settings-toggle-text" id="showAnagBadgeText"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settimane standard → rimando a Gestione Orari -->
+        <div class="sett-card">
+            <div class="sett-card-header">
+                <span class="sett-card-icon sett-card-icon--cyan">🗓️</span>
+                <div>
+                    <h4 class="sett-card-title">Settimane standard</h4>
+                    <p class="sett-card-desc">La configurazione delle settimane tipo è stata spostata in Gestione Orari → Settimana tipo.</p>
+                </div>
+                <button class="sett-action-btn sett-action-btn--cyan" onclick="switchTab('schedule')">Vai a Gestione Orari</button>
+            </div>
+        </div>`;
+
+    // Popola i toggle legacy (leggono dalle Storage classes esistenti).
     renderCertEditableUI();
     renderCertBlockUI();
     renderAssicBlockUI();
     renderBookingBadgesUI();
-    renderWeekTemplatesUI();
-    renderMaintenanceUI();
 }
 
-// ── Maintenance Mode ─────────────────────────────────────────────────────────
+async function savePolicySettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        await OrgSettings.set('booking.policy.free_cancel_hours', parseInt(_settVal('polFreeHours'), 10) || 0);
+        await OrgSettings.set('booking.policy.penalty_pct', parseInt(_settVal('polPenalty'), 10) || 0);
+        await OrgSettings.set('booking.policy.max_advance_days', parseInt(_settVal('polMaxAdvance'), 10) || 0);
+        await OrgSettings.set('booking.policy.requires_account', _settChecked('polRequiresAccount'));
+        await OrgSettings.set('booking.policy.cancel_mode', _settVal('polCancelMode'));
+        showToast('✅ Policy salvata', 'success');
+    } catch (e) {
+        console.error('[Settings] policy save error:', e);
+        showToast('Errore salvataggio policy', 'error');
+    }
+}
 
-async function renderMaintenanceUI() {
-    const toggle = document.getElementById('maintenanceModeToggle');
-    const text = document.getElementById('maintenanceModeText');
-    const adminToggle = document.getElementById('maintenanceAdminToggle');
-    const adminText = document.getElementById('maintenanceAdminText');
-    const msgInput = document.getElementById('maintenanceMessageInput');
-    if (!toggle) return;
+// ════════════════════════════════════════════════════════════════════════════
+// 6 — NOTIFICHE
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderNotif(body) {
+    const conf      = OrgSettings.getBool('notif.booking_confirmation', true);
+    const remEnab   = OrgSettings.getBool('notif.reminder_enabled', true);
+    const remHours  = OrgSettings.getNumber('notif.reminder_hours', 24);
+    const adminNew  = OrgSettings.getBool('notif.admin_new_booking', true);
+    const channels  = OrgSettings.get('notif.channels', { push: true, email: false, whatsapp: false }) || {};
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--blue">🔔</span>
+                <div>
+                    <h4 class="sett-card-title">Notifiche</h4>
+                    <p class="sett-card-desc">Conferme, promemoria e avvisi agli admin.</p>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Conferma prenotazione al cliente</strong>
+                        <span>Invia una notifica al cliente quando prenota.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="notifConfirmation" ${conf ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Promemoria lezione</strong>
+                        <span>Invia un promemoria prima della lezione.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="notifReminderEnabled" ${remEnab ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row sett-toggle-row--input">
+                    <label class="sett-input-label">Anticipo promemoria (ore)</label>
+                    <input type="number" min="1" step="1" id="notifReminderHours" class="sett-text-input sett-text-input--sm" value="${remHours}">
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text">
+                        <strong>Avvisa admin su nuova prenotazione</strong>
+                        <span>Notifica push agli admin della org per ogni nuova prenotazione.</span>
+                    </div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="notifAdminNew" ${adminNew ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">📡</span>
+                <div>
+                    <h4 class="sett-card-title">Canali di invio</h4>
+                    <p class="sett-card-desc">Quali canali usare per le notifiche.</p>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>📲 Push</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="notifChanPush" ${channels.push !== false ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>✉️ Email</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="notifChanEmail" ${channels.email ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+                <div class="sett-toggle-row">
+                    <div class="sett-toggle-text"><strong>💬 WhatsApp</strong></div>
+                    <label class="settings-toggle-wrap">
+                        <input type="checkbox" id="notifChanWhatsapp" ${channels.whatsapp ? 'checked' : ''}>
+                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="sett-btn-row">
+            <button class="sett-action-btn sett-action-btn--blue" onclick="saveNotifSettings()">💾 Salva notifiche</button>
+        </div>`;
+}
+
+async function saveNotifSettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        await OrgSettings.set('notif.booking_confirmation', _settChecked('notifConfirmation'));
+        await OrgSettings.set('notif.reminder_enabled', _settChecked('notifReminderEnabled'));
+        await OrgSettings.set('notif.reminder_hours', parseInt(_settVal('notifReminderHours'), 10) || 24);
+        await OrgSettings.set('notif.admin_new_booking', _settChecked('notifAdminNew'));
+        await OrgSettings.set('notif.channels', {
+            push:     _settChecked('notifChanPush'),
+            email:    _settChecked('notifChanEmail'),
+            whatsapp: _settChecked('notifChanWhatsapp'),
+        });
+        showToast('✅ Notifiche salvate', 'success');
+    } catch (e) {
+        console.error('[Settings] notif save error:', e);
+        showToast('Errore salvataggio notifiche', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 7 — STAFF / MEMBRI (org_members)
+// ════════════════════════════════════════════════════════════════════════════
+async function _settRenderStaff(body) {
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">👥</span>
+                <div>
+                    <h4 class="sett-card-title">Invita un membro dello staff</h4>
+                    <p class="sett-card-desc">Inserisci l'email di un utente registrato e assegna un ruolo.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field sett-field--wide">
+                    <label class="sett-input-label">Email</label>
+                    <input type="email" id="staffInviteEmail" class="sett-text-input" placeholder="nome@esempio.it">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Ruolo</label>
+                    <select id="staffInviteRole" class="sett-select">
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--purple" onclick="inviteStaffMember()">➕ Invita membro</button>
+            </div>
+        </div>
+
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--blue">📋</span>
+                <div>
+                    <h4 class="sett-card-title">Membri dello staff</h4>
+                    <p class="sett-card-desc">Ruoli e stato dei membri della tua organizzazione.</p>
+                </div>
+            </div>
+            <div id="staffMembersList"><div class="sett-loading">⏳ Caricamento membri…</div></div>
+        </div>`;
+
+    await _settLoadStaffList();
+}
+
+async function _settLoadStaffList() {
+    const list = document.getElementById('staffMembersList');
+    if (!list) return;
+    try {
+        const { data, error } = await _queryWithTimeout(
+            supabaseClient.from('org_members')
+                .select('id,user_id,role,status,invited_email')
+                .eq('org_id', window._orgId)
+                .order('role')
+        );
+        if (error) throw error;
+        const members = data || [];
+
+        // Risolvi nome/email dai profiles (se il membro è anche cliente) per visualizzazione.
+        const userIds = members.map(m => m.user_id).filter(Boolean);
+        let profMap = {};
+        if (userIds.length) {
+            const { data: profs } = await _queryWithTimeout(
+                supabaseClient.from('profiles').select('id,name,email').in('id', userIds)
+            );
+            (profs || []).forEach(p => { profMap[p.id] = p; });
+        }
+
+        if (!members.length) {
+            list.innerHTML = '<p class="sett-card-desc">Nessun membro oltre al proprietario.</p>';
+            return;
+        }
+
+        const myRole = window._orgRole;
+        list.innerHTML = `<div class="sett-staff-list">${members.map(m => {
+            const prof = profMap[m.user_id] || {};
+            const displayName = prof.name || m.invited_email || prof.email || '—';
+            const displayEmail = prof.email || m.invited_email || '';
+            const isOwner = m.role === 'owner';
+            const roleBadge = `<span class="sett-role-badge sett-role-badge--${m.role}">${_settRoleLabel(m.role)}</span>`;
+            const statusBadge = m.status !== 'active'
+                ? `<span class="sett-badge-off">${m.status === 'invited' ? 'invitato' : 'revocato'}</span>` : '';
+            // Owner non modificabile; solo owner/admin possono agire e non su un owner.
+            const canManage = (myRole === 'owner' || myRole === 'admin') && !isOwner;
+            const actions = canManage ? `
+                <div class="sett-staff-actions">
+                    <select class="sett-select sett-select--sm" onchange="changeStaffRole('${m.id}', this.value)">
+                        <option value="staff" ${m.role === 'staff' ? 'selected' : ''}>Staff</option>
+                        <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                    <button class="sett-action-btn sett-action-btn--red sett-action-btn--sm" onclick="revokeStaffMember('${m.id}')">Revoca</button>
+                </div>` : '';
+            return `
+                <div class="sett-staff-row">
+                    <div class="sett-staff-info">
+                        <span class="sett-staff-name">${_escHtml(displayName)} ${roleBadge} ${statusBadge}</span>
+                        <span class="sett-staff-email">${_escHtml(displayEmail)}</span>
+                    </div>
+                    ${actions}
+                </div>`;
+        }).join('')}</div>`;
+    } catch (e) {
+        console.error('[Settings] staff load error:', e);
+        list.innerHTML = '<p class="sett-card-desc">Errore nel caricamento dei membri.</p>';
+    }
+}
+
+function _settRoleLabel(role) {
+    return { owner: 'Proprietario', admin: 'Admin', staff: 'Staff' }[role] || role;
+}
+
+async function inviteStaffMember() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    const email = _settVal('staffInviteEmail').trim().toLowerCase();
+    const role  = _settVal('staffInviteRole');
+    if (!email || !email.includes('@')) { showToast('Inserisci un\'email valida', 'error'); return; }
 
     try {
-        const { data } = await _queryWithTimeout(supabaseClient
-            .from('app_settings')
-            .select('key, value')
-            .in('key', ['maintenance_mode', 'maintenance_message', 'maintenance_admin']));
-        const flags = Object.fromEntries((data || []).map(r => [r.key, r.value]));
-
-        const modeOn = flags.maintenance_mode === true || flags.maintenance_mode === 'true';
-        toggle.checked = modeOn;
-        if (text) text.textContent = modeOn ? 'Attiva' : 'Non attiva';
-
-        const adminOn = flags.maintenance_admin === true || flags.maintenance_admin === 'true';
-        if (adminToggle) adminToggle.checked = adminOn;
-        if (adminText) adminText.textContent = adminOn ? 'Admin bloccato' : 'Admin accessibile';
-
-        if (msgInput) msgInput.value = (typeof flags.maintenance_message === 'string') ? flags.maintenance_message : '';
-    } catch (e) { console.warn('[Maintenance] renderUI error:', e); }
+        const { error } = await _rpcWithTimeout(
+            supabaseClient.rpc('invite_org_member', { p_email: email, p_role: role })
+        );
+        if (error) throw error;
+        showToast('✅ Invito inviato', 'success');
+        const inp = document.getElementById('staffInviteEmail');
+        if (inp) inp.value = '';
+        await _settLoadStaffList();
+    } catch (e) {
+        console.error('[Settings] invite error:', e);
+        const msg = (e && e.message && e.message.includes('unauthorized')) ? 'Permesso negato'
+                  : (e && e.message && e.message.includes('invalid_role')) ? 'Ruolo non valido'
+                  : 'Errore: l\'utente deve essere registrato per essere invitato';
+        showToast(msg, 'error');
+    }
 }
 
+async function changeStaffRole(memberId, newRole) {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    if (newRole !== 'admin' && newRole !== 'staff') return;
+    try {
+        const { error } = await _queryWithTimeout(
+            supabaseClient.from('org_members').update({ role: newRole })
+                .eq('id', memberId).eq('org_id', window._orgId).neq('role', 'owner')
+        );
+        if (error) throw error;
+        showToast('✅ Ruolo aggiornato', 'success');
+        await _settLoadStaffList();
+    } catch (e) {
+        console.error('[Settings] change role error:', e);
+        showToast('Errore aggiornamento ruolo', 'error');
+        await _settLoadStaffList();
+    }
+}
+
+async function revokeStaffMember(memberId) {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    if (!confirm('Revocare l\'accesso a questo membro?')) return;
+    try {
+        const { error } = await _queryWithTimeout(
+            supabaseClient.from('org_members').update({ status: 'revoked' })
+                .eq('id', memberId).eq('org_id', window._orgId).neq('role', 'owner')
+        );
+        if (error) throw error;
+        showToast('✅ Membro revocato', 'success');
+        await _settLoadStaffList();
+    } catch (e) {
+        console.error('[Settings] revoke error:', e);
+        showToast('Errore revoca membro', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 8 — GDPR / PRIVACY
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderGdpr(body) {
+    const privacy   = OrgSettings.getString('gdpr.privacy_url', '');
+    const terms     = OrgSettings.getString('gdpr.terms_url', '');
+    const retention = OrgSettings.getNumber('gdpr.data_retention_days', 0);
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">📜</span>
+                <div>
+                    <h4 class="sett-card-title">GDPR &amp; Privacy</h4>
+                    <p class="sett-card-desc">Link ai documenti legali e conservazione dei dati.</p>
+                </div>
+            </div>
+            <div class="sett-form-grid">
+                <div class="sett-field sett-field--wide">
+                    <label class="sett-input-label">URL informativa privacy</label>
+                    <input type="url" id="gdprPrivacyUrl" class="sett-text-input" value="${_escHtml(privacy)}" placeholder="https://…/privacy">
+                </div>
+                <div class="sett-field sett-field--wide">
+                    <label class="sett-input-label">URL termini e condizioni</label>
+                    <input type="url" id="gdprTermsUrl" class="sett-text-input" value="${_escHtml(terms)}" placeholder="https://…/termini">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Conservazione dati (giorni, 0 = illimitato)</label>
+                    <input type="number" min="0" step="1" id="gdprRetention" class="sett-text-input" value="${retention}">
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--green" onclick="saveGdprSettings()">💾 Salva GDPR</button>
+            </div>
+        </div>`;
+}
+
+async function saveGdprSettings() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        await OrgSettings.set('gdpr.privacy_url', _settVal('gdprPrivacyUrl').trim());
+        await OrgSettings.set('gdpr.terms_url', _settVal('gdprTermsUrl').trim());
+        await OrgSettings.set('gdpr.data_retention_days', parseInt(_settVal('gdprRetention'), 10) || 0);
+        showToast('✅ GDPR salvato', 'success');
+    } catch (e) {
+        console.error('[Settings] gdpr save error:', e);
+        showToast('Errore salvataggio GDPR', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 9 — FEATURE FLAGS
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderFeatures(body) {
+    const FEATURES = [
+        ['workout_plans',          '💪 Schede di allenamento', 'Modulo schede, esercizi e progressi.'],
+        ['nutrition',              '🥗 Nutrizione',            'Piani alimentari per i clienti.'],
+        ['messaging',              '💬 Messaggistica',         'Notifiche push broadcast ai clienti.'],
+        ['ai_reports',             '🤖 Report AI',             'Report mensili generati con AI.'],
+        ['client_online_payments', '💳 Pagamenti online',      'I clienti pagano le lezioni online con Stripe.'],
+    ];
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">🧩</span>
+                <div>
+                    <h4 class="sett-card-title">Funzionalità</h4>
+                    <p class="sett-card-desc">Attiva/disattiva i moduli per la tua organizzazione. La disponibilità per piano è gestita a parte.</p>
+                </div>
+            </div>
+            <div class="sett-toggle-list">
+                ${FEATURES.map(([key, lbl, desc]) => {
+                    const on = OrgSettings.getBool('features.' + key, false);
+                    return `
+                    <div class="sett-toggle-row">
+                        <div class="sett-toggle-text">
+                            <strong>${lbl}</strong>
+                            <span>${desc}</span>
+                        </div>
+                        <label class="settings-toggle-wrap">
+                            <input type="checkbox" id="feat_${key}" ${on ? 'checked' : ''}
+                                   onchange="saveFeatureFlag('${key}', this.checked)">
+                            <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                        </label>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+}
+
+async function saveFeatureFlag(key, val) {
+    if (!_settIsAdmin()) {
+        showToast('Permesso negato', 'error');
+        const el = document.getElementById('feat_' + key);
+        if (el) el.checked = !val;
+        return;
+    }
+    await _settSave('features.' + key, val, val ? '✅ Funzionalità attivata' : 'Funzionalità disattivata');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 10 — BILLING SaaS (sola lettura stato + checkout/portal)
+// ════════════════════════════════════════════════════════════════════════════
+async function _settRenderBillingSaas(body) {
+    body.innerHTML = `<div class="sett-loading">⏳ Caricamento abbonamento…</div>`;
+
+    let ent = null;
+    try {
+        const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('get_tenant_entitlements'));
+        if (error) throw error;
+        ent = data;
+    } catch (e) {
+        console.warn('[Settings] entitlements error:', e);
+    }
+
+    const PLANS = [
+        { code: 'starter',  name: 'Starter',  price: '€39,99', limit: '≤ 50 clienti',      feats: ['Schede', 'Notifiche push'] },
+        { code: 'pro',      name: 'Pro',      price: '€79,99', limit: '≤ 200 clienti',     feats: ['Tutto Starter', 'Report AI', 'Pagamenti online'] },
+        { code: 'business', name: 'Business', price: '€149,99', limit: 'Clienti illimitati', feats: ['Tutto Pro', 'Priorità supporto'] },
+    ];
+
+    const plan      = ent && ent.plan;
+    const status    = (ent && ent.status) || '—';
+    const maxClients = ent ? ent.max_clients : null;
+    const clients   = (ent && ent.clients_count) != null ? ent.clients_count : '—';
+    const trialEnd  = ent && ent.trial_end;
+    const periodEnd = ent && ent.current_period_end;
+
+    const statusLabels = {
+        trialing: '🎁 In prova', active: '✅ Attivo', past_due: '⚠️ Pagamento in ritardo',
+        canceled: '⛔ Annullato', unpaid: '⚠️ Non pagato', incomplete: '⏳ Incompleto',
+    };
+    const limitTxt = maxClients == null ? '∞' : maxClients;
+    const dateTxt = (d) => { try { return d ? new Date(d).toLocaleDateString('it-IT') : '—'; } catch { return '—'; } };
+
+    const stateInfo = status === 'trialing' && trialEnd
+        ? `Prova fino al <strong>${dateTxt(trialEnd)}</strong>`
+        : periodEnd ? `Rinnovo: <strong>${dateTxt(periodEnd)}</strong>` : '';
+
+    body.innerHTML = `
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">💎</span>
+                <div>
+                    <h4 class="sett-card-title">Il tuo abbonamento</h4>
+                    <p class="sett-card-desc">Stato dell'abbonamento PalestrIA della tua organizzazione.</p>
+                </div>
+            </div>
+            <div class="sett-saas-status">
+                <div class="sett-saas-stat">
+                    <span class="sett-saas-stat-lbl">Piano</span>
+                    <span class="sett-saas-stat-val">${plan ? _escHtml(plan.charAt(0).toUpperCase() + plan.slice(1)) : '—'}</span>
+                </div>
+                <div class="sett-saas-stat">
+                    <span class="sett-saas-stat-lbl">Stato</span>
+                    <span class="sett-saas-stat-val">${statusLabels[status] || _escHtml(status)}</span>
+                </div>
+                <div class="sett-saas-stat">
+                    <span class="sett-saas-stat-lbl">Clienti</span>
+                    <span class="sett-saas-stat-val">${clients} / ${limitTxt}</span>
+                </div>
+            </div>
+            ${stateInfo ? `<p class="sett-saas-period">${stateInfo}</p>` : ''}
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--blue" onclick="openBillingPortal()">⚙️ Gestisci abbonamento</button>
+            </div>
+        </div>
+
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">🚀</span>
+                <div>
+                    <h4 class="sett-card-title">Cambia piano</h4>
+                    <p class="sett-card-desc">Scegli il piano più adatto al numero di clienti.</p>
+                </div>
+            </div>
+            <div class="sett-plan-grid">
+                ${PLANS.map(p => `
+                    <div class="sett-plan-card ${plan === p.code ? 'current' : ''}">
+                        <div class="sett-plan-name">${p.name}</div>
+                        <div class="sett-plan-price">${p.price}<span>/mese</span></div>
+                        <div class="sett-plan-limit">${p.limit}</div>
+                        <ul class="sett-plan-feats">${p.feats.map(f => `<li>${f}</li>`).join('')}</ul>
+                        ${plan === p.code
+                            ? '<button class="sett-action-btn sett-action-btn--muted" disabled>Piano attuale</button>'
+                            : `<button class="sett-action-btn sett-action-btn--green" onclick="changeSaasPlan('${p.code}')">Scegli</button>`}
+                    </div>`).join('')}
+            </div>
+        </div>`;
+}
+
+async function changeSaasPlan(planCode) {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        showToast('Reindirizzamento al checkout…', 'success');
+        const { data, error } = await supabaseClient.functions.invoke('billing-checkout', { body: { plan_code: planCode } });
+        if (error) throw error;
+        if (data && data.url) { window.location = data.url; }
+        else throw new Error('URL checkout mancante');
+    } catch (e) {
+        console.error('[Settings] checkout error:', e);
+        showToast('Errore avvio checkout', 'error');
+    }
+}
+
+async function openBillingPortal() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    try {
+        showToast('Apertura portale…', 'success');
+        const { data, error } = await supabaseClient.functions.invoke('billing-portal');
+        if (error) throw error;
+        if (data && data.url) { window.location = data.url; }
+        else throw new Error('URL portale mancante');
+    } catch (e) {
+        console.error('[Settings] portal error:', e);
+        showToast('Errore apertura portale', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 11 — SICUREZZA / MANUTENZIONE
+// ════════════════════════════════════════════════════════════════════════════
+function _settRenderSecurity(body) {
+    const maintOn  = OrgSettings.getBool('maintenance.mode', false);
+    const maintMsg = OrgSettings.getString('maintenance.message', '');
+
+    body.innerHTML = `
+        <!-- Modalità manutenzione -->
+        <div class="sett-card sett-card--danger">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--red">🔧</span>
+                <div>
+                    <h4 class="sett-card-title">Modalità manutenzione</h4>
+                    <p class="sett-card-desc">Quando attiva, i clienti vedono un overlay "sistema non disponibile". L'admin continua ad accedere.</p>
+                </div>
+                <label class="settings-toggle-wrap">
+                    <input type="checkbox" id="maintenanceModeToggle" ${maintOn ? 'checked' : ''} onchange="saveMaintenanceMode(this.checked)">
+                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+                    <span class="settings-toggle-text" id="maintenanceModeText">${maintOn ? 'Attiva' : 'Non attiva'}</span>
+                </label>
+            </div>
+            <div class="sett-toggle-list">
+                <div class="sett-toggle-row sett-toggle-row--input">
+                    <label class="sett-input-label">Messaggio personalizzato (opzionale)</label>
+                    <div class="sett-input-row">
+                        <input type="text" id="maintenanceMessageInput" placeholder="Sistema temporaneamente non disponibile…" class="sett-text-input" value="${_escHtml(maintMsg)}">
+                        <button class="sett-save-btn" onclick="saveMaintenanceMessage()">Salva</button>
+                        <span id="maintenanceMessageSaved" class="sett-saved-msg" style="display:none">Salvato</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verifica integrità dati -->
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--purple">🔍</span>
+                <div>
+                    <h4 class="sett-card-title">Verifica integrità dati</h4>
+                    <p class="sett-card-desc">Controlla anomalie: utenti senza profilo, prenotazioni orfane, email non corrispondenti.</p>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--purple" id="healthCheckBtn" onclick="runHealthCheck()">🔍 Verifica</button>
+                <button class="sett-action-btn sett-action-btn--red" id="healthFixBtn" onclick="runHealthFix()" style="display:none">🔧 Correggi anomalie</button>
+            </div>
+            <div id="healthCheckResult" style="display:none; margin-top:1rem;"></div>
+        </div>
+
+        <!-- Backup & Ripristino -->
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--blue">💾</span>
+                <div>
+                    <h4 class="sett-card-title">Backup &amp; Ripristino</h4>
+                    <p class="sett-card-desc">Esporta tutti i dati della tua organizzazione. Il ripristino sovrascrive i dati attuali.</p>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--blue" onclick="exportBackup('json')">📤 Esporta JSON</button>
+                <button class="sett-action-btn sett-action-btn--purple" onclick="exportBackup('csv')">📤 Esporta CSV</button>
+                <button class="sett-action-btn sett-action-btn--green" onclick="document.getElementById('importBackupFile').click()">📥 Importa backup</button>
+            </div>
+            <input type="file" id="importBackupFile" accept=".json" style="display:none" onchange="importBackup(this)">
+            <div id="backupStatus" class="sett-status-text"></div>
+        </div>
+
+        <!-- Report fiscali -->
+        <div class="sett-card">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">🧾</span>
+                <div>
+                    <h4 class="sett-card-title">Report pagamenti</h4>
+                    <p class="sett-card-desc">Scarica i report XLSX dei pagamenti fiscali (carta, bonifico, Stripe, contanti con report).</p>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--blue" onclick="downloadWeeklyReport()">📥 Report settimanale</button>
+                <button class="sett-action-btn sett-action-btn--green" id="fiscalReportBtn" onclick="downloadFiscalReport()">🧾 Report fiscale completo</button>
+            </div>
+        </div>
+
+        <!-- Cancella tutti i dati (org-scoped) -->
+        <div class="sett-card sett-card--danger">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--red">🗑️</span>
+                <div>
+                    <h4 class="sett-card-title">Cancella tutti i dati</h4>
+                    <p class="sett-card-desc">Elimina prenotazioni, schede, pagamenti e configurazioni della tua organizzazione. Account e abbonamento restano. Operazione irreversibile.</p>
+                </div>
+            </div>
+            <div class="sett-btn-row">
+                <button class="sett-action-btn sett-action-btn--red" onclick="clearAllOrgData()">🗑️ Cancella dati org</button>
+            </div>
+        </div>`;
+}
+
+async function clearAllOrgData() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
+    if (!confirm('⚠️ Cancellare TUTTI i dati operativi della tua organizzazione?\n\nVerranno eliminati: prenotazioni, schede, pagamenti, override calendario, notifiche e report.\nAccount, membri e abbonamento NON saranno toccati.\n\nL\'operazione è IRREVERSIBILE.')) return;
+    const confirmText = prompt('Per confermare, scrivi ELIMINA in maiuscolo:');
+    if (confirmText !== 'ELIMINA') { showToast('Operazione annullata', 'error'); return; }
+
+    try {
+        const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_clear_all_data'), 30000);
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Errore');
+        showToast('✅ Dati organizzazione cancellati', 'success');
+    } catch (e) {
+        console.error('[Settings] clear data error:', e);
+        showToast('Errore cancellazione dati', 'error');
+    }
+}
+
+// ── Modalità manutenzione (ora su OrgSettings: maintenance.mode / maintenance.message) ──
 async function saveMaintenanceMode(val) {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); const t = document.getElementById('maintenanceModeToggle'); if (t) t.checked = !val; return; }
     const toggle = document.getElementById('maintenanceModeToggle');
     const text = document.getElementById('maintenanceModeText');
     if (text) text.textContent = val ? 'Attiva' : 'Non attiva';
-    const now = new Date().toISOString();
     try {
-        const { error } = await _queryWithTimeout(
-            supabaseClient.from('app_settings').upsert({ key: 'maintenance_mode', value: val, updated_at: now })
-        );
-        if (error) throw error;
+        await OrgSettings.set('maintenance.mode', val);
         showToast(val ? '🔧 Manutenzione attivata' : '✅ Manutenzione disattivata', val ? 'error' : 'success');
     } catch (e) {
         console.error('[Maintenance] saveMode error:', e);
@@ -61,42 +1422,12 @@ async function saveMaintenanceMode(val) {
     }
 }
 
-async function saveMaintenanceAdmin(val) {
-    const toggle = document.getElementById('maintenanceAdminToggle');
-    if (val) {
-        const pwd = prompt('Inserisci la password per bloccare anche l\'admin:');
-        if (pwd !== 'Maldive') {
-            showToast('Password errata.', 'error');
-            if (toggle) toggle.checked = false;
-            return;
-        }
-    }
-    const text = document.getElementById('maintenanceAdminText');
-    if (text) text.textContent = val ? 'Admin bloccato' : 'Admin accessibile';
-    const now = new Date().toISOString();
-    try {
-        const { error } = await _queryWithTimeout(
-            supabaseClient.from('app_settings').upsert({ key: 'maintenance_admin', value: val, updated_at: now })
-        );
-        if (error) throw error;
-        showToast(val ? '⚠️ Admin bloccato — sblocca da Supabase' : '✅ Admin sbloccato', val ? 'error' : 'success');
-    } catch (e) {
-        console.error('[Maintenance] saveAdmin error:', e);
-        if (toggle) toggle.checked = !val;
-        if (text) text.textContent = !val ? 'Admin bloccato' : 'Admin accessibile';
-        showToast('Errore salvataggio', 'error');
-    }
-}
-
 async function saveMaintenanceMessage() {
+    if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
     const input = document.getElementById('maintenanceMessageInput');
-    const msg = (input?.value || '').trim();
-    const now = new Date().toISOString();
+    const msg = (input && input.value || '').trim();
     try {
-        const { error } = await _queryWithTimeout(
-            supabaseClient.from('app_settings').upsert({ key: 'maintenance_message', value: msg, updated_at: now })
-        );
-        if (error) throw error;
+        await OrgSettings.set('maintenance.message', msg);
         const savedMsg = document.getElementById('maintenanceMessageSaved');
         if (savedMsg) { savedMsg.style.display = 'block'; setTimeout(() => { savedMsg.style.display = 'none'; }, 2000); }
     } catch (e) {
@@ -105,9 +1436,10 @@ async function saveMaintenanceMessage() {
     }
 }
 
-function saveCancellationMode(mode) {
-    CancellationModeStorage.set(mode);
-}
+// ══════════════════════════════════════════════════════════════════════════════
+// TOGGLE LEGACY (cert / assicurazione / badge) — invariati, riusano le Storage
+// classes in data.js. Popolati dalle render*UI() chiamate in _settRenderPolicy.
+// ══════════════════════════════════════════════════════════════════════════════
 
 function renderCertEditableUI() {
     const editable = CertEditableStorage.get();
@@ -169,226 +1501,44 @@ function saveAssicBlockNotSet(val) {
     if (text) text.textContent = val ? 'Bloccato' : 'Non bloccato';
 }
 
-// ── Week Templates ──────────────────────────────────────────────────────────
-
-function _getActiveTemplateName() {
-    const templates = WeekTemplateStorage.getAll();
-    const activeId = WeekTemplateStorage.getActiveId();
-    const active = templates.find(t => t.id === activeId);
-    return active ? active.name : 'Settimana Standard';
-}
-
-function renderWeekTemplatesUI() {
-    const container = document.getElementById('weekTemplatesContainer');
-    if (!container) return;
-
-    const templates = WeekTemplateStorage.getAll();
-    const activeId = WeekTemplateStorage.getActiveId();
-
-    let html = '<div class="week-templates-list">';
-    templates.forEach(tpl => {
-        const isActive = tpl.id === activeId;
-        html += `
-            <div class="week-template-card ${isActive ? 'active' : ''}">
-                <div class="week-template-info">
-                    <div class="week-template-name-row">
-                        <span class="week-template-name" id="tplName-${tpl.id}">${_escHtml(tpl.name)}</span>
-                        <input type="text" class="week-template-name-input" id="tplNameInput-${tpl.id}" value="${_escHtml(tpl.name)}" style="display:none" maxlength="40"
-                            onkeydown="if(event.key==='Enter'){saveTemplateName(${tpl.id});}" onblur="saveTemplateName(${tpl.id})">
-                        <button class="btn-template-rename" onclick="startRenamingTemplate(${tpl.id})" title="Rinomina">✏️</button>
-                    </div>
-                    <span class="week-template-summary">${_getTemplateSummary(tpl.schedule)}</span>
-                </div>
-                <div class="week-template-actions">
-                    ${isActive
-                        ? '<span class="week-template-active-badge">✅ Attiva</span>'
-                        : `<button class="btn-template-activate" onclick="activateWeekTemplate(${tpl.id})">Attiva</button>`
-                    }
-                    <button class="btn-template-edit" onclick="openTemplateEditor(${tpl.id})" title="Modifica settimana">✏️ Modifica</button>
-                </div>
-            </div>`;
-    });
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-function _getTemplateSummary(schedule) {
-    if (!schedule) return 'Non configurata';
-    const days = Object.keys(schedule);
-    let personal = 0, smallGroup = 0, groupClass = 0, cleaning = 0;
-    days.forEach(day => {
-        (schedule[day] || []).forEach(slot => {
-            if (slot.type === SLOT_TYPES.PERSONAL) personal++;
-            else if (slot.type === SLOT_TYPES.SMALL_GROUP) smallGroup++;
-            else if (slot.type === SLOT_TYPES.GROUP_CLASS) groupClass++;
-            else if (slot.type === SLOT_TYPES.CLEANING) cleaning++;
-        });
-    });
-    const parts = [];
-    if (personal) parts.push(`🟢 ${personal}`);
-    if (smallGroup) parts.push(`🟡 ${smallGroup}`);
-    if (groupClass) parts.push(`🔴 ${groupClass}`);
-    if (cleaning) parts.push(`🧹 ${cleaning}`);
-    return parts.length ? parts.join('  ') : 'Vuota';
-}
-
-function startRenamingTemplate(id) {
-    const nameEl = document.getElementById(`tplName-${id}`);
-    const inputEl = document.getElementById(`tplNameInput-${id}`);
-    if (nameEl) nameEl.style.display = 'none';
-    if (inputEl) { inputEl.style.display = 'inline-block'; inputEl.focus(); inputEl.select(); }
-}
-
-function saveTemplateName(id) {
-    const nameEl = document.getElementById(`tplName-${id}`);
-    const inputEl = document.getElementById(`tplNameInput-${id}`);
-    if (!inputEl) return;
-    const newName = inputEl.value.trim();
-    if (newName) {
-        WeekTemplateStorage.updateTemplate(id, { name: newName });
+function renderBookingBadgesUI() {
+    const pairs = [
+        ['showCertBadgeToggle',  'showCertBadgeText',  BookingBadgesStorage.getShowCert()],
+        ['showAssicBadgeToggle', 'showAssicBadgeText', BookingBadgesStorage.getShowAssic()],
+        ['showDocBadgeToggle',   'showDocBadgeText',   BookingBadgesStorage.getShowDoc()],
+        ['showAnagBadgeToggle',  'showAnagBadgeText',  BookingBadgesStorage.getShowAnag()],
+    ];
+    for (const [tId, txtId, val] of pairs) {
+        const t = document.getElementById(tId);
+        const x = document.getElementById(txtId);
+        if (t) t.checked = val;
+        if (x) x.textContent = val ? 'Visibile' : 'Nascosto';
     }
-    if (nameEl) { nameEl.textContent = newName || nameEl.textContent; nameEl.style.display = ''; }
-    inputEl.style.display = 'none';
 }
 
-function activateWeekTemplate(id) {
-    WeekTemplateStorage.setActiveId(id);
-    renderWeekTemplatesUI();
+function _setBadgeText(id, val) {
+    const x = document.getElementById(id);
+    if (x) x.textContent = val ? 'Visibile' : 'Nascosto';
 }
 
-// ── Template Editor Popup ───────────────────────────────────────────────────
+function saveShowCertBadge(val)  { BookingBadgesStorage.setShowCert(val);  _setBadgeText('showCertBadgeText',  val); _refreshAdminCalendarIfVisible(); }
+function saveShowAssicBadge(val) { BookingBadgesStorage.setShowAssic(val); _setBadgeText('showAssicBadgeText', val); _refreshAdminCalendarIfVisible(); }
+function saveShowDocBadge(val)   { BookingBadgesStorage.setShowDoc(val);   _setBadgeText('showDocBadgeText',   val); _refreshAdminCalendarIfVisible(); }
+function saveShowAnagBadge(val)  { BookingBadgesStorage.setShowAnag(val);  _setBadgeText('showAnagBadgeText',  val); _refreshAdminCalendarIfVisible(); }
 
-let _tplEditorState = { id: null, name: null, schedule: null, selectedDay: 'Lunedì' };
-const TPL_DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
-
-function openTemplateEditor(id) {
-    const templates = WeekTemplateStorage.getAll();
-    const tpl = templates.find(t => t.id === id);
-    if (!tpl) return;
-
-    _tplEditorState = {
-        id: id,
-        name: tpl.name,
-        schedule: JSON.parse(JSON.stringify(tpl.schedule)),
-        selectedDay: 'Lunedì'
-    };
-
-    // Create or reuse overlay
-    let overlay = document.getElementById('templateEditorOverlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'templateEditorOverlay';
-        overlay.className = 'template-editor-overlay';
-        document.body.appendChild(overlay);
+function _refreshAdminCalendarIfVisible() {
+    if (typeof renderAdminDayView === 'function' && window._currentAdminDate) {
+        try { renderAdminDayView(window._currentAdminDate); } catch {}
     }
-    overlay.style.display = 'flex';
-    _renderTemplateEditorContent();
 }
 
-function _renderTemplateEditorContent() {
-    const overlay = document.getElementById('templateEditorOverlay');
-    if (!overlay) return;
-
-    const name = _tplEditorState.name || 'Settimana Standard';
-    const schedule = _tplEditorState.schedule;
-    const selectedDay = _tplEditorState.selectedDay;
-    const daySlots = schedule[selectedDay] || [];
-
-    let html = `
-        <div class="template-editor-popup">
-            <div class="template-editor-header">
-                <h3>✏️ ${_escHtml(name)}</h3>
-                <button class="template-editor-close" onclick="closeTemplateEditor()">✕</button>
-            </div>
-
-            <div class="template-editor-day-tabs">
-                ${TPL_DAY_NAMES.map(d => `<button class="tpl-day-tab ${d === selectedDay ? 'active' : ''}" onclick="_tplSelectDay('${d}')">${d.substring(0, 3)}</button>`).join('')}
-            </div>
-
-            <div class="template-editor-slots">
-                <p style="color:#9ca3af; margin-bottom:0.75rem; font-size:0.85rem"><strong>${selectedDay}</strong> — configura il tipo per ogni fascia oraria</p>`;
-
-    ALL_TIME_SLOTS.forEach(timeSlot => {
-        const existing = daySlots.find(s => s.time === timeSlot);
-        const currentType = existing ? existing.type : '';
-
-        html += `
-                <div class="tpl-slot-row">
-                    <span class="tpl-slot-time">🕐 ${timeSlot}</span>
-                    <select class="tpl-slot-select" onchange="_tplUpdateSlot('${timeSlot}', this.value)">
-                        <option value="">-- Nessuna lezione --</option>
-                        <option value="${SLOT_TYPES.PERSONAL}" ${currentType === SLOT_TYPES.PERSONAL ? 'selected' : ''}>Autonomia</option>
-                        <option value="${SLOT_TYPES.SMALL_GROUP}" ${currentType === SLOT_TYPES.SMALL_GROUP ? 'selected' : ''}>Lezione di Gruppo</option>
-                        <option value="${SLOT_TYPES.GROUP_CLASS}" ${currentType === SLOT_TYPES.GROUP_CLASS ? 'selected' : ''}>Slot prenotato</option>
-                        <option value="${SLOT_TYPES.CLEANING}" ${currentType === SLOT_TYPES.CLEANING ? 'selected' : ''}>Pulizie</option>
-                    </select>
-                    ${currentType ? `<span class="tpl-slot-badge ${currentType}">${SLOT_NAMES[currentType]}</span>` : ''}
-                </div>`;
-    });
-
-    html += `
-            </div>
-
-            <div class="template-editor-footer">
-                <button class="btn-template-save" onclick="saveTemplateEditor()">💾 Salva</button>
-                <button class="btn-template-cancel" onclick="closeTemplateEditor()">Annulla</button>
-            </div>
-        </div>`;
-
-    overlay.innerHTML = html;
-}
-
-function _tplSelectDay(day) {
-    _tplEditorState.selectedDay = day;
-    _renderTemplateEditorContent();
-}
-
-function _tplUpdateSlot(timeSlot, newType) {
-    const day = _tplEditorState.selectedDay;
-    if (!_tplEditorState.schedule[day]) _tplEditorState.schedule[day] = [];
-    let daySlots = _tplEditorState.schedule[day];
-
-    const idx = daySlots.findIndex(s => s.time === timeSlot);
-    if (newType === '') {
-        if (idx !== -1) daySlots.splice(idx, 1);
-    } else {
-        if (idx !== -1) {
-            daySlots[idx].type = newType;
-            // Remove client fields for templates
-            delete daySlots[idx].client;
-            delete daySlots[idx].bookingId;
-        } else {
-            daySlots.push({ time: timeSlot, type: newType });
-        }
-    }
-    daySlots.sort((a, b) => a.time.localeCompare(b.time));
-    _tplEditorState.schedule[day] = daySlots;
-    _renderTemplateEditorContent();
-}
-
-function saveTemplateEditor() {
-    const { id, schedule } = _tplEditorState;
-    // Clean template slots: remove client/bookingId fields
-    const cleanSchedule = {};
-    for (const day in schedule) {
-        cleanSchedule[day] = (schedule[day] || []).map(s => ({ time: s.time, type: s.type }));
-    }
-    WeekTemplateStorage.updateTemplate(id, { schedule: cleanSchedule });
-    closeTemplateEditor();
-    renderWeekTemplatesUI();
-}
-
-function closeTemplateEditor() {
-    const overlay = document.getElementById('templateEditorOverlay');
-    if (overlay) overlay.style.display = 'none';
-    _tplEditorState = { id: null, name: null, schedule: null, selectedDay: 'Lunedì' };
-}
-
-// ── Health Check ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// HEALTH CHECK — invariato (org-scoped lato RPC admin_health_check/fix)
+// ══════════════════════════════════════════════════════════════════════════════
 const HEALTH_CHECKS = [
     { key: 'ghost_users',      label: '👻 Utenti senza profilo',         desc: 'Account auth.users senza riga in profiles', fix: 'Crea profilo da metadata' },
     { key: 'orphan_bookings',  label: '📅 Prenotazioni orfane',          desc: 'Prenotazioni con user_id che punta a profilo inesistente', fix: 'Scollega user_id (booking intatta)' },
-    { key: 'email_mismatch',   label: '📧 Email non corrispondenti',     desc: 'Prenotazioni con email diversa dal profilo collegato (es. admin ha prenotato per conto del cliente)', fix: 'Ricollega user_id al profilo corretto' },
+    { key: 'email_mismatch',   label: '📧 Email non corrispondenti',     desc: 'Prenotazioni con email diversa dal profilo collegato', fix: 'Ricollega user_id al profilo corretto' },
 ];
 
 async function runHealthCheck() {
@@ -435,8 +1585,6 @@ async function runHealthCheck() {
 
         resultEl.innerHTML = summary + html;
         resultEl.style.display = 'block';
-
-        // Mostra bottone fix solo se ci sono anomalie
         fixBtn.style.display = totalIssues > 0 ? '' : 'none';
     } catch (e) {
         resultEl.innerHTML = `<div style="color:#dc2626">Errore: ${_escHtml(e.message)}</div>`;
@@ -477,7 +1625,6 @@ async function runHealthFix() {
         resultEl.innerHTML = html;
         btn.style.display = 'none';
 
-        // Risincronizza le cache dopo il fix
         await Promise.all([
             UserStorage.syncUsersFromSupabase(),
             BookingStorage.syncFromSupabase(),
@@ -491,36 +1638,3 @@ async function runHealthFix() {
         btn.textContent = '🔧 Correggi anomalie';
     }
 }
-
-// Visibility toggles for participant-card badges in admin Prenotazioni
-function renderBookingBadgesUI() {
-    const pairs = [
-        ['showCertBadgeToggle',  'showCertBadgeText',  BookingBadgesStorage.getShowCert()],
-        ['showAssicBadgeToggle', 'showAssicBadgeText', BookingBadgesStorage.getShowAssic()],
-        ['showDocBadgeToggle',   'showDocBadgeText',   BookingBadgesStorage.getShowDoc()],
-        ['showAnagBadgeToggle',  'showAnagBadgeText',  BookingBadgesStorage.getShowAnag()],
-    ];
-    for (const [tId, txtId, val] of pairs) {
-        const t = document.getElementById(tId);
-        const x = document.getElementById(txtId);
-        if (t) t.checked = val;
-        if (x) x.textContent = val ? 'Visibile' : 'Nascosto';
-    }
-}
-
-function _setBadgeText(id, val) {
-    const x = document.getElementById(id);
-    if (x) x.textContent = val ? 'Visibile' : 'Nascosto';
-}
-
-function saveShowCertBadge(val)  { BookingBadgesStorage.setShowCert(val);  _setBadgeText('showCertBadgeText',  val); _refreshAdminCalendarIfVisible(); }
-function saveShowAssicBadge(val) { BookingBadgesStorage.setShowAssic(val); _setBadgeText('showAssicBadgeText', val); _refreshAdminCalendarIfVisible(); }
-function saveShowDocBadge(val)   { BookingBadgesStorage.setShowDoc(val);   _setBadgeText('showDocBadgeText',   val); _refreshAdminCalendarIfVisible(); }
-function saveShowAnagBadge(val)  { BookingBadgesStorage.setShowAnag(val);  _setBadgeText('showAnagBadgeText',  val); _refreshAdminCalendarIfVisible(); }
-
-function _refreshAdminCalendarIfVisible() {
-    if (typeof renderAdminDayView === 'function' && window._currentAdminDate) {
-        try { renderAdminDayView(window._currentAdminDate); } catch {}
-    }
-}
-

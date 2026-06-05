@@ -1,4 +1,5 @@
 {
+    "_comment": "Manifest STATICO single-tenant per la modalità tablet in palestra: name/short_name/theme_color/icons sono i default della piattaforma e NON sono per-org. Il branding PWA per-tenant richiede un manifest DINAMICO servito per-org (endpoint /manifest?org=<slug> o data-URL costruito a runtime da org_settings: branding.pwa_name, branding.primary_color, branding.logo_url). Non implementato in questa fase: TODO de-hardcode PWA per-tenant. theme_color tablet volutamente scuro (#0f172a) per l'uso in-palestra.",
     "name": "Tablet Allenamento – PalestrIA",
     "short_name": "Tablet Gym",
     "description": "Scansiona il QR e registra il tuo allenamento dal tablet in palestra",

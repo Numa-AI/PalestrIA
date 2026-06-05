@@ -9,6 +9,22 @@ function _getPushAuthToken() {
     return typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : null;
 }
 
+// Colore primario per-org (branding) con fallback al viola di default.
+// Legge da OrgSettings se disponibile (guard typeof), altrimenti dalla CSS var
+// --primary-purple, infine dal default hardcoded.
+function _brandPrimaryColor() {
+    if (typeof OrgSettings !== 'undefined') {
+        const c = OrgSettings.getString('branding.primary_color', '');
+        if (c) return c;
+    }
+    try {
+        const cssVar = getComputedStyle(document.documentElement)
+            .getPropertyValue('--primary-purple').trim();
+        if (cssVar) return cssVar;
+    } catch (_) {}
+    return '#8B5CF6';
+}
+
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -390,7 +406,7 @@ function _showDeniedBanner() {
             </div>
         </div>
         <div style="display:flex;gap:10px">
-            <button id="deniedBannerDone" style="flex:1;background:#8B5CF6;color:#fff;border:none;padding:12px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px">Fatto, ricarica</button>
+            <button id="deniedBannerDone" style="flex:1;background:${_brandPrimaryColor()};color:#fff;border:none;padding:12px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px">Fatto, ricarica</button>
             <button id="deniedBannerLater" style="flex:0 0 auto;background:#333;color:#aaa;border:none;padding:12px 16px;border-radius:10px;cursor:pointer;font-size:13px">Dopo</button>
         </div>
     `;
@@ -464,7 +480,7 @@ async function promptPushPermission() {
                 <div style="font-size:12px;color:#aaa;margin-top:4px;line-height:1.5">Promemoria 1h prima della lezione<br>e avvisi quando si libera uno slot</div>
             </div>
         </div>
-        <button id="pushBannerYes" style="width:100%;background:#8B5CF6;color:#fff;border:none;padding:12px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;letter-spacing:0.01em">Abilita notifiche</button>
+        <button id="pushBannerYes" style="width:100%;background:${_brandPrimaryColor()};color:#fff;border:none;padding:12px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;letter-spacing:0.01em">Abilita notifiche</button>
     `;
     document.body.appendChild(banner);
 

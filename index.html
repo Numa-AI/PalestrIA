@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-title" content="Palestra">
     <title>PalestrIA</title>
     <link rel="icon" type="image/png" href="images/logo-palestria.png">
-    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/style.css?v=9">
     <link rel="stylesheet" href="css/login.css?v=4">
 </head>
 <body>
@@ -226,14 +226,15 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/supabase-client.js?v=4"></script>
+    <script src="js/org-settings.js?v=1"></script>
     <script src="js/ui.js?v=2"></script>
-    <script src="js/data.js?v=74"></script>
+    <script src="js/data.js?v=75"></script>
     <script src="js/calendar.js?v=5"></script>
-    <script src="js/booking.js?v=20"></script>
+    <script src="js/booking.js?v=21"></script>
     <script src="js/auth.js?v=24"></script>
     <script src="js/silent-refresh.js?v=1"></script>
     <script src="js/maintenance.js?v=1"></script>
-    <script src="js/push.js?v=20"></script>
+    <script src="js/push.js?v=21"></script>
     <script>
         // Renderizza il calendario subito con i dati in localStorage (se presenti),
         // poi sincronizza da Supabase e re-renderizza con i dati aggiornati.
@@ -241,8 +242,17 @@
         if (typeof renderMobileCalendar === 'function') renderMobileCalendar();
 
         (async function () {
+            // Slug org pubblico (sottodominio/?org=): serve a OrgSettings e alle RPC pubbliche
+            if (!window._orgSlug && typeof _resolveOrgSlug === 'function') {
+                window._orgSlug = _resolveOrgSlug() || null;
+            }
             await initAuth();
             // navAllenamento gestito centralmente da updateNavAuth() in auth.js
+            // Settings per-org (branding, prezzi, policy): carica il layer org-scoped + applica branding
+            if (typeof OrgSettings !== 'undefined') {
+                await OrgSettings.load().catch(e => console.warn('[index] org-settings load:', e?.message || e));
+                if (typeof OrgSettings.applyBranding === 'function') OrgSettings.applyBranding();
+            }
             await BookingStorage.syncFromSupabase().catch(e => console.warn('[index] booking sync:', e?.message || e));
             await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[index] settings sync:', e?.message || e));
             // Deep-link da notifica push: ?date=YYYY-MM-DD → naviga alla settimana giusta

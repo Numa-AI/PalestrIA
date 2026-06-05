@@ -158,8 +158,15 @@ function getBookingPrice(booking) {
     if (booking.customPrice != null && !Number.isNaN(Number(booking.customPrice))) {
         return Number(booking.customPrice);
     }
-    // Prezzo per-org (slot config / OrgSettings) con fallback al listino deprecato
+    // Prezzo per-org (slot config / OrgSettings) con fallback al listino deprecato.
+    // Ordine: 1) billing_client.prices (jsonb {slotTypeKey: prezzo}, listino cliente
+    // autoritativo lato display), 2) price.<slotType> (legacy OrgSettings), 3) SLOT_PRICES.
     if (typeof OrgSettings !== 'undefined' && booking.slotType) {
+        const prices = OrgSettings.get('billing_client.prices');
+        if (prices && typeof prices === 'object') {
+            const p = Number(prices[booking.slotType]);
+            if (Number.isFinite(p)) return p;
+        }
         const orgPrice = OrgSettings.getNumber(`price.${booking.slotType}`, NaN);
         if (Number.isFinite(orgPrice)) return orgPrice;
     }

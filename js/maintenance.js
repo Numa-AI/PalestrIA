@@ -1,6 +1,8 @@
 // Maintenance mode — mostra overlay "sistema non disponibile" se attivato da admin.
-// Legge il flag da app_settings (Supabase). Se la query fallisce → fail-open (nessun blocco).
-// L'admin bypassa automaticamente (sessionStorage.adminAuth === 'true'), salvo maintenance_admin.
+// Legge i flag da org_settings (per-tenant): chiavi maintenance.mode / maintenance.message
+// / maintenance.admin. Per gli anonimi usa la RPC get_public_org_settings(slug)
+// (maintenance.% è in whitelist). Se la query fallisce → fail-open (nessun blocco).
+// L'admin bypassa automaticamente (sessionStorage.adminAuth === 'true'), salvo maintenance.admin.
 
 (function () {
     if (typeof supabaseClient === 'undefined') return;
@@ -8,34 +10,58 @@
     const isAdminPage = location.pathname.includes('admin.html');
     const isAdmin = () => sessionStorage.getItem('adminAuth') === 'true';
 
+    function _orgSlug() {
+        if (typeof window !== 'undefined' && window._orgSlug) return window._orgSlug;
+        if (typeof _resolveOrgSlug === 'function') { try { return _resolveOrgSlug(); } catch (_) {} }
+        return null;
+    }
+
+    // Ritorna { 'maintenance.mode', 'maintenance.message', 'maintenance.admin' } o null.
+    async function _fetchFlags() {
+        const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+        if (orgId) {
+            // autenticato: lettura org-scoped diretta (RLS)
+            const { data, error } = await supabaseClient
+                .from('org_settings')
+                .select('key, value')
+                .eq('org_id', orgId)
+                .in('key', ['maintenance.mode', 'maintenance.message', 'maintenance.admin']);
+            if (error || !data) return null;
+            return Object.fromEntries(data.map(r => [r.key, r.value]));
+        }
+        const slug = _orgSlug();
+        if (slug) {
+            // anonimo: whitelist pubblica
+            const { data, error } = await supabaseClient.rpc('get_public_org_settings', { p_org_slug: slug });
+            if (error || !data || typeof data !== 'object') return null;
+            return data; // { 'maintenance.mode': true, ... }
+        }
+        return null;
+    }
+
     async function checkMaintenance() {
         try {
-            const { data, error } = await supabaseClient
-                .from('app_settings')
-                .select('key, value')
-                .in('key', ['maintenance_mode', 'maintenance_message', 'maintenance_admin']);
-            if (error || !data) return; // fail-open
+            const flags = await _fetchFlags();
+            if (!flags) return; // fail-open
 
-            const flags = Object.fromEntries(data.map(r => [r.key, r.value]));
-
-            const modeOn = flags.maintenance_mode === true || flags.maintenance_mode === 'true';
+            // value è jsonb: true/false nativi (non più stringhe 'true')
+            const modeOn = flags['maintenance.mode'] === true || flags['maintenance.mode'] === 'true';
             if (!modeOn) { _removeOverlay(); return; }
 
-            const adminDown = flags.maintenance_admin === true || flags.maintenance_admin === 'true';
+            const adminDown = flags['maintenance.admin'] === true || flags['maintenance.admin'] === 'true';
 
-            // Admin bypassa, a meno che maintenance_admin sia attivo
+            // Admin bypassa, a meno che maintenance.admin sia attivo
             if (isAdmin() && !adminDown) { _removeOverlay(); return; }
-            // Se siamo su admin.html e maintenance_admin non è attivo, bypassa
             if (isAdminPage && !adminDown) { _removeOverlay(); return; }
 
-            const message = (typeof flags.maintenance_message === 'string' && flags.maintenance_message.trim())
-                ? flags.maintenance_message.trim()
+            const raw = flags['maintenance.message'];
+            const message = (typeof raw === 'string' && raw.trim())
+                ? raw.trim()
                 : 'Sistema temporaneamente non disponibile. Riprova più tardi.';
 
             _showOverlay(message);
         } catch (e) {
-            // fail-open: se qualcosa va storto, non bloccare
-            console.warn('[Maintenance] check failed:', e);
+            console.warn('[Maintenance] check failed:', e); // fail-open
         }
     }
 
@@ -44,9 +70,10 @@
         const overlay = document.createElement('div');
         overlay.id = 'maintenanceOverlay';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;text-align:center;';
+        const logo = (typeof OrgSettings !== 'undefined' && OrgSettings.getString('branding.logo_url', '')) || 'images/logo-palestria-light.png';
         overlay.innerHTML = `
             <div style="max-width:420px;">
-                <img src="images/logo-palestria-light.png" alt="PalestrIA" style="width:80px;height:80px;border-radius:50%;margin-bottom:1.25rem;object-fit:cover;">
+                <img src="${_escAttr(logo)}" alt="Logo" style="width:80px;height:80px;border-radius:50%;margin-bottom:1.25rem;object-fit:cover;">
                 <h2 style="color:#fff;font-size:1.5rem;margin:0 0 1rem;">Sistema in manutenzione</h2>
                 <p style="color:#9ca3af;font-size:1rem;line-height:1.6;margin:0;">${_esc(message)}</p>
             </div>`;
@@ -63,17 +90,20 @@
         d.textContent = s;
         return d.innerHTML;
     }
+    function _escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
-    // Check iniziale (dopo un breve delay per dare tempo a initAuth di settare adminAuth)
+    // Check iniziale (dopo un breve delay per dare tempo a initAuth di settare adminAuth/_orgId)
     setTimeout(checkMaintenance, 800);
 
-    // Realtime: reagisci ai cambiamenti di app_settings
+    // Realtime: reagisci ai cambiamenti di org_settings della propria org
     try {
-        supabaseClient
-            .channel('maintenance-rt')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => {
-                setTimeout(checkMaintenance, 300);
-            })
-            .subscribe();
+        const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+        const ch = supabaseClient.channel('maintenance-rt');
+        ch.on('postgres_changes',
+            orgId
+                ? { event: '*', schema: 'public', table: 'org_settings', filter: `org_id=eq.${orgId}` }
+                : { event: '*', schema: 'public', table: 'org_settings' },
+            () => { setTimeout(checkMaintenance, 300); })
+          .subscribe();
     } catch (e) { /* ignore */ }
 })();

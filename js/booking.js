@@ -1,6 +1,15 @@
 // Booking form / modal functionality
 let _confirmedBooking = null; // used by downloadIcs button in showConfirmation
 
+// Timezone IANA per-org (es. 'Europe/Rome'), letto da OrgSettings con guard.
+// Usato per ICS/Google Calendar (TZID/ctz) — ogni tenant può avere un fuso diverso.
+function _orgTimezone() {
+    if (typeof OrgSettings !== 'undefined') {
+        return OrgSettings.getString('locale.timezone', 'Europe/Rome');
+    }
+    return 'Europe/Rome';
+}
+
 function initBookingForm() {
     const form = document.getElementById('bookingForm');
     form.addEventListener('submit', handleBookingSubmit);
@@ -421,23 +430,23 @@ function googleCalendarUrl(booking) {
     const title = encodeURIComponent(`Allenamento – ${SLOT_NAMES[booking.slotType]}`);
     const details = encodeURIComponent(`Prenotato da ${booking.name}`);
     const location = encodeURIComponent('Via Demo 1, Milano BS');
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}&ctz=Europe/Rome`;
+    const ctz = encodeURIComponent(_orgTimezone());
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}&ctz=${ctz}`;
 }
 
 function _bookingUid(booking) {
     return `${booking.id}@palestria.app`;
 }
 
-function downloadIcs(booking) {
-    const { start, end } = buildCalendarDates(booking.date, booking.time);
-    const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
-    const uid = _bookingUid(booking);
-    const ics = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        'PRODID:-//PalestrIA//IT',
+// Blocco VTIMEZONE per l'ICS. Il TZID riflette il fuso configurato per la org
+// (locale.timezone). NOTA: le regole DST embeddate (CET/CEST, ultima domenica di
+// marzo/ottobre) sono valide per i fusi europei tipo Europe/Rome (il default).
+// Per fusi non-europei servirebbe un DB timezone client-side: vedi limitazione
+// documentata. Le righe DTSTART;TZID=/DTEND;TZID= devono usare lo stesso TZID.
+function _vtimezoneLines(tzid) {
+    return [
         'BEGIN:VTIMEZONE',
-        'TZID:Europe/Rome',
+        `TZID:${tzid}`,
         'BEGIN:STANDARD',
         'DTSTART:19701025T030000',
         'RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10',
@@ -453,10 +462,23 @@ function downloadIcs(booking) {
         'TZNAME:CEST',
         'END:DAYLIGHT',
         'END:VTIMEZONE',
+    ];
+}
+
+function downloadIcs(booking) {
+    const { start, end } = buildCalendarDates(booking.date, booking.time);
+    const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
+    const uid = _bookingUid(booking);
+    const tz = _orgTimezone();
+    const ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//PalestrIA//IT',
+        ..._vtimezoneLines(tz),
         'BEGIN:VEVENT',
         `UID:${uid}`,
-        `DTSTART;TZID=Europe/Rome:${start}`,
-        `DTEND;TZID=Europe/Rome:${end}`,
+        `DTSTART;TZID=${tz}:${start}`,
+        `DTEND;TZID=${tz}:${end}`,
         `SUMMARY:${title}`,
         'LOCATION:Via Demo\\, 1\\, Milano BS',
         `DESCRIPTION:Prenotato da ${booking.name}`,
@@ -477,32 +499,17 @@ function downloadCancelIcs(booking) {
     const { start, end } = buildCalendarDates(booking.date, booking.time);
     const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
     const uid = _bookingUid(booking);
+    const tz = _orgTimezone();
     const ics = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
         'PRODID:-//PalestrIA//IT',
         'METHOD:CANCEL',
-        'BEGIN:VTIMEZONE',
-        'TZID:Europe/Rome',
-        'BEGIN:STANDARD',
-        'DTSTART:19701025T030000',
-        'RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10',
-        'TZOFFSETFROM:+0200',
-        'TZOFFSETTO:+0100',
-        'TZNAME:CET',
-        'END:STANDARD',
-        'BEGIN:DAYLIGHT',
-        'DTSTART:19700329T020000',
-        'RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3',
-        'TZOFFSETFROM:+0100',
-        'TZOFFSETTO:+0200',
-        'TZNAME:CEST',
-        'END:DAYLIGHT',
-        'END:VTIMEZONE',
+        ..._vtimezoneLines(tz),
         'BEGIN:VEVENT',
         `UID:${uid}`,
-        `DTSTART;TZID=Europe/Rome:${start}`,
-        `DTEND;TZID=Europe/Rome:${end}`,
+        `DTSTART;TZID=${tz}:${start}`,
+        `DTEND;TZID=${tz}:${end}`,
         `SUMMARY:${title}`,
         'STATUS:CANCELLED',
         'SEQUENCE:1',

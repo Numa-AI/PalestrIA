@@ -14,7 +14,7 @@
     <link rel="icon" type="image/png" href="images/logo-palestria.png">
     <link rel="stylesheet" href="css/style.css?v=8">
     <link rel="stylesheet" href="css/login.css?v=5">
-    <link rel="stylesheet" href="css/admin.css?v=71">
+    <link rel="stylesheet" href="css/admin.css?v=72">
     <link rel="stylesheet" href="css/allenamento.css?v=55">
     <script>
         // Anti-flash al refresh: legge il tab attivo dal sessionStorage e lo
@@ -306,276 +306,15 @@
 
             <!-- Tab: Impostazioni -->
             <div id="tab-settings" class="tab-content">
+                <!-- Contenuto generato da js/admin-settings.js (renderSettingsTab):
+                     11 sotto-tab con nav interna #settNav + corpo #settBody. -->
                 <div class="sett-hub">
-
                     <div class="sett-header">
                         <h3>Impostazioni</h3>
                         <span class="sett-header-badge">🔧 Configurazione</span>
                     </div>
-
-                    <div class="sett-group-label">
-                        <span class="sett-group-label-icon">🛡️</span>
-                        Regole prenotazioni
-                    </div>
-
-                    <!-- Certificato medico -->
-                    <div class="sett-card">
-                        <div class="sett-card-header">
-                            <span class="sett-card-icon sett-card-icon--cyan">🏥</span>
-                            <div>
-                                <h4 class="sett-card-title">Certificato medico</h4>
-                                <p class="sett-card-desc">Se attivo, i clienti possono modificare la data di scadenza del proprio certificato medico nel profilo.</p>
-                            </div>
-                            <label class="settings-toggle-wrap">
-                                <input type="checkbox" id="certEditableToggle" onchange="saveCertEditable(this.checked)">
-                                <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                <span class="settings-toggle-text" id="certEditableText"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Blocco prenotazioni cert -->
-                    <div class="sett-card">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--red">🚫</span>
-                            <div>
-                                <h4 class="sett-card-title">Blocco prenotazioni per certificato medico</h4>
-                                <p class="sett-card-desc">Impedisci ai clienti di prenotare in base allo stato del loro certificato medico.</p>
-                            </div>
-                        </div>
-                        <div class="sett-toggle-list">
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text">
-                                    <strong>Certificato scaduto</strong>
-                                    <span>Blocca la prenotazione se il certificato medico risulta scaduto.</span>
-                                </div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="certBlockExpiredToggle" onchange="saveCertBlockExpired(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="certBlockExpiredText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text">
-                                    <strong>Certificato non impostato</strong>
-                                    <span>Blocca la prenotazione se il cliente non ha ancora inserito la data di scadenza.</span>
-                                </div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="certBlockNotSetToggle" onchange="saveCertBlockNotSet(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="certBlockNotSetText"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Blocco prenotazioni assicurazione -->
-                    <div class="sett-card">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--red">🚫</span>
-                            <div>
-                                <h4 class="sett-card-title">Blocco prenotazioni per assicurazione</h4>
-                                <p class="sett-card-desc">Impedisci ai clienti di prenotare in base allo stato della loro assicurazione.</p>
-                            </div>
-                        </div>
-                        <div class="sett-toggle-list">
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text">
-                                    <strong>Assicurazione scaduta</strong>
-                                    <span>Blocca la prenotazione se l'assicurazione risulta scaduta.</span>
-                                </div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="assicBlockExpiredToggle" onchange="saveAssicBlockExpired(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="assicBlockExpiredText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text">
-                                    <strong>Assicurazione non impostata</strong>
-                                    <span>Blocca la prenotazione se il cliente non ha ancora inserito la data di scadenza.</span>
-                                </div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="assicBlockNotSetToggle" onchange="saveAssicBlockNotSet(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="assicBlockNotSetText"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Visualizza bottoni partecipante -->
-                    <div class="sett-card">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--cyan">👁️</span>
-                            <div>
-                                <h4 class="sett-card-title">Visualizza bottoni</h4>
-                            </div>
-                        </div>
-                        <div class="sett-toggle-list">
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text"><strong>🏥 Certificato medico</strong></div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="showCertBadgeToggle" onchange="saveShowCertBadge(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="showCertBadgeText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text"><strong>📋 Assicurazione</strong></div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="showAssicBadgeToggle" onchange="saveShowAssicBadge(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="showAssicBadgeText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text"><strong>📝 Documento non firmato</strong></div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="showDocBadgeToggle" onchange="saveShowDocBadge(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="showDocBadgeText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text"><strong>📋 Completa anagrafica</strong></div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="showAnagBadgeToggle" onchange="saveShowAnagBadge(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="showAnagBadgeText"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="sett-group-label">
-                        <span class="sett-group-label-icon">📅</span>
-                        Pianificazione
-                    </div>
-
-                    <!-- Settimane Standard -->
-                    <div class="sett-card">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--cyan">📅</span>
-                            <div>
-                                <h4 class="sett-card-title">Settimane Standard</h4>
-                                <p class="sett-card-desc">Configura fino a 3 settimane tipo. Quella attiva viene usata quando importi la "settimana standard" in Gestione Orari.</p>
-                            </div>
-                        </div>
-                        <div id="weekTemplatesContainer"></div>
-                    </div>
-
-                    <div class="sett-group-label">
-                        <span class="sett-group-label-icon">📊</span>
-                        Dati & Report
-                    </div>
-
-                    <!-- Backup & Ripristino -->
-                    <div class="sett-card">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--blue">💾</span>
-                            <div>
-                                <h4 class="sett-card-title">Backup & Ripristino</h4>
-                                <p class="sett-card-desc">Esporta tutti i dati in formato JSON o CSV. Il ripristino sovrascrive tutti i dati attuali.</p>
-                            </div>
-                        </div>
-                        <div class="sett-btn-row">
-                            <button class="sett-action-btn sett-action-btn--blue" onclick="exportBackup('json')">📤 Esporta JSON</button>
-                            <button class="sett-action-btn sett-action-btn--purple" onclick="exportBackup('csv')">📤 Esporta CSV</button>
-                            <button class="sett-action-btn sett-action-btn--green" onclick="document.getElementById('importBackupFile').click()">📥 Importa backup</button>
-                        </div>
-                        <input type="file" id="importBackupFile" accept=".json" style="display:none" onchange="importBackup(this)">
-                        <div id="backupStatus" class="sett-status-text"></div>
-                    </div>
-
-                    <!-- Report settimanale -->
-                    <div class="sett-card">
-                        <div class="sett-card-header">
-                            <span class="sett-card-icon sett-card-icon--blue">📊</span>
-                            <div>
-                                <h4 class="sett-card-title">Report settimanale pagamenti</h4>
-                                <p class="sett-card-desc">Genera il report XLSX dei pagamenti fiscali (carta, bonifico, stripe, contanti con report) della settimana precedente (lun–dom).</p>
-                            </div>
-                            <button class="sett-action-btn sett-action-btn--blue" onclick="downloadWeeklyReport()">📥 Rigenera</button>
-                        </div>
-                    </div>
-
-                    <!-- Report fiscale completo -->
-                    <div class="sett-card">
-                        <div class="sett-card-header">
-                            <span class="sett-card-icon sett-card-icon--green">🧾</span>
-                            <div>
-                                <h4 class="sett-card-title">Report fiscale completo</h4>
-                                <p class="sett-card-desc">Scarica XLSX con tutti i pagamenti carta, bonifico e Stripe. Include prenotazioni, debiti e crediti.</p>
-                            </div>
-                            <button class="sett-action-btn sett-action-btn--green" id="fiscalReportBtn" onclick="downloadFiscalReport()">🧾 Scarica</button>
-                        </div>
-                    </div>
-
-                    <!-- Verifica integrità dati -->
-                    <div class="sett-card">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--purple">🔍</span>
-                            <div>
-                                <h4 class="sett-card-title">Verifica integrità dati</h4>
-                                <p class="sett-card-desc">Controlla anomalie: utenti senza profilo, prenotazioni orfane, email non corrispondenti al profilo collegato.</p>
-                            </div>
-                        </div>
-                        <div class="sett-btn-row">
-                            <button class="sett-action-btn sett-action-btn--purple" id="healthCheckBtn" onclick="runHealthCheck()">🔍 Verifica</button>
-                            <button class="sett-action-btn sett-action-btn--red" id="healthFixBtn" onclick="runHealthFix()" style="display:none">🔧 Correggi anomalie</button>
-                        </div>
-                        <div id="healthCheckResult" style="display:none; margin-top:1rem;"></div>
-                    </div>
-
-                    <div class="sett-group-label sett-group-label--danger">
-                        <span class="sett-group-label-icon">⚠️</span>
-                        Sistema
-                    </div>
-
-                    <!-- Modalità manutenzione -->
-                    <div class="sett-card sett-card--danger">
-                        <div class="sett-card-header sett-card-header--top">
-                            <span class="sett-card-icon sett-card-icon--red">🔧</span>
-                            <div>
-                                <h4 class="sett-card-title">Modalità manutenzione</h4>
-                                <p class="sett-card-desc">Quando attiva, gli utenti vedono un overlay "sistema non disponibile". L'admin continua ad accedere normalmente.</p>
-                            </div>
-                        </div>
-                        <div class="sett-toggle-list">
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text">
-                                    <strong>Attiva manutenzione</strong>
-                                    <span>Blocca l'accesso agli utenti mostrando un messaggio di manutenzione.</span>
-                                </div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="maintenanceModeToggle" onchange="saveMaintenanceMode(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="maintenanceModeText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row">
-                                <div class="sett-toggle-text">
-                                    <strong>Blocca anche admin</strong>
-                                    <span>Blocca anche l'interfaccia admin. Per sbloccare dovrai andare su Supabase.</span>
-                                </div>
-                                <label class="settings-toggle-wrap">
-                                    <input type="checkbox" id="maintenanceAdminToggle" onchange="saveMaintenanceAdmin(this.checked)">
-                                    <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                                    <span class="settings-toggle-text" id="maintenanceAdminText"></span>
-                                </label>
-                            </div>
-                            <div class="sett-toggle-row sett-toggle-row--input">
-                                <label class="sett-input-label">Messaggio personalizzato (opzionale)</label>
-                                <div class="sett-input-row">
-                                    <input type="text" id="maintenanceMessageInput" placeholder="Sistema temporaneamente non disponibile..." class="sett-text-input">
-                                    <button class="sett-save-btn" onclick="saveMaintenanceMessage()">Salva</button>
-                                    <span id="maintenanceMessageSaved" class="sett-saved-msg">Salvato</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
+                    <div class="sett-nav" id="settNav"></div>
+                    <div id="settBody"><div class="sett-loading">⏳ Caricamento impostazioni…</div></div>
                 </div>
             </div>
             <!-- End Tab: Impostazioni -->
@@ -1213,7 +952,7 @@
     <script src="js/admin-backup.js?v=4"></script>
     <script src="js/admin-calendar.js?v=16"></script>
     <script src="js/admin-schedule.js?v=5"></script>
-    <script src="js/admin-settings.js?v=2"></script>
+    <script src="js/admin-settings.js?v=3"></script>
     <script src="js/admin-payments.js?v=12"></script>
     <script src="js/admin-clients.js?v=6"></script>
     <script src="js/admin-registro.js?v=6"></script>

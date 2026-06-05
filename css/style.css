@@ -1428,7 +1428,7 @@ body.nav-open {
 .modal-slot-badge.personal-training { background-color: #22c55e; }
 .modal-slot-badge.small-group       { background-color: #fbbf24; }
 .modal-slot-badge.group-class       { background-color: #ef4444; }
-.modal-slot-badge.cleaning          { background-color: #8b5cf6; }
+.modal-slot-badge.cleaning          { background-color: var(--cleaning); }
 
 .modal-slot-info h3 {
     font-size: 1.25rem;
@@ -1947,7 +1947,7 @@ body.nav-open {
 
 .toast-success { background: #06d6a0; }
 .toast-error   { background: #ef4444; }
-.toast-info    { background: #8B5CF6; }
+.toast-info    { background: var(--primary-purple); }
 
 .toast-icon {
     font-size: 1rem;
