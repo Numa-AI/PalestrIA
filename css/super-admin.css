@@ -16,6 +16,7 @@
 
 body.sa-body {
     margin: 0;
+    color-scheme: dark;   /* controlli nativi (select, scrollbar) in tema scuro */
     background:
         radial-gradient(1200px 600px at 80% -10%, rgba(139, 92, 246, 0.10), transparent 60%),
         var(--sa-bg);
@@ -100,6 +101,11 @@ body.sa-body {
 .sa-toolbar input[type="text"] { min-width: 240px; flex: 1 1 240px; }
 .sa-toolbar input:focus, .sa-toolbar select:focus { border-color: var(--sa-border); }
 .sa-toolbar .sa-count { color: var(--sa-muted); font-size: 0.82rem; margin-left: auto; }
+
+/* Opzioni dei <select>: forziamo sfondo scuro + testo chiaro (alcuni browser
+   ignorano color-scheme per il popup nativo → evita il bianco-su-bianco). */
+.sa-toolbar select option,
+.sa-actions select option { background: #1b1b24; color: #f4f4f7; }
 
 /* ── Tabella studi ──────────────────────────────────────────────────────── */
 .sa-table-wrap {
