@@ -25,7 +25,8 @@ body.sa-body {
     -webkit-font-smoothing: antialiased;
 }
 
-.sa-wrap { max-width: 1320px; margin: 0 auto; padding: 1.25rem 1.25rem 5rem; }
+.sa-wrap { width: 100%; max-width: none; margin: 0; padding: 1.25rem 1.5rem 5rem; }
+@media (min-width: 1600px) { .sa-wrap { padding-left: 2.5rem; padding-right: 2.5rem; } }
 
 /* ── Topbar ─────────────────────────────────────────────────────────────── */
 .sa-topbar {
@@ -207,8 +208,44 @@ table.sa-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
 .sa-toast.show { transform: translateX(-50%) translateY(0); }
 .sa-toast.err { border-color: rgba(239,68,68,0.5); }
 
-@media (max-width: 640px) {
-    .sa-table thead th:nth-child(n+5),
-    .sa-table tbody td:nth-child(n+5) { display: none; }
-    .sa-kpi .val { font-size: 1.4rem; }
+/* ── Mobile: KPI a 2 colonne, toolbar a tutta larghezza, tabella → schede ── */
+@media (max-width: 760px) {
+    .sa-wrap { padding: 1rem 0.85rem 4.5rem; }
+
+    .sa-kpis { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+    .sa-kpi { padding: 0.85rem 0.9rem; }
+    .sa-kpi .val { font-size: 1.3rem; }
+    .sa-kpi .lbl { font-size: 0.66rem; }
+    .sa-kpi .sub { font-size: 0.7rem; }
+
+    .sa-toolbar input[type="text"] { flex: 1 1 100%; min-width: 0; }
+    .sa-toolbar select { flex: 1 1 calc(50% - 0.3rem); }
+    .sa-toolbar .sa-count { flex: 1 1 100%; margin-left: 0; }
+
+    /* La tabella diventa una lista di schede impilate */
+    .sa-table-wrap { background: transparent; border: none; overflow: visible; }
+    .sa-table thead { display: none; }
+    .sa-table, .sa-table tbody, .sa-table tr, .sa-table td { display: block; width: 100%; }
+    .sa-table tr {
+        background: var(--sa-card); border: 1px solid var(--sa-border-2);
+        border-radius: 14px; padding: 0.85rem 1rem; margin-bottom: 0.7rem;
+    }
+    .sa-table tbody tr:hover { background: var(--sa-card); }
+    .sa-table td {
+        border: none; padding: 0.3rem 0; white-space: normal;
+        display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+    }
+    .sa-table td::before {
+        content: attr(data-label); flex: 0 0 auto;
+        color: var(--sa-muted); font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .sa-table td.num { font-variant-numeric: tabular-nums; }
+    /* Prima cella (studio): riga piena, in evidenza, senza etichetta */
+    .sa-table td.sa-studio-cell {
+        display: block; padding: 0 0 0.55rem; margin-bottom: 0.45rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .sa-table td.sa-studio-cell::before { display: none; }
+    .sa-table .studio b { font-size: 1rem; }
 }

@@ -131,20 +131,20 @@
         }
         tb.innerHTML = rows.map((r) => `
             <tr data-id="${esc(r.org_id)}">
-                <td>
+                <td class="sa-studio-cell">
                     <div class="studio">
                         <b>${esc(r.name || '—')}</b>
                         <span>/${esc(r.slug || '')} · ${esc(r.owner_email || 'nessun owner')}</span>
                     </div>
                 </td>
-                <td>${statusBadge(r.status)}</td>
-                <td>${r.plan_code ? `<span class="sa-plan-pill">${esc(r.plan_name || r.plan_code)}</span>` : '—'}</td>
-                <td>${trialCell(r)}</td>
-                <td class="num">${intf(r.client_count)}</td>
-                <td class="num">${intf(r.booking_count)}</td>
-                <td class="num">${euro(r.revenue_total)}</td>
-                <td>${fmtDate(r.created_at)}</td>
-                <td>${fmtDate(r.last_activity)}</td>
+                <td data-label="Stato">${statusBadge(r.status)}</td>
+                <td data-label="Piano">${r.plan_code ? `<span class="sa-plan-pill">${esc(r.plan_name || r.plan_code)}</span>` : '—'}</td>
+                <td data-label="Trial">${trialCell(r)}</td>
+                <td class="num" data-label="Clienti">${intf(r.client_count)}</td>
+                <td class="num" data-label="Pren.">${intf(r.booking_count)}</td>
+                <td class="num" data-label="Incassato">${euro(r.revenue_total)}</td>
+                <td data-label="Iscritto">${fmtDate(r.created_at)}</td>
+                <td data-label="Ultima att.">${fmtDate(r.last_activity)}</td>
             </tr>`).join('');
 
         tb.querySelectorAll('tr[data-id]').forEach((tr) => {
