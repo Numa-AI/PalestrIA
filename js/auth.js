@@ -95,7 +95,7 @@ async function _loadProfile(userId) {
         .from('profiles')
         .select('id, name, email, whatsapp, medical_cert_expiry, medical_cert_history, insurance_expiry, insurance_history, codice_fiscale, indirizzo_via, indirizzo_paese, indirizzo_cap, documento_firmato, privacy_prenotazioni, created_at')
         .eq('id', userId)
-        .single();
+        .maybeSingle();   // owner/staff non hanno riga profiles → null senza errore 406
 
     if (profile && !error) {
         window._currentUser = profile;
@@ -584,6 +584,8 @@ async function updateUserProfile(currentEmail, updates, newPassword) {
             id: user.id,
             name: user.name || updates.name || '',
             email: (user.email || updates.email || '').toLowerCase(),
+            // org_id è NOT NULL + richiesto dalla RLS: senza, l'INSERT del profilo fallisce (403)
+            ...(window._orgId ? { org_id: window._orgId } : {}),
             ...profileUpdate
         };
         const { error } = await supabaseClient
