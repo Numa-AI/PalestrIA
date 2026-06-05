@@ -111,11 +111,11 @@
                 <button class="admin-tab active" data-tab="bookings">📅 Prenotazioni</button>
                 <button class="admin-tab" data-tab="payments">💳 Pagamenti</button>
                 <button class="admin-tab" data-tab="analytics">📊 Statistiche & Fatturato</button>
-                <button class="admin-tab" data-tab="schede" id="adminTabSchede">🏋🏻 Schede</button>
+                <button class="admin-tab" data-tab="schede" id="adminTabSchede" data-feature="workout_plans">🏋🏻 Schede</button>
                 <button class="admin-tab" data-tab="registro">📋 Registro</button>
                 <button class="admin-tab" data-tab="clients">👤 Clienti</button>
                 <button class="admin-tab" data-tab="schedule">⚙️ Gestione Orari</button>
-                <button class="admin-tab" data-tab="messaggi">📩 Messaggi</button>
+                <button class="admin-tab" data-tab="messaggi" data-feature="messaging">📩 Messaggi</button>
                 <button class="admin-tab" data-tab="settings">🔧 Impostazioni</button>
                 <button class="admin-tab admin-tab--privacy" id="btnToggleSensitive" onclick="toggleSensitiveData()" title="Nascondi/mostra dati sensibili">👁</button>
             </div>
@@ -387,7 +387,7 @@
                                             <option value="contanti">💵 Contanti</option>
                                             <option value="contanti-report">🧾 Contanti con Report</option>
                                             <option value="carta">💳 Carta</option>
-                                            <option value="stripe">💳 Stripe</option>
+                                            <option value="stripe" data-feature="client_online_payments">💳 Stripe</option>
                                             <option value="iban">🏦 Bonifico</option>
                                             <option value="credito">🔄 Credito</option>
                                             <option value="lezione-gratuita">🎁 Gratuita</option>
@@ -570,7 +570,7 @@
             <!-- End Tab: Registro -->
 
             <!-- Tab: Messaggi -->
-            <div id="tab-messaggi" class="tab-content">
+            <div id="tab-messaggi" class="tab-content" data-feature="messaging">
                 <div class="msg-hub">
 
                     <div class="msg-header">
@@ -660,7 +660,7 @@
             <!-- End Tab: Messaggi -->
 
             <!-- Tab: Schede (include Live, Schede, Clienti, Importa come sub-page) -->
-            <div id="tab-schede" class="tab-content">
+            <div id="tab-schede" class="tab-content" data-feature="workout_plans">
                 <div class="dashboard-card" id="schedeContainer">
                     <div class="schede-loading">Caricamento schede...</div>
                 </div>
@@ -940,6 +940,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/supabase-client.js?v=4"></script>
     <script src="js/org-settings.js?v=1"></script>
+    <script src="js/entitlements.js?v=1"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
     <script src="js/ui.js?v=2"></script>
     <script src="js/data.js?v=74"></script>
@@ -947,7 +948,7 @@
     <script src="js/silent-refresh.js?v=1"></script>
     <script src="js/push.js?v=20"></script>
     <script src="js/chart-mini.js?v=12"></script>
-    <script src="js/admin.js?v=115"></script>
+    <script src="js/admin.js?v=116"></script>
     <script src="js/admin-analytics.js?v=5"></script>
     <script src="js/admin-backup.js?v=4"></script>
     <script src="js/admin-calendar.js?v=16"></script>

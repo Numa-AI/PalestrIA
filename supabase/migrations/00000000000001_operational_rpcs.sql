@@ -614,3 +614,31 @@ end;
 $$;
 revoke all on function admin_delete_client_data(text) from public, anon;
 grant execute on function admin_delete_client_data(text) to authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- BLOCCO H — ENTITLEMENTS: enforcement server-side del limite clienti per piano
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Vero se la org ha raggiunto/superato il numero massimo di clienti del proprio piano.
+-- Il piano si risolve via subscriptions.plan_id → plans.max_clients della org.
+--   • max_clients NULL  → piano illimitato (es. business) → nessun limite → false
+--   • nessuna subscription / nessun piano collegato → nessun limite noto → false
+--   • altrimenti → true se count(profiles della org) >= max_clients.
+-- Conta SOLO i clienti finali (profiles); lo staff (org_members) non incide.
+-- Usata dal signup self-serve (join_organization) per rifiutare oltre soglia.
+create or replace function org_at_client_limit(p_org_id uuid)
+returns boolean
+language sql stable security definer set search_path = public as $$
+    select case
+        when p.max_clients is null then false
+        else (select count(*) from profiles pr where pr.org_id = p_org_id) >= p.max_clients
+    end
+    from subscriptions s
+    join plans p on p.id = s.plan_id
+    where s.org_id = p_org_id;
+$$;
+-- Nota: senza subscription o senza piano collegato il SELECT non restituisce righe →
+-- la funzione torna NULL; i call-site usano `if org_at_client_limit(...) then ...`,
+-- e NULL non è "true" → comportamento "nessun limite", come da specifica.
+revoke all on function org_at_client_limit(uuid) from public, anon;
+grant execute on function org_at_client_limit(uuid) to authenticated, service_role;

@@ -961,6 +961,21 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
     const normOld      = normalizePhone(oldWhatsapp);
     const normNewPhone = normalizePhone(newWhatsapp) || newWhatsapp;
 
+    // ── Gating piano: blocca la CREAZIONE di un nuovo cliente oltre il limite ──
+    // Questo form salva di norma un cliente esistente, ma _saveClientEditLocalProfile
+    // crea un nuovo record (profiles) quando il contatto editato non corrisponde a
+    // nessun utente già presente. In quel caso (= nuovo cliente) applichiamo il limite
+    // del piano. Fail-open: se Entitlements non è definito non blocchiamo nulla.
+    const _isExistingClient = !!_getUserRecord(oldEmail, oldWhatsapp);
+    if (!_isExistingClient && typeof Entitlements !== 'undefined' && Entitlements.atClientLimit()) {
+        const _cur = Entitlements.clientsCount();
+        const _max = Entitlements.maxClients();
+        const _msg = `Hai raggiunto il limite di clienti del tuo piano (${_cur}/${_max}). Passa a un piano superiore dalle Impostazioni → Billing SaaS.`;
+        if (typeof showToast === 'function') showToast('⚠️ ' + _msg, 'error', 6000);
+        else alert(_msg);
+        return;
+    }
+
     // ── Rinomina profilo + bookings: atomico server-side (niente credito) ──
     if (typeof supabaseClient !== 'undefined') {
         // Mostra stato di caricamento sul bottone Salva
@@ -979,7 +994,15 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
             }));
             if (error) {
                 console.error('[Supabase] admin_rename_client error:', error.message);
-                alert('⚠️ Errore durante l\'aggiornamento: ' + error.message);
+                // Il server rifiuta la creazione di clienti oltre la soglia del piano
+                // (RPC → 'client_limit_reached'): mostra un messaggio chiaro.
+                if (error.message && error.message.includes('client_limit_reached')) {
+                    const _limMsg = 'Hai raggiunto il limite di clienti del tuo piano. Passa a un piano superiore dalle Impostazioni → Billing SaaS.';
+                    if (typeof showToast === 'function') showToast('⚠️ ' + _limMsg, 'error', 6000);
+                    else alert(_limMsg);
+                } else {
+                    alert('⚠️ Errore durante l\'aggiornamento: ' + error.message);
+                }
                 return;
             }
             console.log('[admin_rename_client]', data);

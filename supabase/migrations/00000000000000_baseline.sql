@@ -1188,6 +1188,11 @@ begin
     v_org := org_id_for_slug(p_org_slug);
     if v_org is null then raise exception 'org_not_found'; end if;
 
+    -- Enforcement limite clienti del piano: blocca il signup self-serve oltre soglia.
+    -- (NULL/false = nessun limite; non blocca l'utente già membro perché ON CONFLICT
+    --  DO NOTHING gestisce comunque l'idempotenza a valle.)
+    if org_at_client_limit(v_org) then raise exception 'client_limit_reached'; end if;
+
     select lower(u.email), coalesce(u.raw_user_meta_data->>'full_name', split_part(u.email,'@',1))
         into v_email, v_name from auth.users u where u.id = v_uid;
 

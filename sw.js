@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v516';
+const CACHE_NAME = 'palestria-v517';
 
 const APP_SHELL = [
     './',
@@ -56,6 +56,7 @@ const APP_SHELL = [
     'css/regolamento.css',
     'js/supabase-client.js',
     'js/org-settings.js',
+    'js/entitlements.js',
     'privacy.html',
     'termini.html',
 ];

@@ -87,9 +87,23 @@ function setupAdminStickyOffsets() {
     window.addEventListener('scroll', _adminScrollHandler, { passive: true });
 }
 
-function initAdmin() {
+async function initAdmin() {
     if (window._adminInitialized) return;
     window._adminInitialized = true;
+
+    // Carica le entitlements del piano SaaS e applica il feature gating UI
+    // (nasconde/disabilita i tab/sezioni non inclusi nel piano corrente).
+    // Non bloccante: in caso di errore RPC le feature restano accessibili (fail-open),
+    // l'autorità resta comunque il server (RLS + RPC).
+    if (typeof Entitlements !== 'undefined') {
+        try {
+            await Entitlements.load();
+            Entitlements.applyFeatureGating();
+        } catch (e) {
+            console.warn('[admin] feature gating non applicato:', e && e.message);
+        }
+    }
+
     showDashboard();
     setupAdminStickyOffsets();
 
