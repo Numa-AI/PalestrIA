@@ -87,14 +87,46 @@ function setupAdminStickyOffsets() {
     window.addEventListener('scroll', _adminScrollHandler, { passive: true });
 }
 
+// Garantisce window._orgId/_orgRole leggendo da org_members quando il claim JWT
+// è assente (auth hook disabilitato): l'owner/staff non ha il claim, ma MOLTE
+// feature admin (orari, impostazioni) inseriscono org_id = window._orgId.
+async function _ensureAdminOrgContext() {
+    if (window._orgId) return window._orgId;
+    if (typeof supabaseClient === 'undefined') return null;
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session) return null;
+        const { data: m } = await supabaseClient
+            .from('org_members')
+            .select('org_id, role')
+            .eq('user_id', session.user.id)
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        if (m) {
+            window._orgId   = m.org_id;
+            window._orgRole = window._orgRole || m.role;
+            if (m.role === 'owner' || m.role === 'admin') sessionStorage.setItem('adminAuth', 'true');
+        }
+    } catch (_) { /* offline / nessuna membership */ }
+    return window._orgId || null;
+}
+
 async function initAdmin() {
     if (window._adminInitialized) return;
     window._adminInitialized = true;
 
-    // Carica le entitlements del piano SaaS e applica il feature gating UI
-    // (nasconde/disabilita i tab/sezioni non inclusi nel piano corrente).
-    // Non bloccante: in caso di errore RPC le feature restano accessibili (fail-open),
-    // l'autorità resta comunque il server (RLS + RPC).
+    // 1) Contesto org PRIMA di tutto (serve a orari/impostazioni per gli insert org_id).
+    await _ensureAdminOrgContext();
+    // 2) Ricarica config orari (slot_types/fasce/template attivo) e impostazioni org
+    //    ora che window._orgId è disponibile → calendario e settings mostrano i dati giusti.
+    if (typeof loadOrgScheduleConfig === 'function') { try { await loadOrgScheduleConfig(); } catch (_) {} }
+    if (typeof OrgSettings !== 'undefined') {
+        try { await OrgSettings.load(); if (OrgSettings.applyBranding) OrgSettings.applyBranding(); } catch (_) {}
+    }
+
+    // 3) Entitlements del piano SaaS + feature gating UI (fail-open).
     if (typeof Entitlements !== 'undefined') {
         try {
             await Entitlements.load();
