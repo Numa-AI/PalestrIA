@@ -3,6 +3,26 @@ let currentWeekOffset = 0;
 let selectedSlot = null;
 let selectedMobileDay = null;
 
+// Slot effettivi per una data: override puntuale se presente, altrimenti il
+// template settimanale ATTIVO per quel giorno. (Prima il template veniva ignorato:
+// il calendario mostrava slot solo sulle date con override espliciti.)
+function _daySlots(dateFormatted) {
+    try {
+        const overrides = BookingStorage.getScheduleOverrides();
+        if (overrides[dateFormatted] && overrides[dateFormatted].length) return overrides[dateFormatted];
+        if (typeof getWeeklySchedule === 'function') {
+            const weekly = getWeeklySchedule();
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateFormatted || '');
+            if (weekly && m) {
+                const wd = new Date(+m[1], (+m[2]) - 1, +m[3]).getDay();
+                const key = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'][wd];
+                if (weekly[key] && weekly[key].length) return weekly[key];
+            }
+        }
+    } catch (_) {}
+    return [];
+}
+
 function spotsColorClass(n) {
     if (n === 1) return 'spots-red';
     if (n === 2) return 'spots-orange';
@@ -193,13 +213,11 @@ function formatDate(date) {
 }
 
 function weekHasSlots(offset) {
-    const overrides = BookingStorage.getScheduleOverrides();
-    return getWeekDates(offset).some(d => overrides[d.formatted] && overrides[d.formatted].length > 0);
+    return getWeekDates(offset).some(d => _daySlots(d.formatted).length > 0);
 }
 
 function weekHasSlotsDesktop(offset) {
-    const overrides = BookingStorage.getScheduleOverrides();
-    return getWeekDatesDesktop(offset).some(d => overrides[d.formatted] && overrides[d.formatted].length > 0);
+    return getWeekDatesDesktop(offset).some(d => _daySlots(d.formatted).length > 0);
 }
 
 function renderCalendar() {
@@ -261,8 +279,7 @@ function createSlot(dateInfo, timeSlot) {
     const slot = document.createElement('div');
     slot.className = 'calendar-slot';
 
-    const overrides = BookingStorage.getScheduleOverrides();
-    const scheduledSlots = overrides[dateInfo.formatted] || [];
+    const scheduledSlots = _daySlots(dateInfo.formatted);
     const scheduledSlot = scheduledSlots.find(s => s.time === timeSlot);
 
     if (!scheduledSlot) {
@@ -366,8 +383,7 @@ function createDiv(className, innerHTML) {
 
 // Check if a date still has available (future) slots considering the 30-min rule
 function dateHasAvailableSlots(dateInfo) {
-    const overrides = BookingStorage.getScheduleOverrides();
-    const scheduledSlots = overrides[dateInfo.formatted] || [];
+    const scheduledSlots = _daySlots(dateInfo.formatted);
     if (scheduledSlots.length === 0) return false;
     const now = new Date();
     const thirtyMinMs = 30 * 60 * 1000;
@@ -490,8 +506,7 @@ function renderMobileSlots(dateInfo) {
     const slotsList = document.getElementById('mobileSlotsList');
     slotsList.innerHTML = '';
 
-    const overrides = BookingStorage.getScheduleOverrides();
-    const scheduledSlots = overrides[dateInfo.formatted] || [];
+    const scheduledSlots = _daySlots(dateInfo.formatted);
 
     if (scheduledSlots.length === 0) {
         slotsList.innerHTML = '<div style="text-align: center; color: #999; padding: 2rem;">Nessuna lezione programmata per questo giorno</div>';
