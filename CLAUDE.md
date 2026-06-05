@@ -4,6 +4,14 @@ Guida per agenti AI (e umani) che lavorano su questo repository. Leggila prima d
 
 ---
 
+## 0. Stato del progetto e tracciamento (LEGGI PRIMA)
+
+- **Dove siamo rimasti**: lo stato di avanzamento è nel file di **memoria** `stato-progetto` (in `…/.claude/projects/<questo-progetto>/memory/stato-progetto.md`, indicizzato in `MEMORY.md`). Va **letto a inizio sessione** per sapere cos'è fatto, dov'è deployato e cosa manca. Altre memorie utili: `github-repo-saas`, `super-admin-dashboard`, `stripe-connect-trainer`.
+- **Cose da fare**: **`todo.md`** (root del repo) è la **fonte di verità** delle attività residue, organizzata per priorità (Sicurezza, Stripe, Dominio/PWA, Rifiniture, Go-to-market, QA).
+- **⚠️ Regola operativa**: ogni volta che **concludi un task**, **controlla e aggiorna `todo.md`** — spunta/rimuovi ciò che è fatto e aggiungi le nuove cose future emerse. Aggiorna anche il file di memoria `stato-progetto` con il punto a cui sei arrivato. (E ricordati il cache-busting del §6 ad ogni deploy di asset.)
+
+---
+
 ## 1. Cos'è PalestrIA e visione SaaS
 
 **PalestrIA** è un gestionale completo per personal trainer e studi fitness: prenotazioni con calendario, schede di allenamento, gestione clienti, report, notifiche push, PWA installabile.
