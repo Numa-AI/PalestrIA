@@ -109,17 +109,23 @@
                         data: { full_name: trainerName, signup_type: 'trainer' }
                     }
                 });
-                if (signUpErr) throw signUpErr;
+                // Se l'utente esiste già (es. ritentativo dopo un errore precedente) NON blocchiamo:
+                // proseguiamo col login e creiamo lo studio.
+                if (signUpErr && !/already registered|already exists/i.test(signUpErr.message)) throw signUpErr;
 
-                // 2) assicura una sessione attiva (se la conferma email è disattivata, signUp non logga)
-                let hasSession = !!signUpData.session;
+                // 2) assicura una sessione attiva (signUp non logga se conferma email ON o utente già esistente)
+                let hasSession = !!(signUpData && signUpData.session);
                 if (!hasSession) {
                     const { data: signInData, error: signInErr } =
                         await supabaseClient.auth.signInWithPassword({ email, password });
                     if (signInErr) {
-                        // conferma email richiesta → l'org si crea al primo login (gestito in auth.js)
-                        showMsg('Ti abbiamo inviato una email di conferma. Conferma l\'indirizzo, poi accedi per completare la creazione dello studio.', 'ok');
-                        sessionStorage.setItem('pendingOrg', JSON.stringify({ name: studioName, slug }));
+                        if (/invalid login credentials/i.test(signInErr.message)) {
+                            showMsg('Esiste già un account con questa email (password diversa). Accedi da login.html.', 'err');
+                        } else {
+                            // conferma email richiesta → l'org si crea al primo login (gestito in auth.js)
+                            showMsg('Ti abbiamo inviato una email di conferma. Conferma l\'indirizzo, poi accedi per completare la creazione dello studio.', 'ok');
+                            sessionStorage.setItem('pendingOrg', JSON.stringify({ name: studioName, slug }));
+                        }
                         btn.disabled = false; btn.textContent = 'Crea studio e inizia la prova';
                         return;
                     }
