@@ -304,33 +304,48 @@
             return;
         }
 
-        // Autorizzazione server-side: is_platform_admin() (TRUE se accesso aperto
-        // o email in whitelist). Mai fidarsi del solo client.
-        let isAdmin = false;
-        try {
-            const { data, error } = await client.rpc('is_platform_admin');
-            if (error) throw error;
-            isAdmin = data === true;
-        } catch (e) {
-            console.error('[super-admin] auth check failed:', e);
-        }
-        if (!isAdmin) {
+        // ── Un SOLO giro di rete ──────────────────────────────────────────────
+        // Lanciamo in parallelo: check autorizzazione + i due dataset + il
+        // conteggio per il banner. Prima erano 3 await in serie (3 RTT). Le RPC
+        // verificano comunque is_platform_admin() lato server, quindi anticipare
+        // i dataset non espone nulla a chi non è autorizzato (riceve 'unauthorized').
+        // NB: le chiamate supabase-js risolvono con {data,error} e NON rigettano,
+        //     perciò Promise.all non va in catch per gli errori RPC.
+        const [adminRes, ovRes, orgsRes, padminRes] = await Promise.all([
+            client.rpc('is_platform_admin'),
+            client.rpc('admin_platform_overview'),
+            client.rpc('admin_platform_organizations'),
+            client.from('platform_admins').select('user_id', { count: 'exact', head: true }),
+        ]);
+
+        // Autorizzazione server-side: mai fidarsi del solo client.
+        if (adminRes.error || adminRes.data !== true) {
+            if (adminRes.error) console.error('[super-admin] auth check failed:', adminRes.error);
             document.getElementById('saMain').innerHTML =
                 `<div class="sa-empty">⛔ Accesso riservato al gestore della piattaforma.<br><br>
                  <a class="sa-link" href="admin.html">← Torna all'amministrazione</a></div>`;
             return;
         }
 
-        // Banner accesso aperto: lo mostriamo solo se non c'è ancora nessun
-        // super-admin in whitelist (= siamo davvero in modalità "aperta a tutti").
-        try {
-            const { count } = await client.from('platform_admins')
-                .select('user_id', { count: 'exact', head: true });
-            if ((count || 0) === 0) document.getElementById('saBanner').style.display = 'flex';
-        } catch (_) { /* RLS può bloccare: ininfluente */ }
+        // Banner accesso aperto: solo se non c'è ancora nessun super-admin in whitelist.
+        if (!padminRes.error && (padminRes.count || 0) === 0) {
+            document.getElementById('saBanner').style.display = 'flex';
+        }
 
         wireUi();
-        await loadAll();
+
+        // Render coi dati già pronti: nessun ulteriore round-trip.
+        if (ovRes.error || orgsRes.error) {
+            const err = ovRes.error || orgsRes.error;
+            console.error('[super-admin] load error:', err);
+            document.getElementById('saTbody').innerHTML =
+                `<tr><td colspan="9"><div class="sa-empty">Errore nel caricamento: ${esc(err.message || err)}</div></td></tr>`;
+            toast('Errore nel caricamento dati', true);
+            return;
+        }
+        renderKpis(ovRes.data || {});
+        ORGS = orgsRes.data || [];
+        applyView();
     }
 
     function wireUi() {
