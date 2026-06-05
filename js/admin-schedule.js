@@ -847,7 +847,24 @@ async function schedDeleteOverride(timeLabel) {
 function getScheduleForDate(dateFormatted, dayName) {
     try {
         const overrides = BookingStorage.getScheduleOverrides();
-        return overrides[dateFormatted] || [];
+        // 1) override puntuale per questa data (eccezione) → ha la precedenza
+        if (overrides[dateFormatted] && overrides[dateFormatted].length) return overrides[dateFormatted];
+        // 2) altrimenti applica il TEMPLATE SETTIMANALE ATTIVO per quel giorno
+        //    (prima veniva ignorato: il calendario mostrava slot solo dove c'erano override).
+        if (typeof getWeeklySchedule === 'function') {
+            const weekly = getWeeklySchedule();
+            if (weekly) {
+                // nome giorno italiano derivato dalla data (robusto a mismatch di formato di dayName)
+                let key = dayName;
+                const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateFormatted || '');
+                if (m) {
+                    const wd = new Date(+m[1], (+m[2]) - 1, +m[3]).getDay(); // locale, niente shift UTC
+                    key = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'][wd];
+                }
+                if (weekly[key] && weekly[key].length) return weekly[key];
+            }
+        }
+        return [];
     } catch {
         return [];
     }
