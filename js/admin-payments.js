@@ -725,6 +725,18 @@ async function saveSale() {
             showToast('Errore: ' + error.message, 'error');
             return;
         }
+
+        // Imposta automaticamente il modello di fatturazione del cliente in base alla
+        // vendita: così book_slot applica la logica giusta (mensile/pacchetto) a QUESTO
+        // cliente, a prescindere dal default dello studio. (override per-cliente)
+        try {
+            await supabaseClient.from('client_billing_profiles').upsert({
+                org_id:         window._orgId,
+                user_id:        _saleContact.userId,
+                model_override: _saleType === 'package' ? 'package' : 'monthly',
+            }, { onConflict: 'org_id,user_id' });
+        } catch (e) { console.warn('[saveSale] model_override non impostato:', e && e.message); }
+
         closeSalePopup();
         showToast(_saleType === 'package' ? 'Pacchetto registrato' : 'Abbonamento registrato', 'success');
         const activeTab = document.querySelector('.admin-tab.active');
