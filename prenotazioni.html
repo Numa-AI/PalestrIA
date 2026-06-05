@@ -72,6 +72,9 @@
             <!-- Warning anagrafica incompleta -->
             <div id="prenoCertWarning"></div>
 
+            <!-- Stato pagamenti/abbonamento del cliente (adattivo al modello di billing) -->
+            <div id="prenoBilling"></div>
+
             <!-- Tabs -->
             <div class="preno-tabs">
                 <button class="preno-tab active" id="tabProssime"    onclick="switchPrenoTab('upcoming')">Prossime</button>
@@ -330,6 +333,7 @@
 
             renderPrenoList();
             renderCertWarning();
+            renderClientBilling();
             _startPolling();
             _setupRealtime();
         }
@@ -370,6 +374,7 @@
             _rtSyncTimer = setTimeout(async () => {
                 await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[rt] booking sync:', e?.message || e));
                 renderPrenoList();
+                renderClientBilling();
             }, 600);
         }
         function _setupRealtime() {
@@ -635,6 +640,75 @@
                 BookingStorage.requestCancellation(id);
             }
             renderPrenoList();
+        }
+
+        // ── Stato billing del cliente (abbonamento / pacchetto / saldo) ──
+        // Adattivo al modello effettivo: model_override (per-cliente) ?? default org.
+        // Tutti i dati sono leggibili dal cliente via RLS (memberships/packages/payments propri).
+        async function renderClientBilling() {
+            const user = getCurrentUser();
+            const el = document.getElementById('prenoBilling');
+            if (!el) return;
+            if (!user || typeof supabaseClient === 'undefined') { el.innerHTML = ''; return; }
+            const orgId = window._orgId || user.org_id || null;
+            const cur = (typeof OrgSettings !== 'undefined') ? OrgSettings.getString('locale.currency', 'EUR') : 'EUR';
+            const sym = cur === 'EUR' ? '€' : (cur + ' ');
+            const fmtDate = (d) => { if (!d) return ''; const p = String(d).slice(0,10).split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : d; };
+            const esc = (typeof _escHtml === 'function') ? _escHtml : (s) => s;
+            try {
+                const [bsRes, cbpRes, memRes, pkgRes] = await Promise.all([
+                    orgId ? supabaseClient.from('billing_settings').select('default_model').eq('org_id', orgId).maybeSingle() : Promise.resolve({ data: null }),
+                    orgId ? supabaseClient.from('client_billing_profiles').select('model_override').eq('org_id', orgId).eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+                    supabaseClient.from('client_memberships').select('plan_label, period_end, lessons_quota, lessons_used, status').eq('user_id', user.id).eq('status', 'active').order('period_end', { ascending: false }).limit(1).maybeSingle(),
+                    supabaseClient.from('client_packages').select('label, remaining_sessions, status').eq('user_id', user.id).eq('status', 'active'),
+                ]);
+                const model = (cbpRes.data && cbpRes.data.model_override) || (bsRes.data && bsRes.data.default_model) || 'pay_per_session';
+                let icon = '💳', title = '', detail = '', tone = 'neutral';
+
+                if (model === 'free') {
+                    icon = '🎁'; tone = 'ok'; title = 'Accesso gratuito'; detail = 'Nessun pagamento richiesto per le tue lezioni.';
+                } else if (model === 'monthly') {
+                    const m = memRes.data;
+                    const todayMidnight = new Date(new Date().toDateString());
+                    const active = m && m.period_end && (new Date(m.period_end) >= todayMidnight);
+                    if (active) {
+                        icon = '📅'; tone = 'ok';
+                        title = 'Abbonamento attivo' + (m.plan_label ? ' · ' + m.plan_label : '');
+                        const quota = (m.lessons_quota == null) ? 'lezioni illimitate' : `${m.lessons_used || 0}/${m.lessons_quota} lezioni usate`;
+                        detail = `Valido fino al ${fmtDate(m.period_end)} · ${quota}`;
+                    } else {
+                        icon = '📅'; tone = 'warn'; title = 'Abbonamento non attivo';
+                        detail = 'Contatta il trainer per attivare o rinnovare l\'abbonamento mensile.';
+                    }
+                } else if (model === 'package') {
+                    const pkgs = Array.isArray(pkgRes.data) ? pkgRes.data : [];
+                    const remaining = pkgs.reduce((s, p) => s + (p.remaining_sessions || 0), 0);
+                    icon = '🎫';
+                    if (remaining > 0) { tone = 'ok'; title = `Pacchetto: ${remaining} ingress${remaining === 1 ? 'o' : 'i'} rimast${remaining === 1 ? 'o' : 'i'}`; detail = 'Gli ingressi si scalano automaticamente a ogni prenotazione.'; }
+                    else { tone = 'warn'; title = 'Pacchetto esaurito'; detail = 'Contatta il trainer per acquistare un nuovo pacchetto.'; }
+                } else {
+                    // pay_per_session → dovuto da prenotazioni passate non pagate
+                    const ub = (typeof getUserBookings === 'function') ? getUserBookings() : { past: [] };
+                    const unpaid = (ub.past || []).filter(b => !b.paid && b.status !== 'cancelled');
+                    const owed = unpaid.reduce((s, b) => s + ((typeof getBookingPrice === 'function' ? getBookingPrice(b) : 0) || 0), 0);
+                    if (owed > 0) { icon = '💳'; tone = 'warn'; title = `Da saldare: ${sym}${owed.toFixed(2)}`; detail = `${unpaid.length} lezion${unpaid.length === 1 ? 'e' : 'i'} non ancora pagat${unpaid.length === 1 ? 'a' : 'e'}.`; }
+                    else { icon = '✅'; tone = 'ok'; title = 'Pagamenti in regola'; detail = 'Paghi ogni lezione singolarmente.'; }
+                }
+
+                const toneStyle = tone === 'warn'
+                    ? 'border-color:#f59e0b;background:#fffbeb'
+                    : (tone === 'ok' ? 'border-color:#22c55e;background:#f0fdf4' : 'border-color:#e2e8f0;background:#fff');
+                el.innerHTML = `<div style="display:flex;gap:12px;align-items:center;padding:13px 16px;border:1.5px solid;border-radius:14px;margin:0 0 14px;${toneStyle}">
+                        <span style="font-size:1.55rem;line-height:1">${icon}</span>
+                        <div style="min-width:0">
+                            <div style="font-weight:700;color:#1a1a1a">${esc(title)}</div>
+                            <div style="font-size:.84rem;color:#64748b;margin-top:2px">${esc(detail)}</div>
+                        </div>
+                    </div>`;
+            } catch (e) {
+                console.warn('[billing] render fallito:', e && e.message);
+                el.innerHTML = '';
+            }
         }
 
         // ── Anagrafica incompleta warning ────────────────────────────────
