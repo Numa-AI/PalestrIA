@@ -200,11 +200,11 @@
             }
 
             // 2c) TESTO INDIRIZZO → ogni [data-org-address] (es. "Via X — Brescia" nella
-            //     home). Composto da via + paese (fallback città se paese vuoto), dai Dati
+            //     home). Composto da via + città (fallback paese se città vuota), dai Dati
             //     azienda. Se non c'è nulla, resta il testo statico dell'HTML.
             const addr = get('company.address', {}) || {};
             const _via = (addr.via || '').toString().trim();
-            const _loc = ((addr.paese || '').toString().trim()) || ((addr.citta || '').toString().trim());
+            const _loc = ((addr.citta || '').toString().trim()) || ((addr.paese || '').toString().trim());
             const _addrText = [_via, _loc].filter(Boolean).join(' — ');
             if (_addrText) {
                 document.querySelectorAll('[data-org-address]').forEach(el => { el.textContent = _addrText; });
