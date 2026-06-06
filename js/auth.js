@@ -149,14 +149,24 @@ function _readSessionFromStorageDirect() {
         }
         if (!raw) return null;
         if (raw.startsWith('base64-')) {
-            try { raw = decodeURIComponent(escape(atob(raw.slice(7)))); }
-            catch (_) { try { raw = atob(raw.slice(7)); } catch (__) { return null; } }
+            // H2: decode UTF-8 robusto (TextDecoder) — niente atob() nudo che corromperebbe
+            // silenziosamente caratteri non-ASCII facendo poi fallire JSON.parse.
+            try {
+                const _bytes = Uint8Array.from(atob(raw.slice(7)), c => c.charCodeAt(0));
+                raw = new TextDecoder('utf-8').decode(_bytes);
+            } catch (e) {
+                console.warn('[Auth] _readSessionFromStorageDirect: base64 decode fallito:', e && e.message);
+                return null;
+            }
         }
         const obj = JSON.parse(raw);
         const session = obj && (obj.access_token ? obj : (obj.currentSession || obj.session)) || null;
-        if (session && session.access_token && session.expires_at) return session;
+        // H1: valida ANCHE refresh_token — senza, un access_token futuro ma con refresh_token
+        // revocato (es. cambio password su altro device) verrebbe letto come "fresco" → il
+        // refresh poi fallisce con ~12s di hang. Richiedere refresh_token fa fail-fast.
+        if (session && session.access_token && session.expires_at && session.refresh_token) return session;
         return null;
-    } catch (_) { return null; }
+    } catch (e) { console.warn('[Auth] _readSessionFromStorageDirect parse error:', e && e.message); return null; }
 }
 
 // Strategia fail-closed:
@@ -276,6 +286,74 @@ async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
 }
 
 window.ensureValidSession = ensureValidSession;
+
+// #9 — Refresh PROATTIVO del token, gestito da noi, SOLO sulle pagine admin (dove
+// supabase-client ha messo autoRefreshToken:false). L'auto-refresh interno di supabase-js
+// si appendeva sul lock al rientro da idle; rinnovando noi a tempo controllato (token vicino
+// alla scadenza, a pagina VISIBILE, quando il trainer NON sta scrivendo) si evita il clog.
+// A pagina nascosta non rinnoviamo: il recupero avviene al foreground via ensureValidSession (#5).
+(function _initProactiveTokenRefresh() {
+    if (typeof window === 'undefined' || !window._isManagedAuthPage) return;
+    var REFRESH_BEFORE_SEC = 5 * 60;  // rinnova se mancano < 5 min alla scadenza
+    var FORCE_BELOW_SEC    = 90;      // sotto 90s rinnova comunque (anche se "occupato")
+    var _busy = false;
+    var _failCount = 0, _lastFailTs = 0;
+
+    // B4: traccia i fallimenti del refresh proattivo. Escala a "sessione persa" SOLO se il
+    // token è ormai criticamente basso (sta per scadere) E il refresh continua a fallire →
+    // evita prompt di relogin prematuri su fallimenti transitori mentre il token è ancora valido.
+    function _registerFail(msg, leftSec) {
+        var now = Date.now();
+        if (now - _lastFailTs > 10 * 60 * 1000) _failCount = 0; // reset finestra 10 min
+        _failCount++; _lastFailTs = now;
+        console.warn('[Auth] refresh proattivo fallito (' + _failCount + ', left=' + leftSec + 's): ' + (msg || ''));
+        if (_failCount >= 2 && leftSec <= FORCE_BELOW_SEC) {
+            console.warn('[Auth] refresh proattivo: token critico e refresh fallito → segnalo sessione persa');
+            try { window.dispatchEvent(new CustomEvent('auth:session-lost')); } catch (_) {}
+        }
+    }
+
+    async function _tick() {
+        if (_busy) return;
+        if (typeof document !== 'undefined' && document.hidden) return; // niente refresh a tab nascosta
+        var session = (typeof _readSessionFromStorageDirect === 'function') ? _readSessionFromStorageDirect() : null;
+        if (!session || !session.expires_at) return;
+        var leftSec = session.expires_at - Math.floor(Date.now() / 1000);
+        if (leftSec > REFRESH_BEFORE_SEC) return; // ancora lontano dalla scadenza
+        if (leftSec > FORCE_BELOW_SEC) {
+            // Rimanda se il trainer sta scrivendo o una pagina segnala "occupato".
+            var ae = document.activeElement;
+            var typing = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+            var occupied = false;
+            try {
+                if (Array.isArray(window._authBusyChecks)) {
+                    occupied = window._authBusyChecks.some(function (fn) { try { return !!fn(); } catch (_) { return false; } });
+                }
+            } catch (_) {}
+            if (typing || occupied) { console.log('[Auth] refresh proattivo rimandato (occupato), left=' + leftSec + 's'); return; }
+        }
+        if (typeof window._manualTokenRefresh !== 'function') return;
+        _busy = true;
+        try {
+            console.log('[Auth] refresh proattivo token (left=' + leftSec + 's)');
+            // refreshSession() risolve {data,error} (NON lancia su errore auth): controlla
+            // l'esito per distinguere successo da fallimento (B4).
+            var _r = await window._manualTokenRefresh();
+            if (_r && _r.data && _r.data.session && _r.data.session.access_token && !_r.error) {
+                _failCount = 0; // successo → azzera
+            } else {
+                _registerFail(_r && _r.error && _r.error.message, leftSec);
+            }
+        } catch (e) {
+            _registerFail(e && e.message, leftSec);
+        } finally {
+            _busy = false;
+        }
+    }
+
+    setInterval(_tick, 60000);  // ogni 60s
+    setTimeout(_tick, 15000);   // primo check dopo il boot
+})();
 
 // Handler globale per fail-closed: mostra messaggio chiaro all'utente invece
 // di lasciare la pagina in stato ambiguo. Registrato una sola volta.

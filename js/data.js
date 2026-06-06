@@ -693,6 +693,13 @@ class BookingStorage {
             const pastStr   = _localDateStr(pastD);
             const futureStr = _localDateStr(futureD);
 
+            // H4: su admin (autoRefreshToken OFF, #9) garantisci un token fresco PRIMA delle
+            // query (fingerprint + fetch): al rientro da background con token scaduto supabase-js
+            // NON auto-rinnova → 401. ensureValidSession è veloce (lettura diretta da storage, #5).
+            if (isAdmin && typeof ensureValidSession === 'function') {
+                await ensureValidSession({ force: false, timeoutMs: 3000 }).catch(() => null);
+            }
+
             // ── Sync incrementale (solo admin full-list): se il fingerprint (count + max
             //    updated_at) è invariato e la cache è popolata, SALTA il full-fetch → wake
             //    quasi istantaneo. Reconcile periodico (5 min) come safety net.

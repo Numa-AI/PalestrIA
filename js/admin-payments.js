@@ -456,8 +456,15 @@ async function paySelectedDebts() {
         // può essere bloccato → la RPC perderebbe il token e l'operazione andrebbe persa
         // (niente retry). ensureValidSession è veloce (lettura diretta da storage, #5) e
         // "sveglia" il lock → la RPC parte con token valido.
+        // B1: garantisci la sessione E BLOCCA se persa → mai una RPC finanziaria senza token
+        // valido (sarebbe un 401 silenzioso = pagamento perso). Il finally riabilita il bottone.
         if (typeof ensureValidSession === 'function') {
-            try { await ensureValidSession({ force: false, timeoutMs: 8000 }); } catch (_) {}
+            let _sess = null;
+            try { _sess = await ensureValidSession({ force: false, timeoutMs: 12000 }); } catch (_) {}
+            if (!_sess) {
+                showToast('Sessione scaduta. Riaccedi prima di registrare il pagamento.', 'error', 5000);
+                return;
+            }
         }
         const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_pay_bookings', {
             p_booking_ids: sbIds,
@@ -697,9 +704,15 @@ async function saveSale() {
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio...'; }
 
     try {
-        // #8: sessione garantita prima delle RPC NON idempotenti (vendita pacchetto/abbonamento).
+        // #8 + B1: sessione garantita E BLOCCA se persa → niente vendita (RPC non idempotente)
+        // senza token valido. Il finally riabilita il bottone.
         if (typeof ensureValidSession === 'function') {
-            try { await ensureValidSession({ force: false, timeoutMs: 8000 }); } catch (_) {}
+            let _sess = null;
+            try { _sess = await ensureValidSession({ force: false, timeoutMs: 12000 }); } catch (_) {}
+            if (!_sess) {
+                showToast('Sessione scaduta. Riaccedi prima di registrare la vendita.', 'error', 5000);
+                return;
+            }
         }
         let error;
         if (_saleType === 'package') {

@@ -78,8 +78,16 @@ const LOCK_ACQUIRE_MS       = 500;     // era 3000 → troppo alto, blocca l'UI
 const LOCKS_BROKEN_WINDOW_MS = 30000;
 const LOCKS_BROKEN_PENALTY_MS = 60000;
 
+// #9: sulle pagine admin gestiamo NOI il refresh del token (auth.js _proactiveRefreshTick),
+// disabilitando l'auto-refresh INTERNO di supabase-js (timer + suo listener visibilitychange)
+// che al rientro da idle si appendeva sul lock auth bloccato. Sulle pagine utente
+// (allenamento/prenotazioni) resta l'autoRefresh di supabase-js: lì funziona bene, non si tocca.
+// NB: location.pathname.includes('admin.html') copre sia admin.html sia super-admin.html.
+const _ADMIN_PAGE = (typeof location !== 'undefined') && location.pathname.includes('admin.html');
+
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
+        autoRefreshToken: !_ADMIN_PAGE, // #9: su admin il refresh lo gestiamo noi
         // Contratto supabase-js:
         //   acquireTimeout === 0 → "non-blocking": se il lock è già preso,
         //     NON aspettare, salta l'operazione. Usato dall'auto-refresh tick
@@ -131,6 +139,10 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
         }
     }
 });
+
+// #9: esposti per il refresh proattivo gestito da noi (auth.js _proactiveRefreshTick).
+window._isManagedAuthPage = _ADMIN_PAGE;
+window._manualTokenRefresh = function () { return supabaseClient.auth.refreshSession(); };
 
 // Log click on "Andrea Pompili" credit link
 function logCreditClick() {
