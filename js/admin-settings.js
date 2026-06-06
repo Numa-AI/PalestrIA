@@ -178,6 +178,7 @@ function _settRenderBranding(body) {
     const color   = OrgSettings.getString('branding.primary_color', '#8B5CF6');
     const favicon = OrgSettings.getString('branding.favicon_url', '');
     const pwaName = OrgSettings.getString('branding.pwa_name', '');
+    const duration = OrgSettings.getString('branding.home_duration', '');
 
     body.innerHTML = `
         <div class="sett-card">
@@ -196,6 +197,10 @@ function _settRenderBranding(body) {
                 <div class="sett-field">
                     <label class="sett-input-label">Nome PWA (app installata)</label>
                     <input type="text" id="brandPwaName" class="sett-text-input" value="${_escHtml(pwaName)}" placeholder="Es. PalestrIA">
+                </div>
+                <div class="sett-field">
+                    <label class="sett-input-label">Durata sessione (home)</label>
+                    <input type="text" id="brandHomeDuration" class="sett-text-input" value="${_escHtml(duration)}" placeholder="Es. 80 minuti">
                 </div>
                 <div class="sett-field">
                     <label class="sett-input-label">URL logo</label>
@@ -239,6 +244,7 @@ async function saveBrandingSettings() {
         await OrgSettings.set('branding.logo_url', logo);
         await OrgSettings.set('branding.favicon_url', favicon);
         await OrgSettings.set('branding.primary_color', color);
+        await OrgSettings.set('branding.home_duration', _settVal('brandHomeDuration').trim());
         // Applica subito il branding (nome, logo, favicon, colore, titolo) a runtime.
         _settApplyBrandingExtras();
         showToast('✅ Branding salvato', 'success');

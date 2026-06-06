@@ -35,14 +35,20 @@
         if (at) at.setAttribute('content', snap.title);
     }
 
-    // 3) NOME (+ logo) — gli elementi [data-org-name]/img[data-org-logo] sono nel <body>,
-    //    non ancora parsati qui. Per non mostrare il placeholder, nascondiamo
-    //    [data-org-name] (visibility → nessun layout shift) finché non applichiamo il nome
-    //    dalla cache, poi riveliamo con html[data-branded]. Tutto entro pochi ms.
-    if (snap.name) {
+    // 3) NOME / INDIRIZZO / DURATA (+ logo, link maps) — sono nel <body>, non ancora
+    //    parsati qui. Per non mostrare i valori statici vecchi (es. "Via Demo 1 — Milano"),
+    //    nascondiamo gli elementi di testo (visibility → niente layout shift) finché non
+    //    applichiamo i valori dalla cache, poi riveliamo con html[data-branded]. Pochi ms.
+    var hideSel = [];
+    if (snap.name)     hideSel.push('[data-org-name]');
+    if (snap.address)  hideSel.push('[data-org-address]');
+    if (snap.duration) hideSel.push('[data-org-duration]');
+    if (hideSel.length) {
         var style = document.createElement('style');
         style.setAttribute('data-branding-boot', '1');
-        style.textContent = '[data-org-name]{visibility:hidden}html[data-branded] [data-org-name]{visibility:visible}';
+        var hiddenRule = hideSel.join(',') + '{visibility:hidden}';
+        var shownRule = hideSel.map(function (s) { return 'html[data-branded] ' + s; }).join(',') + '{visibility:visible}';
+        style.textContent = hiddenRule + shownRule;
         (document.head || root).appendChild(style);
     }
 
@@ -62,7 +68,19 @@
                 imgs[j].src = snap.logo;
             }
         }
-        root.setAttribute('data-branded', '1'); // rivela [data-org-name] in ogni caso
+        if (snap.address) {
+            var addrEls = document.querySelectorAll('[data-org-address]');
+            for (var a = 0; a < addrEls.length; a++) addrEls[a].textContent = snap.address;
+        }
+        if (snap.duration) {
+            var durEls = document.querySelectorAll('[data-org-duration]');
+            for (var d = 0; d < durEls.length; d++) durEls[d].textContent = snap.duration;
+        }
+        if (snap.maps) {
+            var mapEls = document.querySelectorAll('a[data-org-maps]');
+            for (var m = 0; m < mapEls.length; m++) mapEls[m].href = snap.maps;
+        }
+        root.setAttribute('data-branded', '1'); // rivela gli elementi nascosti in ogni caso
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyDom);

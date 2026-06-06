@@ -210,6 +210,13 @@
                 document.querySelectorAll('[data-org-address]').forEach(el => { el.textContent = _addrText; });
             }
 
+            // 2d) DURATA SESSIONE (testo home, es. "80 minuti") → ogni [data-org-duration].
+            //     Modificabile in Impostazioni → Branding. Se vuoto resta il testo statico.
+            const duration = getString('branding.home_duration', '');
+            if (duration) {
+                document.querySelectorAll('[data-org-duration]').forEach(el => { el.textContent = duration; });
+            }
+
             // 3) COLORE PRIMARIO → CSS var + derivata dark + <meta theme-color>
             if (color) {
                 const root = document.documentElement;
@@ -243,11 +250,12 @@
             // 6) SNAPSHOT stabile (non namespaced) → letto da branding-boot.js in <head>
             //    per applicare nome/colori PRIMA del paint al refresh successivo, così
             //    sparisce il flash di "IL TUO NOME" e dei colori di default.
-            if (name || color || favicon || pwaName || logo) {
+            if (name || color || favicon || pwaName || logo || mapsUrl || _addrText || duration) {
                 try {
                     localStorage.setItem('_brandingSnapshot', JSON.stringify({
                         name: name || '', color: color || '', colorDark: colorDark || '',
-                        favicon: favicon || '', logo: logo || '', title: docTitle || ''
+                        favicon: favicon || '', logo: logo || '', title: docTitle || '',
+                        maps: mapsUrl || '', address: _addrText || '', duration: duration || ''
                     }));
                 } catch (_) {}
             }
