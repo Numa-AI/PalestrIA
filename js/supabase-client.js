@@ -18,6 +18,9 @@ let _cascadeReloadScheduled = false;
 function _withFnWatchdog(name, fn) {
     let timer;
     const fnPromise = Promise.resolve().then(fn).finally(() => clearTimeout(timer));
+    // Se la fn rifiuta DOPO che il watchdog ha già vinto la race, evita l'unhandled
+    // rejection (rumore in console) senza alterare il flusso: la chain è già sbloccata.
+    fnPromise.catch(() => {});
     const watchdog = new Promise((resolve) => {
         timer = setTimeout(() => {
             console.warn(`[Supabase Auth] fallback fn() "${name}" oltre ${FALLBACK_FN_WATCHDOG_MS}ms - sblocco la chain`);
@@ -30,6 +33,12 @@ function _withFnWatchdog(name, fn) {
                 setTimeout(() => {
                     try { window.location.reload(); } catch (_) {}
                 }, 200);
+                // Fallback: se il reload non avviene (bfcache / lifecycle PWA), azzera il
+                // flag dopo 10s così l'auto-recovery può ritentare invece di restare morto.
+                setTimeout(() => {
+                    _cascadeReloadScheduled = false;
+                    _watchdogFirings = [];
+                }, 10000);
             }
             resolve(undefined);
         }, FALLBACK_FN_WATCHDOG_MS);
@@ -41,7 +50,12 @@ function _runSerialized(name, fn) {
     const prev = _authLockChains.get(name) || Promise.resolve();
     const wrapped = () => _withFnWatchdog(name, fn);
     const run = prev.then(wrapped, wrapped); // prosegue anche se la precedente è fallita
-    _authLockChains.set(name, run.catch(() => {}));
+    // La chain memorizzata non si "avvelena": _withFnWatchdog risolve sempre entro
+    // FALLBACK_FN_WATCHDOG_MS, quindi la prossima operazione parte comunque. Logghiamo
+    // l'eventuale errore invece di inghiottirlo in silenzio (così è diagnosticabile).
+    _authLockChains.set(name, run.catch((e) => {
+        console.warn(`[Supabase Auth] chain "${name}" errore (non blocca le successive):`, e && e.message);
+    }));
     return run;
 }
 
@@ -71,14 +85,20 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
                     // ifAvailable: la callback riceve null se il lock è occupato
                     return navigator.locks.request(name, { ifAvailable: true }, (lock) => {
                         if (!lock) return; // occupato → skip, come richiesto
-                        return fn();
+                        return _withFnWatchdog(name, fn);
                     });
                 }
                 const timeout = Math.min(acquireTimeout ?? LOCK_ACQUIRE_MS, LOCK_ACQUIRE_MS);
                 const ac = new AbortController();
                 const timer = setTimeout(() => ac.abort(), timeout);
                 try {
-                    return await navigator.locks.request(name, { signal: ac.signal }, fn);
+                    // ⚠️ Causa radice del freeze su Mac idle / "alla 2ª prenotazione":
+                    // l'AbortController aborta solo l'ATTESA di acquisizione del lock, NON
+                    // l'esecuzione di fn una volta acquisito. Se fn (refresh token / RPC
+                    // auth) si appende dopo aver preso il lock, lo tiene bloccato per
+                    // sempre e ogni operazione successiva muore in coda. Avvolgendo fn nel
+                    // watchdog, dopo 8s il lock viene comunque rilasciato e la chain riparte.
+                    return await navigator.locks.request(name, { signal: ac.signal }, () => _withFnWatchdog(name, fn));
                 } catch (e) {
                     if (e.name !== 'AbortError') throw e;
                     const now = Date.now();

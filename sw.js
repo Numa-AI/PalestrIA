@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v530';
+const CACHE_NAME = 'palestria-v532';
 
 const APP_SHELL = [
     './',
@@ -30,6 +30,7 @@ const APP_SHELL = [
     'js/sw-update.js',
     'js/pull-to-refresh.js',
     'js/silent-refresh.js',
+    'js/app-watchdog.js',
     'js/admin-health.js',
     'js/maintenance.js',
     'js/admin-calendar.js',
@@ -126,6 +127,17 @@ self.addEventListener('notificationclick', event => {
     );
 });
 
+// Fetch con timeout: su rete raggiungibile ma lentissima (es. Mac post-sleep con
+// connessione degradata) un fetch resterebbe appeso fino al timeout di default del
+// browser (~60s), congelando il caricamento dell'asset. Con AbortController forziamo
+// il fallback alla cache entro `ms` (causa radice C10 del freeze idle).
+function fetchWithTimeout(request, ms) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(request, { signal: controller.signal })
+        .finally(() => clearTimeout(timer));
+}
+
 // Fetch: Network First per HTML, Cache First per asset statici
 self.addEventListener('fetch', event => {
     const { request } = event;
@@ -135,10 +147,10 @@ self.addEventListener('fetch', event => {
     if (request.method !== 'GET') return;
     if (url.origin !== self.location.origin) return;
 
-    // Network First per le pagine HTML
+    // Network First per le pagine HTML (timeout 8s → fallback cache se rete appesa)
     if (request.mode === 'navigate') {
         event.respondWith(
-            fetch(request)
+            fetchWithTimeout(request, 8000)
                 .then(response => {
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
@@ -149,11 +161,11 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // JS + CSS: Network First (scarica sempre il fresco, fallback cache se offline)
+    // JS + CSS: Network First (scarica sempre il fresco, fallback cache se offline/lento)
     // ignoreSearch: true → ?v=5 matcha il file cachato senza query string
     if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
         event.respondWith(
-            fetch(request)
+            fetchWithTimeout(request, 8000)
                 .then(response => {
                     if (response.ok) {
                         const clone = response.clone();

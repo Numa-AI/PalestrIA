@@ -636,7 +636,9 @@ class BookingStorage {
                     .range(pageFrom, pageFrom + PAGE - 1)
                     .gte('date', pastStr).lte('date', futureStr);
                 if (ownOnly && user) q = q.eq('user_id', user.id);
-                const { data: page, error: pageErr } = await q;
+                // Timeout 12s: senza, su rete lenta/wake-from-idle questa query raw
+                // appende l'intero sync e refreshInFlight non si resetta mai (→ freeze).
+                const { data: page, error: pageErr } = await _queryWithTimeout(q, 12000);
                 if (pageErr) throw new Error('Page fetch error: ' + (pageErr.message || pageErr));
                 data = data.concat(page || []);
                 done = !page || page.length < PAGE;
@@ -808,29 +810,36 @@ class BookingStorage {
         }
     }
 
-    // Ritenta l'insert su Supabase per booking in stato pending (falliti in precedenza)
-    static _retryPending(pending, user) {
+    // Ritenta l'insert su Supabase per booking in stato pending (falliti in precedenza).
+    // Ogni insert è protetto da timeout 12s: senza, le promise fire-and-forget su rete
+    // lenta restano appese e saturano la microtask queue, ritardando il booking successivo.
+    static async _retryPending(pending, user) {
         for (const b of pending) {
             console.warn('[Supabase] retry insert booking pending:', b.id);
-            supabaseClient.from('bookings').insert({
-                local_id:     b.id,
-                user_id:      user?.id || b.userId || null,
-                date:         b.date,
-                time:         b.time,
-                slot_type:    b.slotType,
-                name:         b.name,
-                email:        b.email,
-                whatsapp:     b.whatsapp,
-                notes:        b.notes || '',
-                status:       b.status || 'confirmed',
-                created_at:   b.createdAt,
-                date_display: b.dateDisplay || '',
-            }).then(({ error }) => {
+            try {
+                const { error } = await _rpcWithTimeout(supabaseClient.from('bookings').insert({
+                    local_id:     b.id,
+                    user_id:      user?.id || b.userId || null,
+                    date:         b.date,
+                    time:         b.time,
+                    slot_type:    b.slotType,
+                    name:         b.name,
+                    email:        b.email,
+                    whatsapp:     b.whatsapp,
+                    notes:        b.notes || '',
+                    status:       b.status || 'confirmed',
+                    created_at:   b.createdAt,
+                    date_display: b.dateDisplay || '',
+                }), 12000);
                 if (error && error.code !== '23505')
                     console.error('[Supabase] retry insert error:', error.message);
                 else if (!error)
                     console.log('[Supabase] retry insert OK:', b.id);
-            });
+            } catch (e) {
+                console.error('[Supabase] retry insert timeout/exception:', b.id, e && e.message);
+            }
+            // Piccola pausa tra i retry per non saturare la microtask queue su molti pending
+            await new Promise(r => setTimeout(r, 100));
         }
     }
 
@@ -907,18 +916,30 @@ class BookingStorage {
         }
 
         const orgSlug = _resolveOrgSlug();
-        const { data, error } = await supabaseClient.rpc('book_slot', {
-            p_org_slug:     orgSlug,
-            p_local_id:     booking.id,
-            p_date:         booking.date,
-            p_time:         booking.time,
-            p_name:         booking.name,
-            p_email:        booking.email,
-            p_whatsapp:     booking.whatsapp,
-            p_notes:        booking.notes || '',
-            p_date_display: booking.dateDisplay || '',
-            p_for_user_id:  clientUserId || null   // admin-only: attribuisce il booking al cliente
-        });
+        // Timeout 45s come saveBooking: senza, su rete lenta/webview sospesa la RPC
+        // resta appesa e il bottone admin si blocca a tempo indefinito (freeze "alla 2a").
+        const _abortCtrl = new AbortController();
+        const _abortTimer = setTimeout(() => _abortCtrl.abort(), 45000);
+        let data, error;
+        try {
+            ({ data, error } = await supabaseClient.rpc('book_slot', {
+                p_org_slug:     orgSlug,
+                p_local_id:     booking.id,
+                p_date:         booking.date,
+                p_time:         booking.time,
+                p_name:         booking.name,
+                p_email:        booking.email,
+                p_whatsapp:     booking.whatsapp,
+                p_notes:        booking.notes || '',
+                p_date_display: booking.dateDisplay || '',
+                p_for_user_id:  clientUserId || null   // admin-only: attribuisce il booking al cliente
+            }).abortSignal(_abortCtrl.signal));
+        } catch (e) {
+            clearTimeout(_abortTimer);
+            console.error('[Supabase] adminBook timeout/abort:', e.message);
+            return { ok: false, error: 'server_error', booking };
+        }
+        clearTimeout(_abortTimer);
         if (error) {
             console.error('[Supabase] adminBook error:', error.message);
             return { ok: false, error: 'server_error', booking };
@@ -1570,38 +1591,38 @@ class BookingStorage {
         (async () => {
             try {
                 if (rows.length > 0) {
-                    const { error } = await supabaseClient.from('schedule_overrides')
-                        .upsert(rows, { onConflict: 'org_id,date,time' });
+                    const { error } = await _queryWithTimeout(supabaseClient.from('schedule_overrides')
+                        .upsert(rows, { onConflict: 'org_id,date,time' }), 15000);
                     if (error) { console.error('[Supabase] saveScheduleOverrides upsert error:', error.message); return; }
                 }
                 // Elimina le date svuotate e gli slot rimossi dalle date cambiate
                 if (changedDates) {
                     for (const dateStr of datesToSync) {
                         const activeTimesForDate = (overrides[dateStr] || []).map(s => s.time);
-                        const { data: existing } = await supabaseClient.from('schedule_overrides')
-                            .select('id, time').eq('date', dateStr);
+                        const { data: existing } = await _queryWithTimeout(supabaseClient.from('schedule_overrides')
+                            .select('id, time').eq('date', dateStr), 15000);
                         if (existing) {
                             const toDelete = existing
                                 .filter(r => !activeTimesForDate.includes(r.time))
                                 .map(r => r.id);
                             if (toDelete.length > 0) {
-                                await supabaseClient.from('schedule_overrides')
-                                    .delete().in('id', toDelete);
+                                await _queryWithTimeout(supabaseClient.from('schedule_overrides')
+                                    .delete().in('id', toDelete), 15000);
                             }
                         }
                     }
                 } else {
                     // Sync completo (importa settimana, clear, ecc.)
                     const activeKeys = new Set(rows.map(r => `${r.date}|${r.time}`));
-                    const { data: existing } = await supabaseClient.from('schedule_overrides')
-                        .select('id, date, time');
+                    const { data: existing } = await _queryWithTimeout(supabaseClient.from('schedule_overrides')
+                        .select('id, date, time'), 15000);
                     if (existing) {
                         const toDelete = existing
                             .filter(r => !activeKeys.has(`${r.date}|${r.time}`))
                             .map(r => r.id);
                         if (toDelete.length > 0) {
-                            await supabaseClient.from('schedule_overrides')
-                                .delete().in('id', toDelete);
+                            await _queryWithTimeout(supabaseClient.from('schedule_overrides')
+                                .delete().in('id', toDelete), 15000);
                         }
                     }
                 }

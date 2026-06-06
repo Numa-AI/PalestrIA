@@ -12,12 +12,29 @@
 
     function _registerRealtimeChannel(name, factory) {
         if (typeof factory !== 'function') return null;
+        // Dedup difensiva: se un canale con questo nome esiste già, rimuovilo prima
+        // di ricrearlo, così non si accumulano sottoscrizioni doppie nella stessa sessione.
+        var existing = channels.get(name);
+        if (existing && existing.instance && typeof supabaseClient !== 'undefined') {
+            try { supabaseClient.removeChannel(existing.instance); } catch (_) {}
+        }
         var instance = null;
         try { instance = factory(); } catch (e) {
             console.warn('[silent-refresh] register failed:', name, e);
         }
         channels.set(name, { factory: factory, instance: instance });
         return instance;
+    }
+
+    // Cleanup di TUTTI i canali registrati: chiamato su beforeunload così la
+    // navigazione tra pagine non lascia sottoscrizioni stantie sul client Supabase.
+    function _cleanupAllRealtimeChannels() {
+        if (typeof supabaseClient === 'undefined') return;
+        channels.forEach(function (entry) {
+            if (entry && entry.instance) {
+                try { supabaseClient.removeChannel(entry.instance); } catch (_) {}
+            }
+        });
     }
 
     async function _reconnectDeadChannels() {
@@ -76,11 +93,29 @@
         await add('SlotAccessRequestStorage', function () { return typeof SlotAccessRequestStorage !== 'undefined' && SlotAccessRequestStorage.syncFromSupabase(); });
     }
 
+    // Race una promise contro un timeout: se l'await interno si appende (rete morta,
+    // refresh master senza timeout proprio), non blocca il ciclo all'infinito.
+    function _withTimeout(p, ms, label) {
+        return Promise.race([
+            Promise.resolve(p),
+            new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout:' + label)); }, ms); })
+        ]);
+    }
+
     async function _triggerSilentRefresh(reason) {
         var now = Date.now();
         if (refreshInFlight || now - lastRefreshTs < MIN_REFRESH_INTERVAL_MS) return;
         lastRefreshTs = now;
         refreshInFlight = true;
+        // Watchdog di sicurezza: qualunque await interno si appenda, dopo 30s sblocca
+        // SEMPRE refreshInFlight, così i refresh futuri restano possibili senza che
+        // l'utente debba ricaricare la pagina a mano (causa radice C7 del freeze idle).
+        var _watchdog = setTimeout(function () {
+            if (refreshInFlight) {
+                console.warn('[silent-refresh] watchdog 30s — forzo refreshInFlight=false');
+                refreshInFlight = false;
+            }
+        }, 30000);
         try {
             console.log('[silent-refresh] trigger:', reason);
             var formOpen = _hasOpenModalWithInput();
@@ -90,9 +125,9 @@
                 }
                 await _syncStoragesQuietly();
             } else if (typeof window._adminRefreshAfterResume === 'function') {
-                await window._adminRefreshAfterResume('silent:' + reason, 0);
+                await _withTimeout(window._adminRefreshAfterResume('silent:' + reason, 0), 20000, 'adminRefresh').catch(function (e) { console.warn('[silent-refresh]', e && e.message); });
             } else if (typeof window._silentMasterRefresh === 'function') {
-                await window._silentMasterRefresh(reason);
+                await _withTimeout(window._silentMasterRefresh(reason), 20000, 'masterRefresh').catch(function (e) { console.warn('[silent-refresh]', e && e.message); });
             } else {
                 if (typeof ensureValidSession === 'function') {
                     try { await ensureValidSession({ force: true, timeoutMs: 12000 }); } catch (_) {}
@@ -103,6 +138,7 @@
             }
             await _reconnectDeadChannels();
         } finally {
+            clearTimeout(_watchdog);
             refreshInFlight = false;
         }
     }
@@ -121,6 +157,9 @@
     });
     window.addEventListener('online', function () { _triggerSilentRefresh('online'); });
 
+    window.addEventListener('beforeunload', _cleanupAllRealtimeChannels);
+
     window._registerRealtimeChannel = _registerRealtimeChannel;
+    window._cleanupAllRealtimeChannels = _cleanupAllRealtimeChannels;
     window._triggerSilentRefresh = _triggerSilentRefresh;
 })();

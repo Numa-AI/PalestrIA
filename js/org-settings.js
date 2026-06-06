@@ -117,9 +117,13 @@
     // ── realtime filtrato per org ─────────────────────────────────────────────
     function _subscribeRealtime() {
         if (_rtChannel || !_orgId) return;
-        try {
+        const channelName = `org_settings_${_orgId}`;
+        // Factory registrabile: il registry di silent-refresh lo ripulisce su unload e
+        // soprattutto lo RIVIVE dopo il wake da idle/sleep (prima il canale moriva e le
+        // impostazioni/branding non si aggiornavano più in tempo reale senza un refresh).
+        const factory = function () {
             _rtChannel = supabaseClient
-                .channel(`org_settings_${_orgId}`)
+                .channel(channelName)
                 .on('postgres_changes',
                     { event: '*', schema: 'public', table: 'org_settings', filter: `org_id=eq.${_orgId}` },
                     (payload) => {
@@ -131,6 +135,11 @@
                         if (row.key && row.key.startsWith('branding.')) applyBranding();
                     })
                 .subscribe();
+            return _rtChannel;
+        };
+        try {
+            if (typeof window._registerRealtimeChannel === 'function') window._registerRealtimeChannel(channelName, factory);
+            else factory();
         } catch (e) { console.warn('[OrgSettings] realtime non disponibile:', e && e.message); }
     }
 

@@ -98,12 +98,19 @@
     // Realtime: reagisci ai cambiamenti di org_settings della propria org
     try {
         const orgId = (typeof window !== 'undefined') ? window._orgId : null;
-        const ch = supabaseClient.channel('maintenance-rt');
-        ch.on('postgres_changes',
-            orgId
-                ? { event: '*', schema: 'public', table: 'org_settings', filter: `org_id=eq.${orgId}` }
-                : { event: '*', schema: 'public', table: 'org_settings' },
-            () => { setTimeout(checkMaintenance, 300); })
-          .subscribe();
+        // Registrato nel registry di silent-refresh: così viene ripulito su unload e
+        // soprattutto RIVIVIBILE da _reconnectDeadChannels dopo il wake da idle/sleep
+        // (prima restava morto → maintenance non si aggiornava più finché non ricaricavi).
+        const _maintRtFactory = function () {
+            return supabaseClient.channel('maintenance-rt')
+                .on('postgres_changes',
+                    orgId
+                        ? { event: '*', schema: 'public', table: 'org_settings', filter: `org_id=eq.${orgId}` }
+                        : { event: '*', schema: 'public', table: 'org_settings' },
+                    () => { setTimeout(checkMaintenance, 300); })
+                .subscribe();
+        };
+        if (typeof window._registerRealtimeChannel === 'function') window._registerRealtimeChannel('maintenance-rt', _maintRtFactory);
+        else _maintRtFactory();
     } catch (e) { /* ignore */ }
 })();
