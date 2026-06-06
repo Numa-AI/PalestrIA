@@ -948,7 +948,7 @@
     <script src="js/ui.js?v=2"></script>
     <script src="js/data.js?v=78"></script>
     <script src="js/auth.js?v=26"></script>
-    <script src="js/silent-refresh.js?v=3"></script>
+    <script src="js/silent-refresh.js?v=4"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/push.js?v=22"></script>
     <script src="js/chart-mini.js?v=12"></script>
@@ -1018,11 +1018,20 @@
                 window._adminRefreshAfterResume = async function (reason) {
                     console.log('[Admin] refresh after resume:', reason);
                     if (typeof ensureValidSession === 'function') {
-                        await ensureValidSession({ force: true, timeoutMs: 12000 }).catch(e => console.warn('[Admin] session refresh:', e?.message || e));
+                        // FIX #2: force SOLO su 'online' (riconnessione rete). Su wake/resume
+                        // NIENTE force: ensureValidSession rinfresca comunque se il token è
+                        // scaduto (isFresh). Forzare un refreshSession() su token VALIDO restava
+                        // appeso sul lock auth → watchdog 8s + cascade timeout (rpc/push).
+                        await ensureValidSession({ force: /online/.test(reason || ''), timeoutMs: 12000 }).catch(e => console.warn('[Admin] session refresh:', e?.message || e));
                     }
-                    await UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin resume] UserStorage sync:', e?.message || e));
-                    await BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin resume] BookingStorage sync:', e?.message || e));
-                    await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin resume] AppSettings sync:', e?.message || e));
+                    // FIX #3: sync in PARALLELO (come il boot). ensureValidSession ha già
+                    // garantito il token sopra → le query concorrenti non contendono sul lock.
+                    // Wall-clock = max della singola ondata, non somma delle 3 sequenziali.
+                    await Promise.all([
+                        UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin resume] UserStorage sync:', e?.message || e)),
+                        BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin resume] BookingStorage sync:', e?.message || e)),
+                        BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin resume] AppSettings sync:', e?.message || e)),
+                    ]);
                     window._adminLastFullSyncAt = Date.now();
                     if (typeof loadDashboardData === 'function') loadDashboardData();
                     if (typeof renderAdminCalendar === 'function') renderAdminCalendar();
@@ -1032,10 +1041,16 @@
                 function _adminDebouncedSync() {
                     clearTimeout(_adminRtTimer);
                     _adminRtTimer = setTimeout(async () => {
-                        // Stessa logica del boot: sync in serie per non saturare il pool.
-                        await UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin rt] UserStorage sync:', e?.message || e));
-                        await BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin rt] BookingStorage sync:', e?.message || e));
-                        await BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin rt] AppSettings sync:', e?.message || e));
+                        // Token fresco prima del fan-out (no force: rinfresca solo se scaduto).
+                        if (typeof ensureValidSession === 'function') {
+                            await ensureValidSession({ timeoutMs: 12000 }).catch(e => console.warn('[Admin rt] session:', e?.message || e));
+                        }
+                        // Sync in PARALLELO (come boot/resume): wall-clock = max, non somma.
+                        await Promise.all([
+                            UserStorage.syncUsersFromSupabase().catch(e => console.warn('[Admin rt] UserStorage sync:', e?.message || e)),
+                            BookingStorage.syncFromSupabase().catch(e => console.warn('[Admin rt] BookingStorage sync:', e?.message || e)),
+                            BookingStorage.syncAppSettingsFromSupabase().catch(e => console.warn('[Admin rt] AppSettings sync:', e?.message || e)),
+                        ]);
                         window._adminLastFullSyncAt = Date.now();
                         if (typeof loadDashboardData === 'function') loadDashboardData();
                         if (typeof renderAdminCalendar === 'function') renderAdminCalendar();

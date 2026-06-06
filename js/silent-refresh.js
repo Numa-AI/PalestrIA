@@ -121,7 +121,9 @@
             var formOpen = _hasOpenModalWithInput();
             if (formOpen) {
                 if (typeof ensureValidSession === 'function') {
-                    try { await ensureValidSession({ force: true, timeoutMs: 12000 }); } catch (e) { console.warn('[silent-refresh] session:', e && e.message); }
+                    // FIX #2: force SOLO su 'online'. Su wake/idle niente force (evita il
+                    // cascade-lock: refreshSession su token valido resta appeso sul lock auth).
+                    try { await ensureValidSession({ force: reason === 'online', timeoutMs: 12000 }); } catch (e) { console.warn('[silent-refresh] session:', e && e.message); }
                 }
                 await _syncStoragesQuietly();
             } else if (typeof window._adminRefreshAfterResume === 'function') {
@@ -130,7 +132,8 @@
                 await _withTimeout(window._silentMasterRefresh(reason), 20000, 'masterRefresh').catch(function (e) { console.warn('[silent-refresh]', e && e.message); });
             } else {
                 if (typeof ensureValidSession === 'function') {
-                    try { await ensureValidSession({ force: true, timeoutMs: 12000 }); } catch (_) {}
+                    // FIX #2: force SOLO su 'online' (vedi sopra).
+                    try { await ensureValidSession({ force: reason === 'online', timeoutMs: 12000 }); } catch (_) {}
                 }
                 await _syncStoragesQuietly();
                 if (typeof renderCalendar === 'function') renderCalendar();
