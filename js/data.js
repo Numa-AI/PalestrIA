@@ -622,6 +622,7 @@ class BookingStorage {
     static _bkFingerprint = null;
     static _bkLastFullFetch = 0;
     static _BK_RECONCILE_MS = 5 * 60 * 1000;
+    static _syncFailCount = 0; // #10: toast "errore connessione" solo dopo 3 fallimenti consecutivi
 
     // Fingerprint cheap: una query (count exact + riga col max updated_at). null su errore.
     static async _bookingsFingerprint(pastStr, futureStr) {
@@ -676,6 +677,7 @@ class BookingStorage {
                 // Mantieni booking in cache non-sintetici (pending insert non ancora su Supabase)
                 const local = this._cache.filter(b => !b.id?.startsWith('_avail_'));
                 this._cache = [...synth, ...local];
+                this._syncFailCount = 0; // #10: successo (anon)
                 console.log(`[Supabase] syncFromSupabase (anon): ${synth.length} slot sintetici`);
                 return;
             }
@@ -700,6 +702,7 @@ class BookingStorage {
                     const fp = await this._bookingsFingerprint(pastStr, futureStr);
                     if (fp !== null && fp === this._bkFingerprint) {
                         console.log('[Supabase] syncFromSupabase (admin): fingerprint invariato → skip full-fetch');
+                        this._syncFailCount = 0; // #10: skip = successo
                         return;
                     }
                 }
@@ -778,10 +781,16 @@ class BookingStorage {
             this._retryPending(pending, user);
             // Sync riuscita — cancella eventuale retry pendente
             clearTimeout(BookingStorage._syncRetryTimer);
+            BookingStorage._syncFailCount = 0; // #10: reset su successo
         } catch (e) {
             console.error('[Supabase] syncFromSupabase exception:', e);
-            if (typeof showToast === 'function') showToast('Errore di connessione al server. Verifica la tua connessione.', 'error', 5000);
-            // Retry automatico dopo 5 secondi (max 1 tentativo)
+            // #10: i primi 2 fallimenti sono spesso transitori (lock bloccato al rientro che
+            // si auto-recupera al retry 5s) → retry in SILENZIO. Toast solo al 3° consecutivo.
+            BookingStorage._syncFailCount = (BookingStorage._syncFailCount || 0) + 1;
+            if (BookingStorage._syncFailCount >= 3 && typeof showToast === 'function') {
+                showToast('Errore di connessione al server. Verifica la tua connessione.', 'error', 5000);
+            }
+            // Retry automatico dopo 5 secondi
             clearTimeout(BookingStorage._syncRetryTimer);
             BookingStorage._syncRetryTimer = setTimeout(() => {
                 console.log('[Supabase] syncFromSupabase — retry automatico');

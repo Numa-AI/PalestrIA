@@ -9,7 +9,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_SDlyqyh2C78ZlQ42hQJClA_e1LIp2x5';
 // permetteva refresh concorrenti dell'auth e sessioni incoerenti.
 const _authLockChains = new Map();
 
-const FALLBACK_FN_WATCHDOG_MS = 8000;
+const FALLBACK_FN_WATCHDOG_MS = 4000; // #7: era 8000 → col token già letto da storage (auth.js #5) il refresh appeso è inutile, mollalo prima (dimezza l'hang al rientro)
 let _watchdogFirings = [];
 const WATCHDOG_CASCADE_THRESHOLD = 2;
 const WATCHDOG_CASCADE_WINDOW_MS = 60000;
@@ -24,21 +24,30 @@ function _withFnWatchdog(name, fn) {
     const watchdog = new Promise((resolve) => {
         timer = setTimeout(() => {
             console.warn(`[Supabase Auth] fallback fn() "${name}" oltre ${FALLBACK_FN_WATCHDOG_MS}ms - sblocco la chain`);
-            const now = Date.now();
-            _watchdogFirings = _watchdogFirings.filter(t => now - t < WATCHDOG_CASCADE_WINDOW_MS);
-            _watchdogFirings.push(now);
-            if (_watchdogFirings.length >= WATCHDOG_CASCADE_THRESHOLD && !_cascadeReloadScheduled) {
-                _cascadeReloadScheduled = true;
-                console.warn(`[Supabase Auth] cascade rilevata (${_watchdogFirings.length} watchdog in ${WATCHDOG_CASCADE_WINDOW_MS / 1000}s) - ricarico la pagina`);
-                setTimeout(() => {
-                    try { window.location.reload(); } catch (_) {}
-                }, 200);
-                // Fallback: se il reload non avviene (bfcache / lifecycle PWA), azzera il
-                // flag dopo 10s così l'auto-recovery può ritentare invece di restare morto.
-                setTimeout(() => {
-                    _cascadeReloadScheduled = false;
-                    _watchdogFirings = [];
-                }, 10000);
+            // #4: NON contare il firing né ricaricare se la tab è in background (il lock si
+            // sblocca da solo al ritorno in foreground) o se un recovery utente sta già
+            // girando (silent-refresh/resume marcano window._userRecoveryDepth): lì il reload
+            // è solo disturbo, il recovery graceful recupera da sé. Il safety net "F5 di
+            // emergenza" resta attivo SOLO a pagina visibile senza recovery in corso.
+            const _suppressReload = (typeof document !== 'undefined' && document.hidden) ||
+                                    (typeof window !== 'undefined' && window._userRecoveryDepth > 0);
+            if (!_suppressReload) {
+                const now = Date.now();
+                _watchdogFirings = _watchdogFirings.filter(t => now - t < WATCHDOG_CASCADE_WINDOW_MS);
+                _watchdogFirings.push(now);
+                if (_watchdogFirings.length >= WATCHDOG_CASCADE_THRESHOLD && !_cascadeReloadScheduled) {
+                    _cascadeReloadScheduled = true;
+                    console.warn(`[Supabase Auth] cascade rilevata (${_watchdogFirings.length} watchdog in ${WATCHDOG_CASCADE_WINDOW_MS / 1000}s) - ricarico la pagina`);
+                    setTimeout(() => {
+                        try { window.location.reload(); } catch (_) {}
+                    }, 200);
+                    // Fallback: se il reload non avviene (bfcache / lifecycle PWA), azzera il
+                    // flag dopo 10s così l'auto-recovery può ritentare invece di restare morto.
+                    setTimeout(() => {
+                        _cascadeReloadScheduled = false;
+                        _watchdogFirings = [];
+                    }, 10000);
+                }
             }
             resolve(undefined);
         }, FALLBACK_FN_WATCHDOG_MS);

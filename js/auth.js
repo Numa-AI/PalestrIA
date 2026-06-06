@@ -91,11 +91,20 @@ async function _applyOrgContext(sessionUser) {
 // Returns true on success, false on error (does NOT null out _currentUser on error
 // to prevent false logouts on transient network failures in PWA).
 async function _loadProfile(userId) {
-    const { data: profile, error } = await supabaseClient
-        .from('profiles')
-        .select('id, name, email, whatsapp, medical_cert_expiry, medical_cert_history, insurance_expiry, insurance_history, codice_fiscale, indirizzo_via, indirizzo_paese, indirizzo_cap, documento_firmato, privacy_prenotazioni, created_at')
-        .eq('id', userId)
-        .maybeSingle();   // owner/staff non hanno riga profiles → null senza errore 406
+    let profile = null, error = null;
+    try {
+        const _r = await supabaseClient
+            .from('profiles')
+            .select('id, name, email, whatsapp, medical_cert_expiry, medical_cert_history, insurance_expiry, insurance_history, codice_fiscale, indirizzo_via, indirizzo_paese, indirizzo_cap, documento_firmato, privacy_prenotazioni, created_at')
+            .eq('id', userId)
+            .maybeSingle();   // owner/staff non hanno riga profiles → null senza errore 406
+        profile = _r && _r.data; error = _r && _r.error;
+    } catch (e) {
+        // #5: query appesa sul lock (tab background) → niente uncaught rpc_timeout nei
+        // chiamanti async (onAuthStateChange/visibilitychange). Si ritenta al sync successivo.
+        console.warn('[Auth] _loadProfile query fallita (timeout/lock):', e && e.message);
+        return false;
+    }
 
     if (profile && !error) {
         window._currentUser = profile;
@@ -125,6 +134,31 @@ async function _loadProfile(userId) {
 // Ritorna la session o null (refresh fallito/timeout/nessun refresh_token).
 let _refreshInFlight = null;
 
+// #5 — Lettura sessione DIRETTA da localStorage, bypassando navigator.locks.
+// Su tab in background il lock di supabase-js può bloccarsi → getSession() si appende.
+// Qui leggiamo il token salvato (chiave sb-<ref>-auth-token, anche encoding "base64-")
+// e validiamo access_token + expires_at. Difensiva: qualunque errore → null → resta il
+// comportamento esistente. NON rinfresca: serve solo a evitare il refresh forzato che
+// intasa la chain quando una sessione valida è già in storage.
+function _readSessionFromStorageDirect() {
+    try {
+        let raw = null;
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && /^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; }
+        }
+        if (!raw) return null;
+        if (raw.startsWith('base64-')) {
+            try { raw = decodeURIComponent(escape(atob(raw.slice(7)))); }
+            catch (_) { try { raw = atob(raw.slice(7)); } catch (__) { return null; } }
+        }
+        const obj = JSON.parse(raw);
+        const session = obj && (obj.access_token ? obj : (obj.currentSession || obj.session)) || null;
+        if (session && session.access_token && session.expires_at) return session;
+        return null;
+    } catch (_) { return null; }
+}
+
 // Strategia fail-closed:
 //   1. getSession() (storage, no lock contention) → se fresco, return
 //   2. Se c'è un refresh in-flight, attendi con CAP separato; se supera il cap,
@@ -136,9 +170,18 @@ let _refreshInFlight = null;
 async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
     const readSession = async () => {
         try {
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            return session || null;
-        } catch (_) { return null; }
+            // getSession() con cap 3s: se il lock è bloccato (tab background) si appende.
+            // Allo scadere → lettura diretta da localStorage (#5), niente refresh forzato.
+            const TIMEOUT = Symbol('getSession-timeout');
+            const r = await Promise.race([
+                supabaseClient.auth.getSession().then(({ data }) => (data && data.session) || null),
+                new Promise(res => setTimeout(() => res(TIMEOUT), 3000)),
+            ]);
+            if (r !== TIMEOUT) return r;
+            const direct = _readSessionFromStorageDirect();
+            if (direct) console.warn('[Auth] readSession: getSession timeout → sessione diretta da localStorage');
+            return direct;
+        } catch (_) { return _readSessionFromStorageDirect(); }
     };
     const isFresh = (s, minLeftSec = 30) => {
         if (!s?.access_token || !s.expires_at) return false;
@@ -194,7 +237,8 @@ async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
             const timeoutP = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('refresh timeout')), timeoutMs)
             );
-            const { data, error } = await Promise.race([refreshP, timeoutP]);
+            const _res = await Promise.race([refreshP, timeoutP]);
+            const { data, error } = _res || {}; // #5: niente "Cannot destructure 'data'" se la race risolve undefined
             if (error) throw error;
             if (data?.session?.access_token) {
                 console.log(`[Auth] ensureValidSession: refresh OK in ${Math.round(performance.now() - t0)}ms`);

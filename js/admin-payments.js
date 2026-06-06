@@ -452,6 +452,13 @@ async function paySelectedDebts() {
     if (payBtn) { payBtn.disabled = true; payBtn.textContent = 'Salvataggio...'; }
 
     try {
+        // #8: garantisci la sessione PRIMA della RPC NON idempotente. Dopo idle il lock auth
+        // può essere bloccato → la RPC perderebbe il token e l'operazione andrebbe persa
+        // (niente retry). ensureValidSession è veloce (lettura diretta da storage, #5) e
+        // "sveglia" il lock → la RPC parte con token valido.
+        if (typeof ensureValidSession === 'function') {
+            try { await ensureValidSession({ force: false, timeoutMs: 8000 }); } catch (_) {}
+        }
         const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_pay_bookings', {
             p_booking_ids: sbIds,
             p_method:      ledgerMethod,
@@ -690,6 +697,10 @@ async function saveSale() {
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio...'; }
 
     try {
+        // #8: sessione garantita prima delle RPC NON idempotenti (vendita pacchetto/abbonamento).
+        if (typeof ensureValidSession === 'function') {
+            try { await ensureValidSession({ force: false, timeoutMs: 8000 }); } catch (_) {}
+        }
         let error;
         if (_saleType === 'package') {
             const sessions = parseInt(document.getElementById('saleSessions').value, 10);

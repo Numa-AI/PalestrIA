@@ -107,6 +107,9 @@
         if (refreshInFlight || now - lastRefreshTs < MIN_REFRESH_INTERVAL_MS) return;
         lastRefreshTs = now;
         refreshInFlight = true;
+        // #4: segnala che un recovery graceful sta girando → il watchdog di
+        // supabase-client NON deve fare il reload "F5 di emergenza" nel frattempo.
+        window._userRecoveryDepth = (window._userRecoveryDepth || 0) + 1;
         // Watchdog di sicurezza: qualunque await interno si appenda, dopo 30s sblocca
         // SEMPRE refreshInFlight, così i refresh futuri restano possibili senza che
         // l'utente debba ricaricare la pagina a mano (causa radice C7 del freeze idle).
@@ -143,6 +146,7 @@
         } finally {
             clearTimeout(_watchdog);
             refreshInFlight = false;
+            window._userRecoveryDepth = Math.max(0, (window._userRecoveryDepth || 1) - 1);
         }
     }
 
