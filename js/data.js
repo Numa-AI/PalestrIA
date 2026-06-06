@@ -615,6 +615,31 @@ class BookingStorage {
     // - Anon: RPC availability only (no personal data)
     static _syncRetryTimer = null;
 
+    // Sync incrementale (admin full-list): fingerprint "<count>|<max updated_at>" della
+    // finestra prenotazioni → salta il full-fetch quando nulla è cambiato (wake veloce).
+    // Reconcile periodico come safety net per delete e per il raro insert+delete che non
+    // muove né count né max. NON tocca il path utente/anon (lì domina la disponibilità).
+    static _bkFingerprint = null;
+    static _bkLastFullFetch = 0;
+    static _BK_RECONCILE_MS = 5 * 60 * 1000;
+
+    // Fingerprint cheap: una query (count exact + riga col max updated_at). null su errore.
+    static async _bookingsFingerprint(pastStr, futureStr) {
+        try {
+            const { data, count, error } = await _queryWithTimeout(
+                supabaseClient.from('bookings')
+                    .select('updated_at', { count: 'exact' })
+                    .gte('date', pastStr).lte('date', futureStr)
+                    .order('updated_at', { ascending: false, nullsFirst: false })
+                    .limit(1),
+                10000
+            );
+            if (error) return null;
+            const maxUpd = (data && data[0] && data[0].updated_at) || '';
+            return `${count == null ? '?' : count}|${maxUpd}`;
+        } catch (_) { return null; }
+    }
+
     static async syncFromSupabase({ ownOnly = false } = {}) {
         if (typeof supabaseClient === 'undefined') return;
         const syncKey = ownOnly ? 'own' : 'all';
@@ -665,6 +690,20 @@ class BookingStorage {
             const futureD = new Date(); futureD.setDate(futureD.getDate() + 90);
             const pastStr   = _localDateStr(pastD);
             const futureStr = _localDateStr(futureD);
+
+            // ── Sync incrementale (solo admin full-list): se il fingerprint (count + max
+            //    updated_at) è invariato e la cache è popolata, SALTA il full-fetch → wake
+            //    quasi istantaneo. Reconcile periodico (5 min) come safety net.
+            if (isAdmin && !ownOnly) {
+                const reconcileDue = !this._bkLastFullFetch || (Date.now() - this._bkLastFullFetch > this._BK_RECONCILE_MS);
+                if (!reconcileDue && this._bkFingerprint && this._cache.length > 0) {
+                    const fp = await this._bookingsFingerprint(pastStr, futureStr);
+                    if (fp !== null && fp === this._bkFingerprint) {
+                        console.log('[Supabase] syncFromSupabase (admin): fingerprint invariato → skip full-fetch');
+                        return;
+                    }
+                }
+            }
 
             // Paginazione: Supabase limita a 1000 righe per request (max-rows server)
             const PAGE = 1000;
@@ -726,6 +765,14 @@ class BookingStorage {
             });
 
             this._cache = [...mapped, ...synth, ...pending];
+            if (isAdmin && !ownOnly) {
+                // Aggiorna il fingerprint dai dati appena scaricati (count = righe in finestra,
+                // + max updated_at) — gratis, niente query extra — e segna il full-fetch.
+                let _maxUpd = '';
+                for (const r of data) { if (r.updated_at && r.updated_at > _maxUpd) _maxUpd = r.updated_at; }
+                this._bkFingerprint = `${data.length}|${_maxUpd}`;
+                this._bkLastFullFetch = Date.now();
+            }
             console.log(`[Supabase] syncFromSupabase (${isAdmin ? 'admin' : 'user'}): ${mapped.length} da Supabase, ${synth.length} sintetici, ${pending.length} pending`);
 
             this._retryPending(pending, user);
