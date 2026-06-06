@@ -79,6 +79,5 @@ Sintomi: PWA va spesso chiusa/riaperta o refreshata; freeze "alla 2ª prenotazio
 
 ### Riferimenti
 - Piano: `C:\Users\andrea\.claude\plans\voglio-che-questo-progetto-immutable-pillow.md`
-- Bug noti (anche per i progetti gemelli): `Bug.md`
 - Guida progetto: `CLAUDE.md`
 - Repo: https://github.com/ReNumaa/PalestrIA.git
