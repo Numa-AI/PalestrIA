@@ -2079,6 +2079,28 @@ class UserStorage {
     static USERS_KEY = 'gym_users'; // managed by auth.js
     static _cache = []; // registered users cache (synced from Supabase profiles)
 
+    // Sync incrementale (admin): fingerprint "<count>|<max updated_at>" dei profili → salta
+    // il re-fetch (get_all_profiles) al wake quando nulla è cambiato. RLS limita il count
+    // alla propria org. Reconcile periodico come safety net. Stesso schema di BookingStorage.
+    static _profilesFingerprint = null;
+    static _profilesLastFullFetch = 0;
+    static _PROFILES_RECONCILE_MS = 5 * 60 * 1000;
+
+    static async _profilesFingerprintFetch() {
+        try {
+            const { data, count, error } = await _queryWithTimeout(
+                supabaseClient.from('profiles')
+                    .select('updated_at', { count: 'exact' })
+                    .order('updated_at', { ascending: false, nullsFirst: false })
+                    .limit(1),
+                10000
+            );
+            if (error) return null;
+            const maxUpd = (data && data[0] && data[0].updated_at) || '';
+            return `${count == null ? '?' : count}|${maxUpd}`;
+        } catch (_) { return null; }
+    }
+
     // Returns all known contacts: registered accounts first, then unique clients from booking history.
     // Deduplicates by email (case-insensitive) and phone (last 10 digits).
     static getAll() {
@@ -2130,6 +2152,14 @@ class UserStorage {
     static async syncUsersFromSupabase() {
         if (typeof supabaseClient === 'undefined') return;
         try {
+            // Fingerprint-skip: salta il re-fetch dei profili se nulla è cambiato (wake
+            // veloce). Reconcile periodico (5 min) come safety net per il caso limite.
+            const _reconcileDue = !this._profilesLastFullFetch || (Date.now() - this._profilesLastFullFetch > this._PROFILES_RECONCILE_MS);
+            const _fp = await this._profilesFingerprintFetch();
+            if (!_reconcileDue && _fp !== null && _fp === this._profilesFingerprint && this._cache.length > 0) {
+                console.log('[Supabase] syncUsersFromSupabase: fingerprint invariato → skip');
+                return;
+            }
             const response = await _rpcWithTimeout(supabaseClient.rpc('get_all_profiles'));
             const { data, error } = response || {};
             if (!response) {
@@ -2197,6 +2227,8 @@ class UserStorage {
             });
 
             this._cache = [...merged, ...localOnly];
+            this._profilesFingerprint = _fp;
+            this._profilesLastFullFetch = Date.now();
             console.log(`[Supabase] syncUsersFromSupabase: ${data.length} da Supabase, ${localOnly.length} solo locali`);
         } catch (e) {
             console.error('[Supabase] syncUsersFromSupabase exception:', e);
