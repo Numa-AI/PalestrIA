@@ -17,9 +17,10 @@ ridurre le chiamate ridondanti, pensata per essere **replicata su progetti simil
 5. [Fase C — canali Realtime rivivibili](#5-fase-c--canali-realtime-rivivibili)
 6. [Cache-busting (Service Worker)](#6-cache-busting-service-worker)
 7. [Fase D — over-fetching / troppe chiamate](#7-fase-d--over-fetching--troppe-chiamate)
-8. [Checklist di test](#8-checklist-di-test-devtools)
-9. [Come replicare su un altro progetto](#9-come-replicare-su-un-altro-progetto)
-10. [Riepilogo file toccati](#10-riepilogo-file-toccati)
+8. [Fase E — flash branding al refresh (FOUC)](#8-fase-e--flash-branding-al-refresh-fouc)
+9. [Checklist di test](#9-checklist-di-test-devtools)
+10. [Come replicare su un altro progetto](#10-come-replicare-su-un-altro-progetto)
+11. [Riepilogo file toccati](#11-riepilogo-file-toccati)
 
 ---
 
@@ -328,7 +329,42 @@ const _bookingsDebouncedSync = () => {
 
 ---
 
-## 8. Checklist di test (DevTools)
+## 8. Fase E — flash branding al refresh (FOUC)
+
+**Sintomo:** al refresh, per qualche secondo si vede il placeholder "IL TUO NOME" e i colori di default
+(viola PalestrIA) invece di nome/colori dello studio. È un **FOUC**: l'HTML parte con placeholder + CSS
+default, e il branding si applica solo DOPO il `load()` async (round-trip al DB).
+
+**Causa:** `OrgSettings.applyBranding()` gira solo a fine `load()` async, e gli `<script>` di pagina sono
+a fondo `<body>` → placeholder e colori default vengono **dipinti prima**.
+
+**Fix (pattern "snapshot pre-paint"):**
+1. `applyBranding()` salva uno **snapshot** del branding in una chiave localStorage **stabile**
+   (`_brandingSnapshot`, NON namespaced per org).
+2. Nuovo `js/branding-boot.js` caricato **sincrono nell'`<head>`** (gira PRIMA del paint): legge lo
+   snapshot e applica **colori** su `:root` subito (zero flash viola), favicon/titolo; il **nome** (+logo)
+   appena il DOM è pronto, nascondendo `[data-org-name]` con `visibility:hidden` (niente layout shift)
+   finché non lo applica → niente flash del placeholder.
+3. I valori reali arrivano comunque da `OrgSettings.load()` async, che corregge se cambiati.
+
+```js
+// branding-boot.js (in <head>, sincrono):
+var snap = JSON.parse(localStorage.getItem('_brandingSnapshot') || 'null');
+if (snap) {
+    var root = document.documentElement;
+    if (snap.color)     root.style.setProperty('--primary-purple', snap.color);       // ← prima del paint
+    if (snap.colorDark) root.style.setProperty('--primary-purple-dark', snap.colorDark);
+    // nome/logo su DOMContentLoaded; [data-org-name] nascosto via <style> finché non rivelato
+}
+```
+**Chiave del trucco:** lo snapshot è **non namespaced**, così è leggibile in `<head>` PRIMA che `_orgId`
+sia noto (che richiede l'auth async). Funziona dal 2º caricamento in poi (alla prima visita assoluta non
+c'è ancora branding salvato da mostrare → nessun flash da correggere). Per pagine platform-level (es.
+super-admin) NON caricare il boot.
+
+---
+
+## 9. Checklist di test (DevTools)
 
 1. **2 prenotazioni di fila** (anche con Network "Slow 3G") → la 2ª NON si blocca.
 2. **Rete morta durante booking** (Network → Offline a metà) → si sblocca con toast entro ~45s.
@@ -338,10 +374,13 @@ const _bookingsDebouncedSync = () => {
    count stabile (DevTools → Memory).
 5. **Burst Realtime** (apri il calendario su 2 tab; prenota più volte rapidamente da una) → l'altra fa
    **un solo** re-render dopo ~600ms, non uno per evento (verifica i log `[rt] bookings sync`).
+6. **Flash branding** (Fase E): con uno studio brandizzato (nome + colore custom), **refresha** la
+   pagina (Ctrl/Cmd+R) → NON deve comparire "IL TUO NOME" né il viola di default, nemmeno per un istante.
+   Testa anche con cache vuota (1ª visita: il placeholder può comparire una volta, poi non più).
 
 ---
 
-## 9. Come replicare su un altro progetto
+## 10. Come replicare su un altro progetto
 
 1. **Crea gli helper** `_rpcWithTimeout` / `_queryWithTimeout` (sez. 2) e usali per **ogni** chiamata
    Supabase awaited.
@@ -361,7 +400,7 @@ const _bookingsDebouncedSync = () => {
 
 ---
 
-## 10. Riepilogo file toccati
+## 11. Riepilogo file toccati
 
 | File | Fase | Cosa |
 |---|---|---|
@@ -369,8 +408,9 @@ const _bookingsDebouncedSync = () => {
 | `js/silent-refresh.js` | A, C | watchdog su refreshInFlight; registry canali (dedup + cleanup beforeunload) |
 | `js/supabase-client.js` | A, B | reset cascade flag; `fn` bounded dentro `navigator.locks`; chain non muta |
 | `js/app-watchdog.js` | watchdog | **nuovo** — auto-guarigione al resume |
+| `js/branding-boot.js` | E | **nuovo** — applica il branding (snapshot) pre-paint in `<head>` |
 | `js/maintenance.js` | C | canale registrato nel registry (rivivibile) |
-| `js/org-settings.js` | C | canale registrato nel registry (rivivibile) |
-| `sw.js` | A, cache | `fetchWithTimeout` Network-First; APP_SHELL + `CACHE_NAME` v532 |
+| `js/org-settings.js` | C, E | (C) canale nel registry; (E) salva lo snapshot branding in `applyBranding()` |
+| `sw.js` | A, cache | `fetchWithTimeout` Network-First; APP_SHELL + `CACHE_NAME` v533 |
 | `index.html` | D | debounce 600ms sugli handler Realtime |
-| 13× `*.html` | cache | bump `?v=` asset modificati |
+| `*.html` (15 pagine) | E, cache | `<script branding-boot>` in `<head>` (tranne super-admin); bump `?v=` asset |

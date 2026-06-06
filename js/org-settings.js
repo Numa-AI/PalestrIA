@@ -172,6 +172,7 @@
             const color   = getString('branding.primary_color', '');
             const favicon = getString('branding.favicon_url', '');
             const pwaName = getString('branding.pwa_name', '');
+            let colorDark = '';
 
             // 1) NOME STUDIO → elementi [data-org-name] e .hero-name (se non già
             //    sovrascritto manualmente da ?pt=, vedi flag dataset.brandLocked)
@@ -196,7 +197,7 @@
                 const root = document.documentElement;
                 root.style.setProperty('--primary-purple', color);
                 const dark = _darkenHex(color, 10);
-                if (dark) root.style.setProperty('--primary-purple-dark', dark);
+                if (dark) { root.style.setProperty('--primary-purple-dark', dark); colorDark = dark; }
                 const themeMeta = document.querySelector('meta[name="theme-color"]');
                 if (themeMeta) themeMeta.setAttribute('content', color);
             }
@@ -219,6 +220,18 @@
                 document.title = docTitle;
                 const appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
                 if (appTitle) appTitle.setAttribute('content', docTitle);
+            }
+
+            // 6) SNAPSHOT stabile (non namespaced) → letto da branding-boot.js in <head>
+            //    per applicare nome/colori PRIMA del paint al refresh successivo, così
+            //    sparisce il flash di "IL TUO NOME" e dei colori di default.
+            if (name || color || favicon || pwaName || logo) {
+                try {
+                    localStorage.setItem('_brandingSnapshot', JSON.stringify({
+                        name: name || '', color: color || '', colorDark: colorDark || '',
+                        favicon: favicon || '', logo: logo || '', title: docTitle || ''
+                    }));
+                } catch (_) {}
             }
         } catch (e) {
             console.warn('[OrgSettings] applyBranding fallito:', e && e.message);
