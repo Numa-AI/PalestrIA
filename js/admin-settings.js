@@ -327,6 +327,7 @@ function _settRenderCompany(body) {
     const pec     = OrgSettings.getString('company.pec', '');
     const sdi     = OrgSettings.getString('company.sdi_code', '');
     const prefix  = OrgSettings.getString('company.invoice_prefix', '');
+    const maps    = OrgSettings.getString('company.maps_url', '');
 
     body.innerHTML = `
         <div class="sett-card">
@@ -385,6 +386,10 @@ function _settRenderCompany(body) {
                     <label class="sett-input-label">Paese</label>
                     <input type="text" id="coAddrPaese" class="sett-text-input" value="${_escHtml(addr.paese || 'Italia')}">
                 </div>
+                <div class="sett-field sett-field--wide">
+                    <label class="sett-input-label">Link Google Maps (mostrato nella home)</label>
+                    <input type="url" id="coMapsUrl" class="sett-text-input" value="${_escHtml(maps)}" placeholder="Es. https://maps.app.goo.gl/...">
+                </div>
             </div>
             <div class="sett-btn-row">
                 <button class="sett-action-btn sett-action-btn--green" onclick="saveCompanySettings()">💾 Salva dati azienda</button>
@@ -409,6 +414,7 @@ async function saveCompanySettings() {
         await OrgSettings.set('company.sdi_code', _settVal('coSdiCode').trim().toUpperCase());
         await OrgSettings.set('company.invoice_prefix', _settVal('coInvoicePrefix').trim());
         await OrgSettings.set('company.address', address);
+        await OrgSettings.set('company.maps_url', _settVal('coMapsUrl').trim());
         showToast('✅ Dati azienda salvati', 'success');
     } catch (e) {
         console.error('[Settings] company save error:', e);

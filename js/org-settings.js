@@ -192,6 +192,13 @@
                 });
             }
 
+            // 2b) LINK GOOGLE MAPS → ogni <a data-org-maps> (es. home). Solo se
+            //     valorizzato in Dati azienda; se vuoto resta il link statico dell'HTML.
+            const mapsUrl = getString('company.maps_url', '');
+            if (mapsUrl) {
+                document.querySelectorAll('a[data-org-maps]').forEach(a => { a.href = mapsUrl; });
+            }
+
             // 3) COLORE PRIMARIO → CSS var + derivata dark + <meta theme-color>
             if (color) {
                 const root = document.documentElement;

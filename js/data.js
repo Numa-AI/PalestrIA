@@ -220,6 +220,40 @@ function _hasOrgScheduleConfig() {
     return _ORG_SLOT_TYPES && Object.keys(_ORG_SLOT_TYPES).length > 0;
 }
 
+// orgId per cui abbiamo già tentato l'idratazione da cache (evita letture ripetute).
+let _orgSchedHydratedFor = null;
+
+// Idrata _ORG_* dallo snapshot localStorage della org CORRENTE (keyed per orgId →
+// no bleed cross-tenant) se non già caricati dal DB. Sincrono, una sola volta per
+// orgId. Elimina il flash degli slot legacy (05:20) al refresh: i veri orari per-org
+// sono disponibili SUBITO mentre loadOrgScheduleConfig() fa il round-trip al DB, che
+// poi li aggiorna. Se orgId non è ancora noto (auth async) esce senza marcare il flag.
+function _hydrateOrgScheduleFromCache() {
+    const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+    if (!orgId || _orgSchedHydratedFor === orgId) return;
+    _orgSchedHydratedFor = orgId;
+    try {
+        const raw = localStorage.getItem('_orgSchedSnap_' + orgId);
+        if (!raw) return;
+        const snap = JSON.parse(raw);
+        if (!snap || typeof snap !== 'object') return;
+        if (!_ORG_SLOT_TYPES && snap.slotTypes && Object.keys(snap.slotTypes).length) _ORG_SLOT_TYPES = snap.slotTypes;
+        if (!_ORG_TIME_SLOTS && Array.isArray(snap.timeSlots) && snap.timeSlots.length) _ORG_TIME_SLOTS = snap.timeSlots;
+        if (!_ORG_WEEKLY && snap.weekly && Object.keys(snap.weekly).length) _ORG_WEEKLY = snap.weekly;
+    } catch (_) {}
+}
+
+// Salva lo snapshot della config orari per-org (chiamato dopo loadOrgScheduleConfig).
+function _persistOrgScheduleSnapshot(orgId) {
+    if (!orgId) return;
+    if (!_ORG_SLOT_TYPES && !_ORG_TIME_SLOTS && !_ORG_WEEKLY) return;
+    try {
+        localStorage.setItem('_orgSchedSnap_' + orgId, JSON.stringify({
+            slotTypes: _ORG_SLOT_TYPES, timeSlots: _ORG_TIME_SLOTS, weekly: _ORG_WEEKLY,
+        }));
+    } catch (_) {}
+}
+
 // Indice JS getDay() → nome giorno italiano usato dalle costanti legacy.
 const _WEEKDAY_NAMES_IT = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
@@ -238,6 +272,7 @@ function _orgSlotTypeId(key) {
 async function loadOrgScheduleConfig() {
     if (typeof supabaseClient === 'undefined') return;
     const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+    _hydrateOrgScheduleFromCache(); // idrata SUBITO dalla cache (no flash slot legacy), poi il DB aggiorna
     try {
         const [stRes, tsRes, tplRes] = await Promise.allSettled([
             _queryWithTimeout(
@@ -323,6 +358,7 @@ async function loadOrgScheduleConfig() {
         }
 
         console.log(`[Supabase] loadOrgScheduleConfig: ${_ORG_SLOT_TYPES ? Object.keys(_ORG_SLOT_TYPES).length : 0} slot_types, ${_ORG_TIME_SLOTS ? _ORG_TIME_SLOTS.length : 0} fasce, weekly=${_ORG_WEEKLY ? 'attivo' : 'no'}`);
+        _persistOrgScheduleSnapshot(orgId); // aggiorna la cache per il prossimo refresh (no flash)
     } catch (e) {
         console.warn('[Supabase] loadOrgScheduleConfig exception (uso fallback hardcoded):', e);
     }
@@ -353,12 +389,14 @@ function getSlotName(slotType) {
 // Elenco fasce orarie attive per la org (etichette 'HH:MM - HH:MM').
 // Preferisce _ORG_TIME_SLOTS (dal DB), fallback alle costanti TIME_SLOTS.
 function getTimeSlots() {
+    _hydrateOrgScheduleFromCache();
     return (_ORG_TIME_SLOTS && _ORG_TIME_SLOTS.length) ? _ORG_TIME_SLOTS.slice() : TIME_SLOTS.slice();
 }
 
 // Elenco tipi slot per la org (oggetti config). Preferisce _ORG_SLOT_TYPES (dal
 // DB, ordinati per sortOrder); fallback derivato dalle costanti legacy.
 function getSlotTypes() {
+    _hydrateOrgScheduleFromCache();
     if (_hasOrgScheduleConfig()) {
         return Object.values(_ORG_SLOT_TYPES).sort((a, b) => a.sortOrder - b.sortOrder);
     }
@@ -485,6 +523,7 @@ const DEFAULT_WEEKLY_SCHEDULE = {
 // Costruisce DEFAULT_WEEKLY_SCHEDULE-like ({ 'Lunedì': [{time,type}], ... })
 // dal template org caricato in _ORG_WEEKLY. Ritorna null se non disponibile.
 function _weeklyScheduleFromOrg() {
+    _hydrateOrgScheduleFromCache();
     if (!_ORG_WEEKLY || Object.keys(_ORG_WEEKLY).length === 0) return null;
     const result = {};
     for (let wd = 0; wd < 7; wd++) {
