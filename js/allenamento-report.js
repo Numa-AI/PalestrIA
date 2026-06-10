@@ -120,7 +120,7 @@ async function _fetchReports() {
         // Filtro ESPLICITO per user_id: questa vista è per il cliente ("i MIEI report").
         // Non ci affidiamo solo alla RLS perché se l'utente è admin la policy
         // monthly_reports_admin_all gli mostrerebbe TUTTI i report di tutti gli utenti.
-        const { data: authRes } = await supabaseClient.auth.getUser();
+        const { data: authRes } = await supabaseAuth.auth.getUser();
         const userId = authRes?.user?.id;
         if (!userId) { _reportCache = []; return _reportCache; }
 
@@ -159,7 +159,7 @@ async function renderReport() {
     container.innerHTML = '<div class="all-loading" role="status">Caricamento report...</div>';
 
     // Auth check
-    const { data: authRes } = await supabaseClient.auth.getUser();
+    const { data: authRes } = await supabaseAuth.auth.getUser();
     const user = authRes?.user;
     if (!user) {
         container.innerHTML = '<div class="all-empty-state"><p>Devi essere loggato per vedere i report.</p></div>';
@@ -342,7 +342,7 @@ function closeReportModal() {
 // ═════════════════════════════════════════════════════════════════════
 
 async function _generateTone(yearMonth, tone) {
-    const { data: authRes } = await supabaseClient.auth.getUser();
+    const { data: authRes } = await supabaseAuth.auth.getUser();
     const user = authRes?.user;
     if (!user) { alert('Non sei loggato'); return; }
 
@@ -446,7 +446,7 @@ async function _startGenerationInternal(yearMonth, tone, force) {
     });
 
     try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
+        const { data: { session } } = await supabaseAuth.auth.getSession();
         if (!session) throw new Error('Sessione scaduta, ricarica la pagina');
 
         const res = await fetch(REPORT_FN_URL, {

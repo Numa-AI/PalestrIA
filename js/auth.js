@@ -184,7 +184,7 @@ async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
             // Allo scadere → lettura diretta da localStorage (#5), niente refresh forzato.
             const TIMEOUT = Symbol('getSession-timeout');
             const r = await Promise.race([
-                supabaseClient.auth.getSession().then(({ data }) => (data && data.session) || null),
+                supabaseAuth.auth.getSession().then(({ data }) => (data && data.session) || null),
                 new Promise(res => setTimeout(() => res(TIMEOUT), 3000)),
             ]);
             if (r !== TIMEOUT) return r;
@@ -243,7 +243,7 @@ async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
         const t0 = performance.now();
         console.log(`[Auth] ensureValidSession: refresh manuale avviato (force=${force}, timeout=${timeoutMs}ms)`);
         try {
-            const refreshP = supabaseClient.auth.refreshSession();
+            const refreshP = supabaseAuth.auth.refreshSession();
             const timeoutP = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('refresh timeout')), timeoutMs)
             );
@@ -274,7 +274,7 @@ async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
         // Step 5 — FAIL-CLOSED: sessione persa, forza relogin
         console.warn('[Auth] ensureValidSession: FAIL-CLOSED — signOut locale, relogin richiesto');
         _isManualLogout = true; // previene loop di "SIGNED_OUT spurio → recovery"
-        try { await supabaseClient.auth.signOut({ scope: 'local' }); } catch (_) {}
+        try { await supabaseAuth.auth.signOut({ scope: 'local' }); } catch (_) {}
         window._currentUser = null;
         sessionStorage.removeItem('adminAuth');
         try { window.dispatchEvent(new CustomEvent('auth:session-lost')); } catch (_) {}
@@ -386,7 +386,7 @@ let _authListenerActive = false;
 async function initAuth() {
     const session = await new Promise((resolve) => {
         let resolved = false;
-        const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, session) => {
+        const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((event, session) => {
             if (event === 'INITIAL_SESSION' && !resolved) {
                 resolved = true;
                 subscription.unsubscribe();
@@ -439,7 +439,7 @@ async function initAuth() {
     // Registra il listener persistente una sola volta (evita duplicati su bfcache restore)
     if (!_authListenerActive) {
         _authListenerActive = true;
-        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        supabaseAuth.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                 // Reset del flag: se un precedente fail-closed l'aveva alzato,
                 // un login/refresh riuscito lo riabbassa così futuri SIGNED_OUT
@@ -592,7 +592,7 @@ async function registerUser(name, email, whatsapp, password, codiceFiscale, indi
         return { ok: false, error: 'Studio non identificato. Apri il link di registrazione del tuo studio (es. ?org=nome-studio) e riprova.' };
     }
 
-    const { data, error } = await supabaseClient.auth.signUp({
+    const { data, error } = await supabaseAuth.auth.signUp({
         email,
         password,
         options: {
@@ -628,7 +628,7 @@ async function registerUser(name, email, whatsapp, password, codiceFiscale, indi
 
 // ── Login con email + password ────────────────────────────────────────────────
 async function loginWithPassword(email, password) {
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseAuth.auth.signInWithPassword({ email, password });
     if (error) return { ok: false, error: _authError(error) };
     await _loadProfile(data.user.id);
     await _applyOrgContext(data.user);
@@ -656,7 +656,7 @@ async function logoutUser() {
     // signOut con timeout: se Supabase non risponde entro 3s, procedi comunque
     try {
         await Promise.race([
-            supabaseClient.auth.signOut({ scope: 'local' }),
+            supabaseAuth.auth.signOut({ scope: 'local' }),
             new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
         ]);
     } catch { /* sessione locale già pulita, il token scadrà da solo */ }
@@ -742,14 +742,14 @@ async function updateUserProfile(currentEmail, updates, newPassword) {
 
     // Cambio email su Supabase Auth (richiede conferma via email — NON aggiorniamo il profilo subito)
     if (updates.email && updates.email.toLowerCase() !== currentEmail.toLowerCase()) {
-        const { error } = await supabaseClient.auth.updateUser({ email: updates.email });
+        const { error } = await supabaseAuth.auth.updateUser({ email: updates.email });
         if (error) return { ok: false, error: error.message };
         emailPendingConfirmation = true;
     }
 
     // Cambio password su Supabase Auth
     if (newPassword) {
-        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        const { error } = await supabaseAuth.auth.updateUser({ password: newPassword });
         if (error) return { ok: false, error: error.message };
     }
 

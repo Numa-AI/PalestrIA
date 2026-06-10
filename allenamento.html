@@ -252,10 +252,10 @@
         }());
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=9"></script>
+    <script src="js/supabase-client.js?v=10"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/data.js?v=84"></script>
-    <script src="js/auth.js?v=30"></script>
+    <script src="js/auth.js?v=31"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <!-- chart-mini.js non serve: usa drawDarkLineChart() interno -->
@@ -843,10 +843,10 @@
         setInterval(async () => {
             if (document.hidden) return;
             try {
-                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                const { data: { session }, error } = await supabaseAuth.auth.getSession();
                 if (error || !session) {
                     console.warn('[Heartbeat] sessione assente, provo refresh...');
-                    const { error: refreshErr } = await supabaseClient.auth.refreshSession();
+                    const { error: refreshErr } = await supabaseAuth.auth.refreshSession();
                     if (refreshErr) {
                         console.warn('[Heartbeat] refreshSession fallita, ricarico:', refreshErr.message);
                         window.location.reload();
@@ -5058,7 +5058,7 @@
             });
         }
     </script>
-    <script src="js/allenamento-report.js?v=2"></script>
+    <script src="js/allenamento-report.js?v=3"></script>
     <script>
         // ── Mobile nav: barra singola + bottom sheet (≤768px) ──────────────
         // Proxy dei pill originali: il click su una voce dello sheet richiama

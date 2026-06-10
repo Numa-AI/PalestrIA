@@ -24,7 +24,7 @@
         var session = null;
         try {
             if (typeof supabaseClient !== 'undefined') {
-                var res = await supabaseClient.auth.getSession();
+                var res = await supabaseAuth.auth.getSession();
                 session = res && res.data && res.data.session;
             }
         } catch (_) {}

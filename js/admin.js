@@ -94,7 +94,7 @@ async function _ensureAdminOrgContext() {
     if (window._orgId) return window._orgId;
     if (typeof supabaseClient === 'undefined') return null;
     try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
+        const { data: { session } } = await supabaseAuth.auth.getSession();
         if (!session) return null;
         const { data: m } = await supabaseClient
             .from('org_members')

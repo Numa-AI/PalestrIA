@@ -107,7 +107,7 @@ async function savePushSubscription(subscription) {
     let userEmail = null;
     if (typeof supabaseClient !== 'undefined') {
         try {
-            const { data: { session } } = await supabaseClient.auth.getSession();
+            const { data: { session } } = await supabaseAuth.auth.getSession();
             userId    = session?.user?.id    ?? null;
             userEmail = session?.user?.email ?? null;
         } catch {}
@@ -124,7 +124,7 @@ async function savePushSubscription(subscription) {
         console.log('[Push] Utente non ancora autenticato — ritento fra 3s');
         setTimeout(async () => {
             try {
-                const { data: { session } } = await supabaseClient.auth.getSession();
+                const { data: { session } } = await supabaseAuth.auth.getSession();
                 const retryUserId = session?.user?.id ?? null;
                 const retryEmail  = session?.user?.email ?? null;
                 if (retryUserId) {
@@ -206,7 +206,7 @@ async function _disabledSlotAvailableBroadcast(booking) {
     // Fallback: prova dalla sessione Supabase
     if (!excludeUserId && typeof supabaseClient !== 'undefined') {
         try {
-            const { data: { session } } = await supabaseClient.auth.getSession();
+            const { data: { session } } = await supabaseAuth.auth.getSession();
             excludeUserId = session?.user?.id ?? null;
         } catch {}
     }
@@ -363,7 +363,7 @@ function _syncPushEnabled() {
     setTimeout(async () => {
         if (typeof supabaseClient === 'undefined') return;
         try {
-            const { data: { session } } = await supabaseClient.auth.getSession();
+            const { data: { session } } = await supabaseAuth.auth.getSession();
             if (session?.user?.id) {
                 // Aggiorna il proprio profilo (RLS consente l'update di id = auth.uid()).
                 // Per trainer/staff senza riga profiles → 0 righe, nessun errore.

@@ -258,15 +258,15 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=9"></script>
+    <script src="js/supabase-client.js?v=10"></script>
     <script src="js/org-settings.js?v=8"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/data.js?v=84"></script>
-    <script src="js/auth.js?v=30"></script>
+    <script src="js/auth.js?v=31"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=2"></script>
-    <script src="js/push.js?v=22"></script>
+    <script src="js/push.js?v=23"></script>
     <script src="js/chart-mini.js?v=12"></script>
     <script>
         // ── Guard async: aspetta la sessione Supabase prima di controllare ─
@@ -413,12 +413,12 @@
             // prima di redirigere: il refresh del token potrebbe essere ancora in corso.
             if (!getCurrentUser()) {
                 await new Promise(r => setTimeout(r, 2000));
-                const { data } = await supabaseClient.auth.getSession();
+                const { data } = await supabaseAuth.auth.getSession();
                 if (data.session) {
                     await _loadProfile(data.session.user.id);
                 } else {
                     try {
-                        const { data: refreshed } = await supabaseClient.auth.refreshSession();
+                        const { data: refreshed } = await supabaseAuth.auth.refreshSession();
                         if (refreshed.session) await _loadProfile(refreshed.session.user.id);
                     } catch {}
                 }
@@ -456,7 +456,7 @@
             if (!getCurrentUser()) {
                 await new Promise(r => setTimeout(r, 2000));
                 try {
-                    const { data: refreshed } = await supabaseClient.auth.refreshSession();
+                    const { data: refreshed } = await supabaseAuth.auth.refreshSession();
                     if (refreshed.session) { await _loadProfile(refreshed.session.user.id); updateNavAuth(); }
                 } catch {}
             }
@@ -940,7 +940,7 @@
             document.getElementById('editPrivacyPrenotazioni').checked = user.privacy_prenotazioni !== false; // default true
             document.getElementById('editPassword').value        = '';
             document.getElementById('editPasswordConfirm').value = '';
-            const { data: { session } } = await supabaseClient.auth.getSession();
+            const { data: { session } } = await supabaseAuth.auth.getSession();
             const isOAuth = session?.user?.app_metadata?.provider !== 'email';
             document.getElementById('editPasswordSection').style.display = isOAuth ? 'none' : 'block';
             document.getElementById('editProfileError').style.display = 'none';

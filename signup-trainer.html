@@ -74,7 +74,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js"></script>
+    <script src="js/supabase-client.js?v=10"></script>
     <script>
     (function () {
         const $ = (id) => document.getElementById(id);
@@ -105,7 +105,7 @@
             btn.disabled = true; btn.textContent = 'Creazione in corso…';
             try {
                 // 1) registra l'utente come TRAINER (signup_type evita la creazione del profilo cliente)
-                const { data: signUpData, error: signUpErr } = await supabaseClient.auth.signUp({
+                const { data: signUpData, error: signUpErr } = await supabaseAuth.auth.signUp({
                     email, password,
                     options: {
                         emailRedirectTo: new URL('login.html', window.location.href).href,
@@ -120,7 +120,7 @@
                 let hasSession = !!(signUpData && signUpData.session);
                 if (!hasSession) {
                     const { data: signInData, error: signInErr } =
-                        await supabaseClient.auth.signInWithPassword({ email, password });
+                        await supabaseAuth.auth.signInWithPassword({ email, password });
                     if (signInErr) {
                         if (/invalid login credentials/i.test(signInErr.message)) {
                             showMsg('Esiste già un account con questa email (password diversa). Accedi da login.html.', 'err');
@@ -148,7 +148,7 @@
                 }
 
                 // 4) refresh della sessione per ottenere il claim org_id, poi vai all'admin
-                await supabaseClient.auth.refreshSession();
+                await supabaseAuth.auth.refreshSession();
                 sessionStorage.removeItem('pendingOrg');
                 showMsg('Studio creato! Ti stiamo portando alla dashboard…', 'ok');
                 setTimeout(() => { window.location.href = 'admin.html'; }, 800);

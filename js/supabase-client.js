@@ -9,7 +9,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_SDlyqyh2C78ZlQ42hQJClA_e1LIp2x5';
 // permetteva refresh concorrenti dell'auth e sessioni incoerenti.
 const _authLockChains = new Map();
 
-const FALLBACK_FN_WATCHDOG_MS = 4000; // #7: era 8000 → col token già letto da storage (auth.js #5) il refresh appeso è inutile, mollalo prima (dimezza l'hang al rientro)
+const FALLBACK_FN_WATCHDOG_MS = 2000; // #7→split: 8000→4000→2000. Ormai dal lock passa SOLO l'auth (le query dati usano il client con accessToken, zero lock); un refresh abbandonato dal watchdog continua in background e il poll di ensureValidSession lo raccoglie.
 let _watchdogFirings = [];
 const WATCHDOG_CASCADE_THRESHOLD = 2;
 const WATCHDOG_CASCADE_WINDOW_MS = 60000;
@@ -78,13 +78,24 @@ const LOCK_ACQUIRE_MS       = 500;     // era 3000 → troppo alto, blocca l'UI
 const LOCKS_BROKEN_WINDOW_MS = 30000;
 const LOCKS_BROKEN_PENALTY_MS = 60000;
 
-// #9 (esteso a TUTTE le pagine): gestiamo NOI il refresh del token (auth.js _proactiveRefreshTick),
-// disabilitando l'auto-refresh INTERNO di supabase-js (timer + suo listener visibilitychange)
-// che al rientro da idle si appendeva sul lock auth bloccato. Prima era confinato all'admin, ma
-// lo stesso hang colpiva anche le pagine utente (allenamento/prenotazioni) al rientro in foreground:
-// ora il refresh proattivo è attivo OVUNQUE (window._isManagedAuthPage = true più sotto).
-
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// ════════════════════════════════════════════════════════════════════════════
+// ARCHITETTURA A DUE CLIENT (fix resume lento 11-14s → ~1-2s)
+// ────────────────────────────────────────────────────────────────────────────
+// Causa radice: ogni query dati di supabase-js (.from/.rpc/.channel/.storage) chiama
+// internamente auth.getSession(), che acquisisce il lock auth. Dopo idle/sospensione
+// navigator.locks resta appeso (bug PWA iOS/Mac) → ogni query pagava 2×500ms di lock
+// timeout + deadlock da rientranza + abbandono dal watchdog. Tre operazioni serializzate
+// + retry = 11-14s di resume, con errori "Cannot destructure 'data'".
+//
+//  • supabaseAuth  → client AUTH: lock custom su navigator.locks + autoRefreshToken:false
+//    (refresh gestito da noi, auth.js _proactiveRefreshTick). TUTTO il codice di sessione
+//    (getSession/refreshSession/signIn/signOut/onAuthStateChange/...) gira QUI.
+//  • supabaseClient → client DATI: opzione accessToken (token letto da localStorage, ZERO
+//    lock). Con accessToken il namespace .auth è DISABILITATO e lancia se chiamato.
+//    Tutte le query/RPC/Realtime/Storage restano su questo nome (call-site invariati).
+//
+// #9: autoRefreshToken:false ovunque + refresh proattivo nostro (window._isManagedAuthPage).
+const supabaseAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
         autoRefreshToken: false, // #9: il refresh lo gestiamo NOI su tutte le pagine (auth.js _proactiveRefreshTick)
         // Contratto supabase-js:
@@ -145,10 +156,48 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
     }
 });
 
+window.supabaseAuth = supabaseAuth;
+
 // #9: esposti per il refresh proattivo gestito da noi (auth.js _proactiveRefreshTick).
 // _isManagedAuthPage = true su OGNI pagina → il tick proattivo gira ovunque (non più solo admin).
 window._isManagedAuthPage = true;
-window._manualTokenRefresh = function () { return supabaseClient.auth.refreshSession(); };
+window._manualTokenRefresh = function () { return supabaseAuth.auth.refreshSession(); };
+
+// ── Token diretto da localStorage (ZERO lock) per il client DATI ──
+// Legge la chiave sb-<ref>-auth-token (anche encoding "base64-") e ne estrae l'access_token.
+// Ritorna ANCHE un token scaduto: meglio un 401 puntuale dal server che bloccare la query in
+// attesa del lock. Logged out → null → supabase-js usa la anon key (identico a prima). Il
+// refresh proattivo (auth.js) tiene il token in storage praticamente sempre fresco.
+let _lastKnownAccessToken = null;
+function _readAccessTokenDirect() {
+    try {
+        let raw = null;
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && /^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; }
+        }
+        if (!raw) return null; // logged out → anon key
+        if (raw.slice(0, 7) === 'base64-') {
+            const b64 = raw.slice(7).replace(/-/g, '+').replace(/_/g, '/');
+            const bin = atob(b64);
+            try { raw = new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))); }
+            catch (_) { raw = bin; }
+        }
+        const parsed = JSON.parse(raw);
+        const s = (parsed && parsed.access_token) ? parsed
+                : (parsed && (parsed.currentSession || parsed.session)) || null;
+        if (s && s.access_token) _lastKnownAccessToken = s.access_token;
+        return (s && s.access_token) || null;
+    } catch (e) {
+        return _lastKnownAccessToken; // localStorage inaccessibile (transitorio)
+    }
+}
+
+// Client DATI: SOLO accessToken (niente blocco auth:{}, alcune versioni di supabase-js
+// rifiutano la combinazione). Tutte le query/RPC/Realtime/Storage girano qui.
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    accessToken: async () => _readAccessTokenDirect()
+});
 
 // Log click on "Andrea Pompili" credit link
 function logCreditClick() {

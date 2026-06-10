@@ -263,15 +263,15 @@
     </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=9"></script>
+    <script src="js/supabase-client.js?v=10"></script>
     <script src="js/org-settings.js?v=8"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/data.js?v=84"></script>
-    <script src="js/auth.js?v=30"></script>
+    <script src="js/auth.js?v=31"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=2"></script>
-    <script src="js/push.js?v=22"></script>
+    <script src="js/push.js?v=23"></script>
     <script>
         // Prevent iOS Safari auto-zoom on input focus.
         // touchstart fires before iOS decides to zoom, so setting
@@ -335,7 +335,7 @@
             setLoading(btn, true, 'Accesso in corso...');
             const result = await loginWithPassword(email, password);
             if (result.ok) {
-                const { data: { session } } = await supabaseClient.auth.getSession();
+                const { data: { session } } = await supabaseAuth.auth.getSession();
                 if (await requireCompleteProfileAfterAuth(session)) window.location.href = 'index.html';
                 else setLoading(btn, false);
             } else {
@@ -451,7 +451,7 @@
             }
 
             setLoading(btn, true, 'Invio in corso...');
-            const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+            const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
                 redirectTo: window.location.origin + '/login.html'
             });
             setLoading(btn, false);
@@ -493,7 +493,7 @@
             }
 
             setLoading(btn, true, 'Salvataggio...');
-            const { error } = await supabaseClient.auth.updateUser({ password });
+            const { error } = await supabaseAuth.auth.updateUser({ password });
             setLoading(btn, false);
 
             if (error) {
@@ -545,7 +545,7 @@
         }
 
         async function handleOAuthReturn() {
-            const { data: { session } } = await supabaseClient.auth.getSession();
+            const { data: { session } } = await supabaseAuth.auth.getSession();
             if (!session) return false;
 
             const provider = session.user.app_metadata?.provider;
@@ -652,7 +652,7 @@
 
         // ── Social login — Google OAuth ───────────────────────────────────
         async function startSocialLogin(provider) {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
+            const { error } = await supabaseAuth.auth.signInWithOAuth({
                 provider: 'google',
                 options: { redirectTo: window.location.origin + '/login.html' }
             });
@@ -664,7 +664,7 @@
         // We listen BEFORE initAuth() so we catch it immediately.
         window._isPasswordRecovery = false;
         window._isEmailConfirmation = false;
-        supabaseClient.auth.onAuthStateChange((event) => {
+        supabaseAuth.auth.onAuthStateChange((event) => {
             if (event === 'PASSWORD_RECOVERY') {
                 window._isPasswordRecovery = true;
                 switchTab('reset');
