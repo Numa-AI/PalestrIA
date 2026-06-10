@@ -304,7 +304,10 @@
         const client = await waitForClient();
         if (!client) { document.body.innerHTML = '<div class="sa-empty">Client Supabase non disponibile.</div>'; return; }
 
-        const { data: { session } } = await client.auth.getSession();
+        // `client` è il client DATI (supabaseClient, opzione accessToken): il namespace
+        // .auth è DISABILITATO e lancia se chiamato. La sessione va letta dal client AUTH
+        // (supabaseAuth), come da contratto in supabase-client.js.
+        const { data: { session } } = await supabaseAuth.auth.getSession();
         if (!session) {
             location.href = 'login.html?redirect=super-admin.html';
             return;

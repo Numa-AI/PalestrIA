@@ -33,6 +33,14 @@ Diagnosi: workflow dynamic 8 aree + verifica avversariale a 2 lenti (11 bug grav
 
 ---
 
+## 🔑 Incidente JWT Signing Keys + fix super-admin (2026-06-10)
+- [x] **Lockout totale 401 "No suitable key"/"wrong key type"** su tutte le richieste; menu admin spariti. Causa: chiave di firma JWT del progetto ruotata ~6gg prima a **ECC P-256 (ES256)** ma **PostgREST non l'ha recepita** (verificava ancora HS256) → token utente ES256 rifiutati. Fix: rollback nel dashboard (JWT Keys → HS256 a Standby → "Rotate keys" → HS256 Current). Dettaglio diagnostico nella memoria `jwt-signing-keys-incident`. Tutti gli utenti devono rifare logout/login (token ES256 in cache morti).
+- [x] **super-admin.html crashava** (`@supabase/supabase-js: Supabase Client is configured with the accessToken option, accessing supabase.auth.getSession is not possible`). Causa: il commit `3ad8733` (split in 2 client) ha introdotto `supabaseClient` con opzione `accessToken` (namespace `.auth` disabilitato), ma `super-admin.js boot()` chiamava ancora `getSession()` sul client dati. Fix (super-admin.js): usa `supabaseAuth.auth.getSession()`. Cache-bust: super-admin.js v4→v5, sw `palestria-v548`→`v549`. ⚠️ **DA DEPLOYARE** (`git push origin saas-main:main`) — è un fix frontend, non basta il DB.
+- [ ] **(consigliato) Auto-recupero auth lato client**: rilevare `401 PGRST301 "No suitable key"` → signOut + pulizia sessione + redirect login, così gli utenti con token vecchio si sbloccano da soli invece di restare con UI a metà / 401 a raffica.
+- [x] **(audit) altre chiamate `.auth` sul client DATI**: verificato con grep — `super-admin.js` era l'**unico** file a chiamare `.auth` su `supabaseClient`. Nessun altro offender dopo lo split in 2 client.
+
+---
+
 ## 🔴 Sicurezza / da chiudere PRIMA della produzione
 - [ ] **Chiudere la super-admin dashboard** — oggi `platform_settings.open_access = true` → qualsiasi utente loggato vede i dati di TUTTI i tenant (data-leak cross-tenant, accettato solo in dev). Chiudere con `admin_platform_lock('email@scelta')` (bottone "Limita a una sola email") o SQL: insert in `platform_admins` + `update platform_settings set open_access=false`. ⚠️ **Urgenza alzata** (audit RPC): con `open_access=true` qualsiasi utente loggato può chiamare `admin_platform_lock` e auto-nominarsi platform-admin *permanente* (privilege escalation → potrebbe bloccare fuori te stesso). Da chiudere prima di esporre il signup a estranei.
 - [ ] **Conferma email** su Supabase: riattivarla (ora OFF per i test) + cablare il flusso "conferma email → crea studio" (gancio `pendingOrg` già in `signup-trainer.html`, da completare in `login.html`).
