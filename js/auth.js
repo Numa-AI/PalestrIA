@@ -581,12 +581,24 @@ async function registerUser(name, email, whatsapp, password, codiceFiscale, indi
 
     const capitalized = (name || '').trim().replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
     const addr = indirizzo || {};
+
+    // La org del cliente si risolve dallo slug pubblico (URL/sottodominio).
+    // SENZA org_slug, handle_new_user NON crea il profilo (l'account nascerebbe
+    // orfano: current_org_id() null, RLS non mostra nulla). Quindi è obbligatorio.
+    const orgSlug = window._orgSlug
+        || (typeof _resolveOrgSlug === 'function' ? _resolveOrgSlug() : null);
+    if (!orgSlug) {
+        return { ok: false, error: 'Studio non identificato. Apri il link di registrazione del tuo studio (es. ?org=nome-studio) e riprova.' };
+    }
+
     const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
         options: {
             emailRedirectTo: new URL('login.html', window.location.href).href,
             data: {
+                signup_type: 'client',
+                org_slug: orgSlug,
                 full_name: capitalized,
                 whatsapp,
                 codice_fiscale: (codiceFiscale || '').toUpperCase() || null,
@@ -600,6 +612,14 @@ async function registerUser(name, email, whatsapp, password, codiceFiscale, indi
     if (!data.user?.id) return { ok: false, error: 'Errore durante la registrazione.' };
 
     // Il trigger handle_new_user crea il profilo lato server in modo sincrono.
+    // Rete di sicurezza: se la sessione è già attiva (conferma email OFF) ma il
+    // profilo/org non risulta (slug non risolto server-side, race), tenta il join
+    // idempotente. join_organization fa ON CONFLICT DO NOTHING: innocuo se già fatto.
+    if (data.session) {
+        try { await supabaseClient.rpc('join_organization', { p_org_slug: orgSlug }); }
+        catch (e) { console.warn('[Auth] join_organization safety-net skipped:', e?.message || e); }
+    }
+
     // onAuthStateChange (SIGNED_IN) caricherà il profilo non appena la sessione è pronta.
     _trackLoginEvent(data.user.id, 'signup');
     return { ok: true };
@@ -626,6 +646,9 @@ async function logoutUser() {
     // Svuota cache in memoria
     BookingStorage._cache = [];
     UserStorage._cache = [];
+    // Invalida la cache override (namespaced per org): evita bleed tra account diversi
+    BookingStorage._scheduleOverridesCache = null;
+    BookingStorage._scheduleOverridesCacheOrg = null;
     // Pulisce il contesto org (claim app_metadata)
     window._orgId = null;
     window._orgRole = null;

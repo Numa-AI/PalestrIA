@@ -102,3 +102,19 @@ function _escHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 }
+
+// Escaping per dati utente passati come ARGOMENTO STRINGA dentro un handler inline,
+// es. onclick="fn('${_escAttr(value)}')". Il valore vive in DUE contesti annidati:
+//  1) stringa JS a singoli apici  →  va neutralizzato \ e '
+//  2) attributo HTML a doppi apici →  va neutralizzato & " < >
+// Si applica prima l'escape JS, poi quello HTML: il browser de-codifica le entità
+// PRIMA che il JS interpreti la stringa, restituendo i caratteri già \-escapati.
+// Senza, un nome cliente come  a"><img src=x onerror=...>  esegue codice nella
+// sessione admin (stored XSS, dato che name/email non sono sanitizzati all'origine).
+function _escAttr(str) {
+    return _escHtml(
+        String(str ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+    );
+}

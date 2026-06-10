@@ -263,9 +263,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/supabase-client.js?v=8"></script>
     <script src="js/org-settings.js?v=8"></script>
-    <script src="js/ui.js?v=2"></script>
-    <script src="js/data.js?v=82"></script>
-    <script src="js/auth.js?v=28"></script>
+    <script src="js/ui.js?v=3"></script>
+    <script src="js/data.js?v=83"></script>
+    <script src="js/auth.js?v=29"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=2"></script>
@@ -529,6 +529,13 @@
 
         async function requireCompleteProfileAfterAuth(session) {
             if (!session) return false;
+            // Owner/admin/staff NON hanno una riga 'profiles' (sono in org_members):
+            // il modal "Completa profilo" non si applica a loro e li intrappolerebbe in
+            // un loop (l'upsert su profiles fallirebbe). Vanno direttamente all'area admin.
+            if (['owner', 'admin', 'staff'].includes(window._orgRole)) {
+                window.location.replace('admin.html');
+                return false;
+            }
             const user = getCurrentUser();
             if (typeof isAnagraficaComplete === 'function' && isAnagraficaComplete(user)) return true;
             showCompleteProfileModalForSession(session);
@@ -607,10 +614,29 @@
                 return;
             }
 
+            // org_id è NOT NULL su profiles + richiesto dalla RLS (profiles_insert:
+            // org_id = current_org_id()). Senza, l'upsert fallisce sempre (loop d'errore).
+            // Se l'org non è ancora associata (cliente OAuth org-less), join_organization
+            // crea la riga profiles nella org dello slug e ritorna il suo uuid (idempotente).
+            let orgId = window._orgId || null;
+            if (!orgId) {
+                const slug = window._orgSlug || (typeof _resolveOrgSlug === 'function' ? _resolveOrgSlug() : null);
+                if (slug) {
+                    const { data: joinedOrg, error: joinErr } = await supabaseClient.rpc('join_organization', { p_org_slug: slug });
+                    if (!joinErr && joinedOrg) { orgId = joinedOrg; window._orgId = joinedOrg; }
+                }
+            }
+            if (!orgId) {
+                setLoading(btn, false);
+                errEl.textContent = 'Studio non identificato. Apri il link del tuo studio (es. ?org=nome-studio) e riprova.';
+                errEl.style.display = 'block';
+                return;
+            }
+
             // Upsert profilo su Supabase
             const { error } = await supabaseClient
                 .from('profiles')
-                .upsert({ id: userId, name, email, whatsapp, codice_fiscale: cfRaw, indirizzo_via: via, indirizzo_paese: paese, indirizzo_cap: cap });
+                .upsert({ id: userId, org_id: orgId, name, email, whatsapp, codice_fiscale: cfRaw, indirizzo_via: via, indirizzo_paese: paese, indirizzo_cap: cap });
 
             if (error) {
                 setLoading(btn, false);

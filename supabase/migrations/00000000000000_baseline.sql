@@ -140,6 +140,12 @@ create table bookings (
     payment_method              text,
     paid_at                     timestamptz,
     custom_price                numeric(10,2),
+    -- Tracciano QUALE pacchetto/abbonamento è stato consumato da questa prenotazione,
+    -- per restituire la sessione/quota in caso di cancellazione (refund deterministico).
+    -- uuid "soft" (no FK): le tabelle billing sono create più sotto e il refund gestisce
+    -- comunque le righe eventualmente sparite.
+    consumed_package_id         uuid,
+    consumed_membership_id      uuid,
     cancellation_requested_at   timestamptz,
     cancelled_at                timestamptz,
     cancelled_payment_method    text,
@@ -822,6 +828,8 @@ declare
     v_model      text;
     v_pkg        client_packages%rowtype;
     v_mem        client_memberships%rowtype;
+    v_pkg_id     uuid := null;   -- pacchetto effettivamente decrementato (per refund su cancel)
+    v_mem_id     uuid := null;   -- membership la cui quota è stata consumata (per refund su cancel)
     v_paid       boolean := false;
     v_method     text := null;
 begin
@@ -911,6 +919,7 @@ begin
                 update client_packages set remaining_sessions = remaining_sessions - 1,
                     status = case when remaining_sessions - 1 <= 0 then 'exhausted' else status end
                     where id = v_pkg.id;
+                v_pkg_id := v_pkg.id;
                 v_paid := true; v_method := 'pacchetto';
             end if;
         elsif v_model = 'monthly' then
@@ -925,6 +934,7 @@ begin
                 return jsonb_build_object('success', false, 'error', 'quota_exceeded');
             else
                 update client_memberships set lessons_used = lessons_used + 1 where id = v_mem.id;
+                v_mem_id := v_mem.id;
                 v_paid := true; v_method := 'abbonamento';
             end if;
         end if;
@@ -933,11 +943,11 @@ begin
 
     insert into bookings (org_id, local_id, user_id, date, time, slot_type, slot_type_id,
         name, email, whatsapp, notes, status, created_at, date_display, created_by,
-        paid, payment_method, paid_at)
+        paid, payment_method, paid_at, consumed_package_id, consumed_membership_id)
     values (v_org, p_local_id, v_book_user, p_date::date, p_time, v_cfg.slot_type, v_cfg.slot_type_id,
         trim(p_name), nullif(v_email,''), nullif(trim(coalesce(p_whatsapp,'')),''), p_notes,
         'confirmed', now(), p_date_display, v_uid,
-        v_paid, v_method, case when v_paid then now() else null end)
+        v_paid, v_method, case when v_paid then now() else null end, v_pkg_id, v_mem_id)
     returning id into v_id;
 
     return jsonb_build_object('success', true, 'booking_id', v_id::text, 'paid', v_paid);
@@ -970,12 +980,17 @@ begin
         update bookings set paid = true, payment_method = p_method, paid_at = p_paid_at
             where id = v_b.id and not paid;
         if found then
-            v_price := coalesce(v_b.custom_price, get_org_price(v_org, v_b.slot_type));
+            -- Lezione regalata: importo 0 e metodo 'gratuito' (escluso dal fatturato in
+            -- admin-analytics). Senza questo ramo cadrebbe in 'contanti' a prezzo pieno,
+            -- gonfiando l'incasso con denaro mai ricevuto.
+            v_price := case when p_method = 'gratuito'
+                            then 0
+                            else coalesce(v_b.custom_price, get_org_price(v_org, v_b.slot_type)) end;
             insert into payments (org_id, client_user_id, client_email, amount, currency,
                 method, kind, booking_id, created_by)
             values (v_org, v_b.user_id, v_b.email, v_price,
                 (select currency from organizations where id = v_org),
-                case when p_method in ('contanti','contanti-report','carta','iban','stripe') then p_method else 'contanti' end,
+                case when p_method in ('contanti','contanti-report','carta','iban','stripe','gratuito') then p_method else 'contanti' end,
                 'session', v_b.id, auth.uid())
             on conflict (booking_id) where kind = 'session' do nothing;
             v_count := v_count + 1;

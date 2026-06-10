@@ -255,11 +255,33 @@ create or replace function admin_delete_booking(p_booking_id uuid)
 returns void
 language plpgsql security definer set search_path = public as $$
 declare
-    v_org uuid := current_org_id();
+    v_org     uuid := current_org_id();
+    v_booking record;
 begin
     if not is_org_admin(v_org) then
         raise exception 'unauthorized';
     end if;
+
+    select * into v_booking from bookings
+        where id = p_booking_id and org_id = v_org for update;
+
+    if found then
+        -- Restituisce la sessione/quota consumata (solo se non già cancellata:
+        -- una prenotazione 'cancelled' ha già ricevuto il refund in cancel_booking).
+        if v_booking.status <> 'cancelled' then
+            if v_booking.consumed_package_id is not null then
+                update client_packages
+                    set remaining_sessions = remaining_sessions + 1,
+                        status = case when status = 'exhausted' then 'active' else status end
+                    where id = v_booking.consumed_package_id and org_id = v_org;
+            elsif v_booking.consumed_membership_id is not null then
+                update client_memberships
+                    set lessons_used = greatest(lessons_used - 1, 0)
+                    where id = v_booking.consumed_membership_id and org_id = v_org;
+            end if;
+        end if;
+    end if;
+
     delete from bookings where id = p_booking_id and org_id = v_org;
 end;
 $$;
@@ -323,6 +345,10 @@ declare
     v_org      uuid := current_org_id();
     v_booking  record;
     v_st_small uuid;
+    v_is_admin boolean := is_org_admin(v_org);
+    v_tz       text;
+    v_start    time;
+    v_lesson   timestamptz;
 begin
     select * into v_booking
     from bookings
@@ -334,7 +360,7 @@ begin
     end if;
 
     -- autorizzazione: proprietario o admin
-    if v_booking.user_id is distinct from auth.uid() and not is_org_admin(v_org) then
+    if v_booking.user_id is distinct from auth.uid() and not v_is_admin then
         return jsonb_build_object('success', false, 'error', 'unauthorized');
     end if;
 
@@ -342,7 +368,44 @@ begin
         return jsonb_build_object('success', false, 'error', 'already_cancelled');
     end if;
 
-    -- cambio stato (niente credito/bonus/penale)
+    -- Cutoff lato server per i NON-admin: la policy mostrata in UI (prenotazioni.html)
+    -- va applicata anche qui, altrimenti è aggirabile chiamando la RPC direttamente
+    -- (disdetta all'ultimo, o estinzione di un debito pay-per-session cancellando la
+    --  lezione passata). Grace 10 min dalla creazione → sempre annullabile; altrimenti
+    --  group-class > 3 giorni, altri tipi > 24h dall'inizio lezione (timezone della org).
+    if not v_is_admin then
+        select timezone into v_tz from organizations where id = v_org;
+        v_tz := coalesce(v_tz, 'Europe/Rome');
+        v_start  := split_part(v_booking.time, ' - ', 1)::time;
+        v_lesson := (v_booking.date + v_start) at time zone v_tz;
+        if now() - v_booking.created_at >= interval '10 minutes' then
+            if v_booking.slot_type = 'group-class' then
+                if v_lesson <= now() + interval '3 days' then
+                    return jsonb_build_object('success', false, 'error', 'cancellation_window_closed');
+                end if;
+            else
+                if v_lesson <= now() + interval '24 hours' then
+                    return jsonb_build_object('success', false, 'error', 'cancellation_window_closed');
+                end if;
+            end if;
+        end if;
+    end if;
+
+    -- Refund: restituisce la sessione del pacchetto / la quota della membership
+    -- effettivamente consumata da questa prenotazione (tracciata in book_slot).
+    if v_booking.consumed_package_id is not null then
+        update client_packages
+            set remaining_sessions = remaining_sessions + 1,
+                status = case when status = 'exhausted' then 'active' else status end
+            where id = v_booking.consumed_package_id and org_id = v_org;
+    elsif v_booking.consumed_membership_id is not null then
+        update client_memberships
+            set lessons_used = greatest(lessons_used - 1, 0)
+            where id = v_booking.consumed_membership_id and org_id = v_org;
+    end if;
+
+    -- cambio stato (niente credito/bonus/penale). Azzera i riferimenti consumati
+    -- così un'eventuale ri-cancellazione non può applicare un secondo refund.
     update bookings set
         status                   = 'cancelled',
         cancelled_at             = now(),
@@ -351,7 +414,9 @@ begin
         cancelled_paid_at        = v_booking.paid_at,
         paid                     = false,
         payment_method           = null,
-        paid_at                  = null
+        paid_at                  = null,
+        consumed_package_id      = null,
+        consumed_membership_id   = null
     where id = p_booking_id and org_id = v_org;
 
     -- riconversione slot: una group-class annullata torna small-group

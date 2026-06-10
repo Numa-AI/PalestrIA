@@ -488,8 +488,20 @@ Deno.serve(async (req) => {
             return json({ error: "Invalid token" }, 401);
         }
 
-        const isAdmin = (authData.user.app_metadata as any)?.role === "admin";
         const callerUserId = authData.user.id;
+        // Ruolo e org del chiamante derivati da org_members. NON usare
+        // app_metadata.role: nello schema SaaS quel claim non esiste (l'auth hook
+        // inietta org_role nel JWT, ma getUser() ritorna i raw metadata, senza i
+        // claim arricchiti). Lo scoping org qui sotto impedisce a un admin della org A
+        // di generare/leggere il report di un cliente della org B (data-leak #1).
+        const { data: callerMember } = await supabase
+            .from("org_members")
+            .select("org_id, role")
+            .eq("user_id", callerUserId)
+            .eq("status", "active")
+            .maybeSingle();
+        const callerOrgId = callerMember?.org_id ?? null;
+        const isAdmin = ["owner", "admin"].includes(callerMember?.role ?? "");
 
         // ── Parse body ────────────────────────────────────────────────
         let body: any;
@@ -518,7 +530,7 @@ Deno.serve(async (req) => {
         // fase, SOLO gli admin possono generare report (anche per se stessi).
         // Rimuovere questo blocco e ripristinare la logica self-service cliente
         // commentata sotto quando la feature è pronta per tutti gli utenti.
-        if (!isAdmin) {
+        if (!isAdmin || !callerOrgId) {
             return json({
                 error: "La generazione report è attualmente disponibile solo per gli admin.",
                 code: "ADMIN_ONLY_TEMPORARY",
@@ -561,6 +573,7 @@ Deno.serve(async (req) => {
             .from("profiles")
             .select("id, name, email, report_tone_preference, report_ai_consent")
             .eq("id", user_id)
+            .eq("org_id", callerOrgId)   // il target DEVE appartenere alla org del chiamante
             .single();
 
         if (profErr || !profile) {

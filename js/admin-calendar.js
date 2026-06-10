@@ -471,9 +471,9 @@ function _buildParticipantCard(booking) {
     const certScad  = userRecord?.certificatoMedicoScadenza;
     const assicScad = userRecord?.assicurazioneScadenza;
     const hasCF     = !!userRecord?.codiceFiscale;
-    const emE = (booking.email || '').replace(/'/g, "\\'");
-    const waE = (booking.whatsapp || '').replace(/'/g, "\\'");
-    const nmE2 = booking.name.replace(/'/g, "\\'");
+    const emE = _escAttr(booking.email || '');
+    const waE = _escAttr(booking.whatsapp || '');
+    const nmE2 = _escAttr(booking.name);
     const _todayStr   = _localDateStr();
     const _today30    = new Date(); _today30.setDate(_today30.getDate() + 30);
     const _today30Str = _localDateStr(_today30);
@@ -520,9 +520,9 @@ function _buildParticipantCard(booking) {
             assicBadge = `<div class="cert-expired-badge cert-expired-badge--clickable" style="background:#fffbeb;border-color:#fde68a;color:#92400e;border-left:3px solid #f59e0b" onclick="openAssicModal(this,'${emE}','${waE}','${nmE2}')">⏳ Assic. scade il ${ad}/${am}/${ay}</div>`;
         }
     }
-    const wa  = booking.whatsapp.replace(/'/g, "\\'");
-    const em  = booking.email.replace(/'/g, "\\'");
-    const nm  = booking.name.replace(/'/g, "\\'");
+    const wa  = _escAttr(booking.whatsapp);
+    const em  = _escAttr(booking.email);
+    const nm  = _escAttr(booking.name);
     const initials = _participantInitials(booking.name);
     const avatarHue = _participantAvatarHue(booking.name);
     return `
@@ -672,8 +672,8 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
     const extras   = scheduledSlot.extras || [];
 
     // Escape per uso in onclick inline
-    const dE = date.replace(/'/g, "\\'");
-    const tE = timeSlot.replace(/'/g, "\\'");
+    const dE = _escAttr(date);
+    const tE = _escAttr(timeSlot);
 
     // Tutti i booking per questa data+ora (tutti i tipi)
     const allBookings = BookingStorage.getBookingsForSlot(date, timeSlot);

@@ -320,7 +320,9 @@ function _regFullDate(d) {
     return `${D[d.getDay()]} · ${_regShortDate(d)} ${d.getFullYear()}`;
 }
 function _regBtnArg(s) {
-    return String(s || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    // Sicuro per onclick="fn('${...}')": neutralizza sia il contesto attributo HTML
+    // (" < > &) sia la stringa JS (\ '). Vedi _escAttr in ui.js.
+    return _escAttr(s);
 }
 
 function regMobOpenClient(name) {

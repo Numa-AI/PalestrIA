@@ -447,9 +447,9 @@ function createClientCard(client, index) {
     const userRecord  = _getUserRecord(client.email, client.whatsapp);
     const certScad    = userRecord?.certificatoMedicoScadenza || '';
     const assicScad2  = userRecord?.assicurazioneScadenza || '';
-    const _wEscBadge  = (client.whatsapp || '').replace(/'/g, "\\'");
-    const _emEscBadge = (client.email || '').replace(/'/g, "\\'");
-    const _nEscBadge  = client.name.replace(/'/g, "\\'");
+    const _wEscBadge  = _escAttr(client.whatsapp || '');
+    const _emEscBadge = _escAttr(client.email || '');
+    const _nEscBadge  = _escAttr(client.name);
     const _mkBadge = (scad, missingLabel, expiredPrefix, expiringPrefix, okPrefix, onClickAttr) => {
         const oc = onClickAttr ? ` onclick="event.stopPropagation(); ${onClickAttr}"` : '';
         const tag = onClickAttr ? 'button' : 'span';
@@ -499,7 +499,7 @@ function createClientCard(client, index) {
             isCancelPending ? 'row-cancel-pending' : '',
             isCancelled     ? 'row-cancelled'      : ''
         ].filter(Boolean).join(' ');
-        const nEsc = b.name.replace(/'/g, "\\'");
+        const nEsc = _escAttr(b.name);
         const statusCell = isCancelled
             ? `<span class="payment-status" style="background:#f3f4f6;color:#6b7280">✕ Annullata</span>`
             : isCancelPending
@@ -554,9 +554,9 @@ function createClientCard(client, index) {
         </div>`;
     }
 
-    const wEsc  = client.whatsapp.replace(/'/g, "\\'");
-    const emEsc = (client.email || '').replace(/'/g, "\\'");
-    const nEsc  = client.name.replace(/'/g, "\\'");
+    const wEsc  = _escAttr(client.whatsapp);
+    const emEsc = _escAttr(client.email || '');
+    const nEsc  = _escAttr(client.name);
 
     // Avatar iniziali (max 2 lettere)
     const initials = (client.name || '?').trim().split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2);

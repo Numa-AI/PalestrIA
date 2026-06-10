@@ -572,7 +572,7 @@ function getWeeklySchedule() {
         } catch { /* corrupted — will reset below */ }
     }
     // Outdated version or format — reset template and overrides
-    localStorage.removeItem('scheduleOverrides');
+    localStorage.removeItem(_schedOverridesLsKey());
     _lsSet('weeklyScheduleTemplate', JSON.stringify(DEFAULT_WEEKLY_SCHEDULE));
     _lsSet('scheduleVersion', SCHEDULE_VERSION);
     return DEFAULT_WEEKLY_SCHEDULE;
@@ -590,6 +590,15 @@ function _resolveOrgSlug() {
         if (qs) return qs;
     } catch (_) {}
     return null;
+}
+
+// Chiave localStorage degli scheduleOverrides, namespaced per org. Senza namespace,
+// gli override (che includono PII dei clienti) di un tenant resterebbero visibili e
+// RISCRIVIBILI da un altro tenant sullo stesso device (logout A → login B): leak
+// cross-tenant + write-back di dati di A nel DB di B. 'anon' per i client pubblici.
+function _schedOverridesLsKey() {
+    const oid = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
+    return `scheduleOverrides_${oid}`;
 }
 
 // Global variable that will be used throughout the app
@@ -1217,6 +1226,28 @@ class BookingStorage {
         return true;
     }
 
+    // Restituisce un NUOVO array in cui la prenotazione `id` è un nuovo oggetto con il
+    // patch applicato (le altre restano per riferimento). Necessario perché
+    // replaceAllBookings fa il diff contro la cache precedente: mutare gli oggetti in
+    // place renderebbe il diff sempre vuoto → nessuna sync sul server (cancellazioni
+    // mai propagate, posti fantasma, prenotazioni che "resuscitano" al sync).
+    static _withBookingPatch(all, id, patch) {
+        return all.map(b => (b.id === id ? { ...b, ...patch } : b));
+    }
+
+    // Patch standard di cancellazione (preserva i dati di pagamento nello storico).
+    static _cancelPatch(booking) {
+        return {
+            cancelledPaymentMethod: booking.paymentMethod,
+            cancelledPaidAt: booking.paidAt,
+            status: 'cancelled',
+            cancelledAt: new Date().toISOString(),
+            paid: false,
+            paymentMethod: null,
+            paidAt: null,
+        };
+    }
+
     // Cancella direttamente una prenotazione (small-group, autonomia) senza conversione slot
     // Usato quando il cliente annulla con più di 24h di anticipo.
     // NOTA: nessun rimborso credito (sistema crediti rimosso) — solo cambio stato.
@@ -1224,14 +1255,7 @@ class BookingStorage {
         const all = this.getAllBookings();
         const booking = all.find(b => b.id === id);
         if (!booking || booking.status !== 'confirmed') return false;
-        booking.cancelledPaymentMethod = booking.paymentMethod;
-        booking.cancelledPaidAt = booking.paidAt;
-        booking.status = 'cancelled';
-        booking.cancelledAt = new Date().toISOString();
-        booking.paid = false;
-        booking.paymentMethod = null;
-        booking.paidAt = null;
-        this.replaceAllBookings(all);
+        this.replaceAllBookings(this._withBookingPatch(all, id, this._cancelPatch(booking)));
         return true;
     }
 
@@ -1244,15 +1268,8 @@ class BookingStorage {
         const booking = all.find(b => b.id === id);
         if (!booking || booking.status !== 'confirmed') return false;
 
-        // Cancella subito la prenotazione
-        booking.cancelledPaymentMethod = booking.paymentMethod;
-        booking.cancelledPaidAt = booking.paidAt;
-        booking.status = 'cancelled';
-        booking.cancelledAt = new Date().toISOString();
-        booking.paid = false;
-        booking.paymentMethod = null;
-        booking.paidAt = null;
-        this.replaceAllBookings(all);
+        // Cancella subito la prenotazione (nuovo oggetto per il diff)
+        this.replaceAllBookings(this._withBookingPatch(all, id, this._cancelPatch(booking)));
 
         // Converte lo slot in Gestione Orari da group-class a small-group
         const overrides = this.getScheduleOverrides();
@@ -1278,14 +1295,7 @@ class BookingStorage {
         const booking = all.find(b => b.id === id);
         if (!booking || booking.status !== 'confirmed') return false;
         const slotType = booking.slotType;
-        booking.cancelledPaymentMethod = booking.paymentMethod;
-        booking.cancelledPaidAt = booking.paidAt;
-        booking.status = 'cancelled';
-        booking.cancelledAt = new Date().toISOString();
-        booking.paid = false;
-        booking.paymentMethod = null;
-        booking.paidAt = null;
-        this.replaceAllBookings(all);
+        this.replaceAllBookings(this._withBookingPatch(all, id, this._cancelPatch(booking)));
         // Per group-class: riconverte lo slot in small-group
         if (slotType === SLOT_TYPES.GROUP_CLASS) {
             const overrides = this.getScheduleOverrides();
@@ -1312,14 +1322,7 @@ class BookingStorage {
         const booking = all.find(b => b.id === id);
         if (!booking || booking.status !== 'confirmed') return false;
         const slotType = booking.slotType;
-        booking.cancelledPaymentMethod = booking.paymentMethod;
-        booking.cancelledPaidAt = booking.paidAt;
-        booking.status = 'cancelled';
-        booking.cancelledAt = new Date().toISOString();
-        booking.paid = false;
-        booking.paymentMethod = null;
-        booking.paidAt = null;
-        this.replaceAllBookings(all);
+        this.replaceAllBookings(this._withBookingPatch(all, id, this._cancelPatch(booking)));
         // Per group-class: riconverte lo slot in small-group
         if (slotType === SLOT_TYPES.GROUP_CLASS) {
             const overrides = this.getScheduleOverrides();
@@ -1342,9 +1345,10 @@ class BookingStorage {
         const all = this.getAllBookings();
         const booking = all.find(b => b.id === id);
         if (!booking || booking.status !== 'confirmed') return false;
-        booking.status = 'cancellation_requested';
-        booking.cancellationRequestedAt = new Date().toISOString();
-        this.replaceAllBookings(all);
+        this.replaceAllBookings(this._withBookingPatch(all, id, {
+            status: 'cancellation_requested',
+            cancellationRequestedAt: new Date().toISOString(),
+        }));
         return true;
     }
 
@@ -1358,18 +1362,9 @@ class BookingStorage {
             .sort((a, b) => (a.cancellationRequestedAt || '').localeCompare(b.cancellationRequestedAt || ''));
         if (pending.length === 0) return false;
         const toCancel = pending[0];
-        const idx = all.findIndex(b => b.id === toCancel.id);
-        // Salva i dati di pagamento prima di azzerarli
-        const wasPaymentMethod = toCancel.paymentMethod;
-        const wasPaidAt = toCancel.paidAt;
-        all[idx].status = 'cancelled';
-        all[idx].cancelledAt = new Date().toISOString();
-        all[idx].cancelledPaymentMethod = wasPaymentMethod;
-        all[idx].cancelledPaidAt = wasPaidAt;
-        all[idx].paid = false;
-        all[idx].paymentMethod = null;
-        all[idx].paidAt = null;
-        this.replaceAllBookings(all);
+        // Nuovo oggetto per la prenotazione cancellata (il diff in replaceAllBookings
+        // confronta con la cache precedente: mutare in place lo renderebbe sempre vuoto).
+        this.replaceAllBookings(this._withBookingPatch(all, toCancel.id, this._cancelPatch(toCancel)));
         // NOTA: nessun rimborso credito (sistema crediti rimosso) — solo cambio stato.
         return true;
     }
@@ -1380,20 +1375,23 @@ class BookingStorage {
         const now = new Date();
         const twoHoursMs = 2 * 60 * 60 * 1000;
         let changed = false;
-        all.forEach(b => {
-            if (b.status !== 'cancellation_requested') return;
+        // Costruisce un nuovo array (nuovo oggetto per ogni booking riportato a
+        // 'confirmed') così il diff in replaceAllBookings rileva il cambio e sincronizza.
+        const updated = all.map(b => {
+            if (b.status !== 'cancellation_requested') return b;
             const _tp = _parseSlotTime(b.time);
-            if (!_tp) return;
+            if (!_tp) return b;
             const [_yr, _mo, _dy] = b.date.split('-').map(Number);
             const lessonStart = new Date(_yr, _mo - 1, _dy, _tp.startH, _tp.startM, 0, 0);
             if (lessonStart - now <= twoHoursMs) {
-                b.status = 'confirmed';
+                changed = true;
                 // Keep cancellationRequestedAt so fulfillPendingCancellations can still
                 // honour the request if another user books this slot.
-                changed = true;
+                return { ...b, status: 'confirmed' };
             }
+            return b;
         });
-        if (changed) this.replaceAllBookings(all);
+        if (changed) this.replaceAllBookings(updated);
         return changed;
     }
 
@@ -1455,7 +1453,7 @@ class BookingStorage {
     // Always ensure current week + next week have schedule overrides populated.
     // Runs even for brand-new browsers with no data.
     static _ensureWeekOverrides() {
-        const overrides = _lsGetJSON('scheduleOverrides', {});
+        const overrides = _lsGetJSON(_schedOverridesLsKey(), {});
         const dayNamesMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
         const now = new Date();
         const dow = now.getDay();
@@ -1477,7 +1475,8 @@ class BookingStorage {
         }
         if (changed) {
             this._scheduleOverridesCache = overrides;
-            _lsSet('scheduleOverrides', JSON.stringify(overrides));
+            this._scheduleOverridesCacheOrg = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
+            _lsSet(_schedOverridesLsKey(), JSON.stringify(overrides));
         }
     }
 
@@ -1640,14 +1639,21 @@ class BookingStorage {
     // Accesso centralizzato: quando si passa a Supabase si cambiano solo questi
 
     static _scheduleOverridesCache = null;
+    static _scheduleOverridesCacheOrg = null;   // org cui appartiene la cache in memoria
 
     static getScheduleOverrides() {
-        if (this._scheduleOverridesCache) return this._scheduleOverridesCache;
+        const oid = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
+        // Invalida la cache in memoria se l'org è cambiata (logout A → login B sullo
+        // stesso device): senza, serviremmo gli override del tenant precedente.
+        if (this._scheduleOverridesCache && this._scheduleOverridesCacheOrg === oid) {
+            return this._scheduleOverridesCache;
+        }
         try {
-            this._scheduleOverridesCache = JSON.parse(localStorage.getItem('scheduleOverrides') || '{}');
+            this._scheduleOverridesCache = JSON.parse(localStorage.getItem(_schedOverridesLsKey()) || '{}');
         } catch {
             this._scheduleOverridesCache = {};
         }
+        this._scheduleOverridesCacheOrg = oid;
         return this._scheduleOverridesCache;
     }
 
@@ -1655,7 +1661,8 @@ class BookingStorage {
     // changedDates: array di date YYYY-MM-DD che sono cambiate, oppure null per sync completo.
     static saveScheduleOverrides(overrides, changedDates) {
         this._scheduleOverridesCache = overrides;
-        _lsSet('scheduleOverrides', JSON.stringify(overrides));
+        this._scheduleOverridesCacheOrg = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
+        _lsSet(_schedOverridesLsKey(), JSON.stringify(overrides));
         if (typeof supabaseClient === 'undefined') return;
 
         // Se changedDates è specificato, sincronizza solo quelle date (molto più veloce)
@@ -1800,8 +1807,9 @@ class BookingStorage {
                 const localClearedAt = localStorage.getItem('dataLastCleared') || '0';
                 if (remoteClearedAt > localClearedAt) {
                     BookingStorage._cache = [];
-                    localStorage.removeItem('scheduleOverrides');
+                    localStorage.removeItem(_schedOverridesLsKey());
                     BookingStorage._scheduleOverridesCache = null;
+                    BookingStorage._scheduleOverridesCacheOrg = null;
                     _lsSet('dataLastCleared', remoteClearedAt);
                     _lsSet('dataClearedByUser', 'true');
                     console.log('[Supabase] clearAllData ricevuto da remoto — tutte le cache svuotate');
@@ -1825,7 +1833,8 @@ class BookingStorage {
                     overrides[r.date].push(slot);
                 }
                 BookingStorage._scheduleOverridesCache = overrides;
-                _lsSet('scheduleOverrides', JSON.stringify(overrides));
+                BookingStorage._scheduleOverridesCacheOrg = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
+                _lsSet(_schedOverridesLsKey(), JSON.stringify(overrides));
             }
 
             // 3. Settings — chiavi nel DB senza prefisso gym_, in localStorage con prefisso.

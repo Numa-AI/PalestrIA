@@ -238,9 +238,9 @@ function createDebtorCard(contact, cardId) {
     card.className = 'debtor-card';
     card.id = `debtor-card-${cardId}`;
 
-    const safeW = (contact.whatsapp || '').replace(/'/g, "\\'");
-    const safeE = (contact.email || '').replace(/'/g, "\\'");
-    const safeN = (contact.name || '').replace(/'/g, "\\'");
+    const safeW = _escAttr(contact.whatsapp || '');
+    const safeE = _escAttr(contact.email || '');
+    const safeN = _escAttr(contact.name || '');
 
     const items = contact.unpaidBookings.map(b => `
         <div class="debtor-booking-item">
@@ -655,10 +655,10 @@ function liveSearchSaleClient() {
     const results = UserStorage.search(q).slice(0, 6);
     if (results.length === 0) { dropdown.style.display = 'none'; return; }
     dropdown.innerHTML = results.map(u => {
-        const safeN = (u.name || '').replace(/'/g, "\\'");
-        const safeW = (u.whatsapp || '').replace(/'/g, "\\'");
-        const safeE = (u.email || '').replace(/'/g, "\\'");
-        const safeId = (u.userId || '').toString().replace(/'/g, "\\'");
+        const safeN = _escAttr(u.name || '');
+        const safeW = _escAttr(u.whatsapp || '');
+        const safeE = _escAttr(u.email || '');
+        const safeId = _escAttr((u.userId || '').toString());
         return `<div class="debtor-search-option" onclick="selectSaleClient('${safeN}','${safeW}','${safeE}','${safeId}')">
             <strong>${_escHtml(u.name)}</strong>
         </div>`;

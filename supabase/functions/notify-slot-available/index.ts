@@ -1,6 +1,10 @@
 // Edge Function: notify-slot-available
-// Chiamata dal client quando una prenotazione viene annullata.
-// Manda una push notification a tutti gli utenti tranne chi ha annullato.
+// Chiamata dal client quando una prenotazione viene annullata: notifica gli altri
+// utenti DELLA STESSA ORG che lo slot è tornato disponibile.
+//
+// SICUREZZA (multi-tenant): l'org si deriva dal chiamante autenticato (profiles.org_id
+// o org_members), MAI dal payload. Tutte le query (bookings, push_subscriptions,
+// profiles, client_notifications) filtrano org_id → nessun broadcast cross-tenant.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -12,6 +16,7 @@ const SUPABASE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 webpush.setVapidDetails("mailto:palestra@palestria-demo.app", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
+// Service role: bypassa RLS. Per questo OGNI query qui sotto filtra esplicitamente org_id.
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const corsHeaders = {
@@ -20,36 +25,64 @@ const corsHeaders = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function jsonResponse(payload: unknown, status = 200) {
+    return new Response(JSON.stringify(payload), {
+        status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders });
     }
     try {
+        // 1) Autenticazione del chiamante.
+        const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+        if (!token) return jsonResponse({ ok: false, error: "Non autenticato" }, 401);
+        const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+        if (userErr || !userData?.user) return jsonResponse({ ok: false, error: "Token non valido" }, 401);
+        const callerId = userData.user.id;
+
+        // 2) Org del chiamante: prima profiles (clienti), poi org_members (staff/admin).
+        let orgId: string | null = null;
+        const { data: prof } = await supabase.from("profiles").select("org_id").eq("id", callerId).maybeSingle();
+        orgId = prof?.org_id ?? null;
+        if (!orgId) {
+            const { data: mem } = await supabase.from("org_members")
+                .select("org_id").eq("user_id", callerId).eq("status", "active").maybeSingle();
+            orgId = mem?.org_id ?? null;
+        }
+        if (!orgId) return jsonResponse({ ok: false, error: "Org del chiamante non risolvibile" }, 403);
+
         const { date_display, time, exclude_user_id, date, spots_available, max_capacity } = await req.json();
 
         if (!date_display || !time) {
-            return new Response(JSON.stringify({ ok: false, error: "date_display e time sono obbligatori" }), {
-                status: 400,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
+            return jsonResponse({ ok: false, error: "date_display e time sono obbligatori" }, 400);
         }
 
-        // Recupera user_id di chi è già prenotato in questo slot (da non notificare)
+        // Utenti già prenotati in questo slot (da non notificare) — scoping per org.
         const { data: slotBookings } = await supabase
             .from("bookings")
             .select("user_id")
+            .eq("org_id", orgId)
             .eq("date", date)
             .eq("time", time)
             .in("status", ["confirmed", "cancellation_requested"])
             .not("user_id", "is", null);
 
+        // Solo UUID validi (no filter-injection da exclude_user_id del body).
         const excludeIds = [...new Set(
             [exclude_user_id, ...(slotBookings?.map((b: any) => b.user_id) ?? [])]
-            .filter(Boolean)
+            .filter((id: any) => typeof id === "string" && UUID_RE.test(id))
         )];
 
-        // Tutte le subscription push tranne chi ha annullato e chi è già prenotato
-        let query = supabase.from("push_subscriptions").select("endpoint, p256dh, auth, user_id");
+        // Subscription push della SOLA org, escludendo chi è già prenotato/ha annullato.
+        let query = supabase.from("push_subscriptions")
+            .select("endpoint, p256dh, auth, user_id")
+            .eq("org_id", orgId);
         if (excludeIds.length > 0) {
             query = query.not("user_id", "in", `(${excludeIds.join(",")})`);
         }
@@ -74,19 +107,8 @@ Deno.serve(async (req) => {
             url:   date ? `/index.html?date=${date}` : "/index.html",
         });
 
-        // Recupera nomi utenti per il log
-        const subUserIds = [...new Set((subs ?? []).map((s: any) => s.user_id).filter(Boolean))];
-        let nameMap: Record<string, { name: string; email: string }> = {};
-        if (subUserIds.length > 0) {
-            const { data: profiles } = await supabase.from("profiles").select("id, name, email").in("id", subUserIds);
-            for (const p of profiles ?? []) {
-                nameMap[p.id] = { name: p.name || "", email: p.email || "" };
-            }
-        }
-
         let sent = 0;
         const sentUserIds = new Set<string>();
-        const failedUsers: { id: string; error: string }[] = [];
         for (const sub of subs ?? []) {
             try {
                 await webpush.sendNotification(
@@ -98,40 +120,25 @@ Deno.serve(async (req) => {
             } catch (e: any) {
                 console.error(`[Push] Errore ${sub.endpoint.slice(-30)}:`, e.message);
                 if (e.statusCode === 410 || e.statusCode === 404) {
-                    await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
-                }
-                if (sub.user_id && !sentUserIds.has(sub.user_id)) {
-                    failedUsers.push({ id: sub.user_id, error: e.message });
+                    await supabase.from("push_subscriptions").delete()
+                        .eq("endpoint", sub.endpoint).eq("org_id", orgId);
                 }
             }
         }
 
-        // Log notifiche client
-        const notifRows = [
-            ...[...sentUserIds].map(uid => ({
-                user_id: uid, user_name: nameMap[uid]?.name || "", user_email: nameMap[uid]?.email || "",
-                type: "slot_available", title: "Slot libero disponibile", body: bodyText,
-                status: "sent", booking_date: date || null, booking_time: time || null,
-            })),
-            ...failedUsers.filter(f => !sentUserIds.has(f.id)).map(f => ({
-                user_id: f.id, user_name: nameMap[f.id]?.name || "", user_email: nameMap[f.id]?.email || "",
-                type: "slot_available", title: "Slot libero disponibile", body: bodyText,
-                status: "failed", error: f.error, booking_date: date || null, booking_time: time || null,
-            })),
-        ];
+        // Log notifiche client (schema reale: org_id, user_id, title, body).
+        const notifRows = [...sentUserIds].map(uid => ({
+            org_id: orgId, user_id: uid, title: "Slot libero disponibile", body: bodyText,
+        }));
         if (notifRows.length > 0) {
-            await supabase.from("client_notifications").insert(notifRows);
+            const { error: notifErr } = await supabase.from("client_notifications").insert(notifRows);
+            if (notifErr) console.error("[notify-slot-available] log notifiche fallito:", notifErr.message);
         }
 
-        console.log(`[notify-slot-available] ${sent} notifiche inviate per ${date_display} ${startTime}`);
-        return new Response(JSON.stringify({ ok: true, sent }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.log(`[notify-slot-available] org=${orgId} ${sent} notifiche inviate per ${date_display} ${startTime}`);
+        return jsonResponse({ ok: true, sent });
     } catch (e: any) {
         console.error("[notify-slot-available] Errore:", e);
-        return new Response(JSON.stringify({ ok: false, error: e.message }), {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ ok: false, error: e.message }, 500);
     }
 });

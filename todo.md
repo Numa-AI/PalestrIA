@@ -6,6 +6,26 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-05.
 
 ---
 
+## 🛡️ Audit codice multi-agente (2026-06-09) — FIX APPLICATI
+Diagnosi: workflow dynamic 8 aree + verifica avversariale a 2 lenti (11 bug gravi confermati, 0 confutati). Fix applicati in questa sessione (branch `saas-main`):
+- [x] **CRITICAL — `send-admin-message` broadcast cross-tenant**: qualunque utente loggato poteva inviare push arbitrarie a TUTTI i tenant (no auth ruolo, no scoping org). Ora valida il Bearer, deriva la org da `org_members` (owner/admin attivo), filtra `org_id` su ogni query, e logga in `client_notifications` con lo schema reale.
+- [x] **HIGH — signup cliente senza org**: `registerUser` ora passa `org_slug`+`signup_type` (blocca se slug assente) + safety-net `join_organization`. Il modal "Completa profilo" in `login.html` salta owner/admin/staff (→ admin.html) e include `org_id` nell'upsert (risolto via `join_organization` se org-less).
+- [x] **HIGH — lezione "gratuita" → ledger a prezzo pieno**: `admin_pay_bookings` ora gestisce `'gratuito'` (amount 0, metodo 'gratuito') invece di registrare un incasso 'contanti' fittizio.
+- [x] **HIGH — refund cancellazioni**: `book_slot` traccia `consumed_package_id`/`consumed_membership_id`; `cancel_booking` e `admin_delete_booking` restituiscono la sessione del pacchetto / la quota della membership.
+- [x] **HIGH — `cancel_booking` aggirabile dal cliente**: aggiunto cutoff server-side per i non-admin (grace 10min / >24h / >3gg group-class nel timezone org) → niente più disdette all'ultimo o estinzione debiti via RPC diretta.
+- [x] **HIGH — Stored XSS pannelli admin**: nuovo `_escAttr` (ui.js) sicuro per attributo HTML + stringa JS; applicato agli `onclick` con nome/email/whatsapp cliente in `admin-clients/-calendar/-payments/-registro.js`.
+- [x] **HIGH — `replaceAllBookings` diff vuoto**: i mutatori (`requestCancellation`, `fulfillPendingCancellations`, `processPendingCancellations`, `cancel*`) ora creano nuovi oggetti (helper `_withBookingPatch`/`_cancelPatch`) → le cancellazioni si sincronizzano davvero sul server.
+- [x] **HIGH — cache `scheduleOverrides` cross-tenant**: chiave localStorage namespaced per org (`scheduleOverrides_<orgId>`) + cache org-aware + reset al logout → niente bleed/write-back di PII tra tenant sullo stesso device.
+- [x] **MEDIUM — `notify-slot-available`**: riscritta con auth, org derivata dal chiamante, scoping `org_id`, fix filter-injection (UUID validati) e insert `client_notifications` corretto.
+- [x] **MEDIUM — `generate-monthly-report`**: ruolo/org derivati da `org_members` (non più dal claim inesistente `app_metadata.role`) + scoping `org_id` sul profilo target (no leak report cross-tenant).
+- [ ] **DEPLOY richiesto**: `supabase db push` (baseline + operational_rpcs modificate: nuove colonne `bookings.consumed_*`, RPC aggiornate) e `supabase functions deploy send-admin-message notify-slot-available generate-monthly-report`. ⚠️ La modifica a `bookings` è nella baseline: su progetto già migrato serve una migration ALTER TABLE separata (vedi nota sotto).
+- [ ] **Nota migration**: le colonne `consumed_package_id`/`consumed_membership_id` sono state aggiunte alla baseline. Se il progetto Supabase remoto ha già applicato la baseline vecchia, creare una migration incrementale `alter table bookings add column ...` invece di ri-applicare la baseline.
+
+### Minori emersi dall'audit (non ancora fixati — valutare)
+- book_slot advisory-lock usa `p_date` testo grezzo vs `p_date::date` nel count (normalizzare la data prima dell'hash del lock). • `subscriptions_read` leggibile dai clienti (aggiungere `is_org_admin`). • `resolve_slot_config`/`get_org_price` SECURITY DEFINER senza REVOKE da public. • `admin_sell_package`/`admin_record_membership_payment` non validano che `p_user_id` sia della org. • `notify-admin-*` usa `org_id` dal payload senza verificare membership. • `create-checkout` legacy incassa senza ledger (dismettere). • gating pacchetti/membership in book_slot usa `current_date` invece della data lezione. • book_slot non idempotente (no unique su `local_id`). • doppia prenotazione stesso utente/slot non bloccata server-side. • lista "Non in regola" solo su cache 60gg. • cache `workout_plans_cache_*` e `OrgSettings org_anon_*` non namespaced. • credenziali demo hardcoded in `login.html` del repo di produzione.
+
+---
+
 ## 🔴 Sicurezza / da chiudere PRIMA della produzione
 - [ ] **Chiudere la super-admin dashboard** — oggi `platform_settings.open_access = true` → qualsiasi utente loggato vede i dati di TUTTI i tenant (data-leak cross-tenant, accettato solo in dev). Chiudere con `admin_platform_lock('email@scelta')` (bottone "Limita a una sola email") o SQL: insert in `platform_admins` + `update platform_settings set open_access=false`. ⚠️ **Urgenza alzata** (audit RPC): con `open_access=true` qualsiasi utente loggato può chiamare `admin_platform_lock` e auto-nominarsi platform-admin *permanente* (privilege escalation → potrebbe bloccare fuori te stesso). Da chiudere prima di esporre il signup a estranei.
 - [ ] **Conferma email** su Supabase: riattivarla (ora OFF per i test) + cablare il flusso "conferma email → crea studio" (gancio `pendingOrg` già in `signup-trainer.html`, da completare in `login.html`).
