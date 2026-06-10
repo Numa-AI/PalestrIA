@@ -229,7 +229,12 @@ let _orgSchedHydratedFor = null;
 // sono disponibili SUBITO mentre loadOrgScheduleConfig() fa il round-trip al DB, che
 // poi li aggiorna. Se orgId non è ancora noto (auth async) esce senza marcare il flag.
 function _hydrateOrgScheduleFromCache() {
-    const orgId = (typeof window !== 'undefined') ? window._orgId : null;
+    // orgId: dal claim auth se già noto, altrimenti dal puntatore stabile `_lastOrgId`
+    // (scritto al precedente caricamento). Senza questo fallback, al primo paint dopo un
+    // refresh l'auth è ancora async → orgId null → niente idratazione → si vedeva il
+    // DEFAULT legacy (lo schema del gestionale originario) per un istante, ad ogni refresh.
+    let orgId = (typeof window !== 'undefined' && window._orgId) ? window._orgId : null;
+    if (!orgId) { try { orgId = localStorage.getItem('_lastOrgId') || null; } catch (_) {} }
     if (!orgId || _orgSchedHydratedFor === orgId) return;
     _orgSchedHydratedFor = orgId;
     try {
@@ -251,7 +256,25 @@ function _persistOrgScheduleSnapshot(orgId) {
         localStorage.setItem('_orgSchedSnap_' + orgId, JSON.stringify({
             slotTypes: _ORG_SLOT_TYPES, timeSlots: _ORG_TIME_SLOTS, weekly: _ORG_WEEKLY,
         }));
+        localStorage.setItem('_lastOrgId', orgId); // puntatore stabile per l'idratazione sincrona al refresh
     } catch (_) {}
+}
+
+// True se questo device ha un contesto org (trainer loggato, org già nota in precedenza,
+// o sessione Supabase in cache): in tal caso lo schema orario reale arriva da
+// loadOrgScheduleConfig() e il DEFAULT legacy NON va mostrato, o si vedrebbe per un
+// istante il calendario di un altro studio. Per gli anonimi puri (nessun contesto org)
+// resta il fallback storico. Letture localStorage sincrone, difensive.
+function _hasOrgContext() {
+    try {
+        if (typeof window !== 'undefined' && window._orgId) return true;
+        if (localStorage.getItem('_lastOrgId')) return true;
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && /^sb-.*-auth-token$/.test(k)) return true; // sessione in cache → utente loggato
+        }
+    } catch (_) {}
+    return false;
 }
 
 // Indice JS getDay() → nome giorno italiano usato dalle costanti legacy.
@@ -571,7 +594,14 @@ function getWeeklySchedule() {
             if (isCurrentFormat) return parsed;
         } catch { /* corrupted — will reset below */ }
     }
-    // Outdated version or format — reset template and overrides
+    // Nessuna config org né template locale valido. In contesto SaaS lo schema reale
+    // arriva da loadOrgScheduleConfig(): mostrare il DEFAULT legacy (lo schema del
+    // gestionale single-tenant originario) farebbe lampeggiare per un istante il
+    // calendario "di un altro studio" ad ogni refresh. Meglio griglia vuota finché la
+    // config org è pronta. Gli anonimi puri (nessun contesto org) restano sul DEFAULT.
+    if (_hasOrgContext()) return {};
+
+    // Legacy / single-tenant senza contesto org: fallback storico (reset versione/formato).
     localStorage.removeItem(_schedOverridesLsKey());
     _lsSet('weeklyScheduleTemplate', JSON.stringify(DEFAULT_WEEKLY_SCHEDULE));
     _lsSet('scheduleVersion', SCHEDULE_VERSION);
