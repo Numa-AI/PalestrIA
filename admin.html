@@ -898,48 +898,108 @@
         }());
     </script>
     <script>
-        // iOS PWA standalone: position:fixed elementi possono finire renderizzati
-        // contro il layout viewport invece che contro visualViewport durante
-        // momentum scroll / rubber-band. Misuriamo lo scostamento del dock dal
-        // fondo visibile e lo compensiamo via CSS var --adm-fixed-correction-y.
-        (function syncAdminFixedBars() {
-            var ua = navigator.userAgent || '';
-            var isIosLike = /iPad|iPhone|iPod/.test(ua)
-                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            var isStandalone = window.matchMedia('(display-mode: standalone)').matches
-                || window.navigator.standalone === true;
-            if (!isIosLike || !isStandalone || !window.visualViewport) return;
+        // iOS PWA standalone: gli elementi position:fixed ancorati in basso (dock + FAB)
+        // possono staccarsi dal fondo del viewport visivo → compensati via CSS var
+        // --adm-fixed-correction-y (transform su .adm-bottom-stack + i FAB in admin.css).
+        // FIX bug barra "appesa a metà": in standalone iOS, alla chiusura della tastiera
+        // visualViewport.height resta congelato al valore ridotto finché non scrolli, e lo
+        // script ricalcolava all'infinito una correzione ≈ -altezza-tastiera. Ora: nessuna
+        // correzione con input a fuoco; rilevamento viewport "stantio" (innerHeight-vv.height
+        // >60) con micro-nudge di 1px per sbloccare Safari; clamp 35%; watchdog 400ms; risync
+        // su focusout. Reset-then-measure → correzione ASSOLUTA (niente accumulo). Gemello in
+        // allenamento.html (#allBottomStack / --all-fixed-correction-y).
+        (function () {
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            var isStandalone = window.navigator.standalone === true ||
+                window.matchMedia('(display-mode: standalone)').matches;
+            if (!isIOS || !isStandalone || !window.visualViewport) return;
 
             var root = document.documentElement;
-            var raf = 0;
-            function update() {
-                raf = 0;
-                var stack = document.getElementById('admBottomStack');
-                if (!stack || stack.offsetParent === null) {
+            var ticking = false;
+            var staleNudged = false;
+            var watchdog = null;
+
+            function isEditableFocused() {
+                var ae = document.activeElement;
+                return !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' ||
+                    ae.tagName === 'SELECT' || ae.isContentEditable);
+            }
+
+            function syncFixedBars() {
+                ticking = false;
+                var dock = document.getElementById('admBottomStack');
+                if (!dock || window.innerWidth > 768 || dock.getClientRects().length === 0) {
                     root.style.setProperty('--adm-fixed-correction-y', '0px');
                     return;
                 }
-                var rect = stack.getBoundingClientRect();
-                var vv = window.visualViewport;
-                var visibleBottom = vv.height + vv.offsetTop;
-                var delta = rect.bottom - visibleBottom;
-                if (Math.abs(delta) < 1) {
+
+                requestAnimationFrame(function () {
+                    var vv = window.visualViewport;
+                    // Reset PRIMA di misurare: il successivo getBoundingClientRect forza un
+                    // layout sincrono a transform pulito → niente accumulo del valore precedente.
                     root.style.setProperty('--adm-fixed-correction-y', '0px');
-                } else {
-                    var current = parseFloat(getComputedStyle(root).getPropertyValue('--adm-fixed-correction-y')) || 0;
-                    root.style.setProperty('--adm-fixed-correction-y', (current - delta) + 'px');
-                }
+
+                    // 1) Tastiera aperta: nessuna correzione (il dock coperto è nativo).
+                    if (isEditableFocused()) return;
+
+                    // 2) visualViewport stantio post-tastiera (bug iOS standalone): vv.height
+                    //    resta ridotto finché non scrolli → niente correzione + nudge 1px una volta.
+                    if (window.innerHeight - vv.height > 60) {
+                        if (!staleNudged) {
+                            staleNudged = true;
+                            window.scrollBy(0, 1);
+                            window.scrollBy(0, -1);
+                            setTimeout(scheduleSync, 250);
+                        }
+                        return;
+                    }
+                    staleNudged = false;
+
+                    var rect = dock.getBoundingClientRect();
+                    var targetBottom = vv.height + (vv.offsetTop || 0);
+                    var delta = targetBottom - rect.bottom;
+                    var next = Math.abs(delta) < 2 ? 0 : delta;
+                    // 3) Clamp stretto: i drift legittimi da momentum sono piccoli; oltre il 35%
+                    //    del viewport è garbage (es. l'altezza tastiera).
+                    var limit = Math.max(120, targetBottom * 0.35);
+
+                    if (Math.abs(next) < 2 || Math.abs(next) > limit) next = 0;
+                    root.style.setProperty('--adm-fixed-correction-y', next.toFixed(2) + 'px');
+
+                    // 4) Watchdog: una correzione ≠0 si rivalida dopo 400ms anche senza altri eventi.
+                    if (next !== 0 && !watchdog) {
+                        watchdog = setTimeout(function () { watchdog = null; scheduleSync(); }, 400);
+                    }
+                });
             }
-            function schedule() {
-                if (raf) return;
-                raf = requestAnimationFrame(update);
+
+            function scheduleSync() {
+                if (ticking) return;
+                ticking = true;
+                requestAnimationFrame(syncFixedBars);
             }
-            window.addEventListener('scroll', schedule, { passive: true });
-            window.addEventListener('resize', schedule);
-            window.visualViewport.addEventListener('scroll', schedule);
-            window.visualViewport.addEventListener('resize', schedule);
-            document.addEventListener('visibilitychange', schedule);
-            schedule();
+
+            // Burst di risync: dopo eventi "grossi" il viewport si assesta in più step.
+            function scheduleSettledSync() {
+                scheduleSync();
+                [80, 180, 360, 700].forEach(function (ms) {
+                    setTimeout(scheduleSync, ms);
+                });
+            }
+
+            window.addEventListener('scroll', scheduleSync, { passive: true });
+            window.addEventListener('resize', scheduleSync, { passive: true });
+            window.addEventListener('orientationchange', scheduleSettledSync);
+            window.addEventListener('pageshow', scheduleSettledSync);
+            window.addEventListener('touchend', scheduleSettledSync, { passive: true });
+            window.visualViewport.addEventListener('scroll', scheduleSync, { passive: true });
+            window.visualViewport.addEventListener('resize', scheduleSync, { passive: true });
+            document.addEventListener('visibilitychange', scheduleSettledSync);
+            document.addEventListener('DOMContentLoaded', scheduleSettledSync);
+            // 5) focusout = chiusura tastiera = l'istante in cui il viewport si incanta.
+            document.addEventListener('focusout', scheduleSettledSync);
+            setTimeout(scheduleSettledSync, 300);
         }());
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
