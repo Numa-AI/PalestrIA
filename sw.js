@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v543';
+const CACHE_NAME = 'palestria-v544';
 
 const APP_SHELL = [
     './',
@@ -162,19 +162,25 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // JS + CSS: Network First (scarica sempre il fresco, fallback cache se offline/lento)
-    // ignoreSearch: true → ?v=5 matcha il file cachato senza query string
+    // JS + CSS: Cache First con match ESATTO (incluso ?v=N), fallback rete.
+    // L'HTML resta Network First e comanda le versioni: dopo un deploy referenzia
+    // ?v=N+1 → cache miss → scaricato fresco. File invariato → servito istantaneo.
+    // Il match esatto evita di servire stale: mai matchare ?v= nuovo con file vecchio.
     if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
         event.respondWith(
-            fetchWithTimeout(request, 8000)
-                .then(response => {
-                    if (response.ok) {
-                        const clone = response.clone();
-                        caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
-                    }
-                    return response;
-                })
-                .catch(() => caches.match(request, { ignoreSearch: true }))
+            caches.match(request).then(cached => {
+                if (cached) return cached;
+                return fetchWithTimeout(request, 8000)
+                    .then(response => {
+                        if (response.ok) {
+                            const clone = response.clone();
+                            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+                        }
+                        return response;
+                    })
+                    // Offline: meglio il pre-cache senza query (best effort) che niente
+                    .catch(() => caches.match(request, { ignoreSearch: true }));
+            })
         );
         return;
     }
