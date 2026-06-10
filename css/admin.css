@@ -6,6 +6,21 @@
     display: none;
 }
 
+/* Navbar a tutta larghezza sull'admin.
+   Il container globale della navbar è centrato e su desktop (≥769px) si
+   restringe a 900px, mentre il corpo della dashboard arriva a 1400px / full-
+   width con la sidebar a filo del bordo: la barra in alto sembrava così
+   "incassata" e stretta rispetto al resto della pagina. Qui la portiamo a
+   tutta larghezza (logo a sinistra, menu/utente a destra) per allinearla al
+   layout admin. Lasciamo invariato il padding mobile (<769px). */
+@media (min-width: 769px) {
+    .navbar .container {
+        max-width: none;
+        width: 100%;
+        padding: 0 2rem;
+    }
+}
+
 .dashboard-section .container {
     max-width: 620px;
 }
