@@ -395,7 +395,7 @@ create table org_settings (
 
 create table workout_plans (
     id          uuid primary key default gen_random_uuid(),
-    org_id      uuid not null references organizations(id) on delete cascade,
+    org_id      uuid not null references organizations(id) on delete cascade default current_org_id(),  -- default: l'INSERT del frontend (WorkoutPlanStorage) non passa org_id
     user_id     uuid not null references profiles(id) on delete cascade,
     name        text not null,
     start_date  date,
@@ -409,7 +409,7 @@ create index workout_plans_org_user_idx on workout_plans (org_id, user_id, activ
 
 create table workout_exercises (
     id             uuid primary key default gen_random_uuid(),
-    org_id         uuid not null references organizations(id) on delete cascade,
+    org_id         uuid not null references organizations(id) on delete cascade default current_org_id(),  -- default: l'INSERT del frontend non passa org_id
     plan_id        uuid not null references workout_plans(id) on delete cascade,
     day_label      text not null default 'Giorno A',
     exercise_name  text not null,
@@ -428,7 +428,7 @@ create index workout_exercises_plan_idx on workout_exercises (plan_id, sort_orde
 
 create table workout_logs (
     id           uuid primary key default gen_random_uuid(),
-    org_id       uuid not null references organizations(id) on delete cascade,
+    org_id       uuid not null references organizations(id) on delete cascade default current_org_id(),  -- default: l'INSERT del frontend (WorkoutLogStorage) non passa org_id
     exercise_id  uuid not null references workout_exercises(id) on delete cascade,
     user_id      uuid not null references profiles(id) on delete cascade,
     log_date     date not null default current_date,
@@ -444,16 +444,23 @@ create table workout_logs (
 create index workout_logs_ex_date_idx on workout_logs (exercise_id, log_date);
 create index workout_logs_user_idx    on workout_logs (user_id);
 
+-- Schema allineato al frontend (admin-importa.js / admin-schede.js / allenamento.html
+-- / tablet.html): l'admin importa nel proprio tenant un sottoinsieme del catalogo
+-- completo (data/esercizi_completo.json). org_id default = current_org_id() cosi'
+-- l'INSERT del frontend (che non passa org_id) supera la policy di scrittura.
 create table imported_exercises (
-    id              uuid primary key default gen_random_uuid(),
-    org_id          uuid references organizations(id) on delete cascade,  -- null = catalogo globale piattaforma
-    slug            text,
-    nome_it         text,
-    muscle_group    text,
-    immagine_url        text,
-    immagine_url_small  text,
-    video_url       text,
-    data            jsonb
+    id                  uuid primary key default gen_random_uuid(),
+    org_id              uuid references organizations(id) on delete cascade default current_org_id(),  -- null = catalogo globale piattaforma
+    slug                text,
+    nome_it             text,
+    nome_original       text,
+    nome_en             text,
+    categoria           text,
+    immagine            text,
+    immagine_thumbnail  text,
+    video               text,
+    popolarita          integer default 0,
+    data                jsonb
 );
 create index imported_exercises_org_slug_idx on imported_exercises (org_id, slug);
 
