@@ -676,9 +676,12 @@ class BookingStorage {
                     supabaseClient.rpc('get_availability_range', { p_org_slug: _resolveOrgSlug(), p_from: todayStr, p_to: endStr })
                 ).catch(e => ({ data: null, error: e }));
                 if (error) {
-                    console.error('[Supabase] get_availability_range error:', error.message);
-                    if (typeof showToast === 'function') showToast('Errore di sincronizzazione. I dati potrebbero non essere aggiornati.', 'error', 5000);
-                    return;
+                    // #10: l'errore qui è quasi sempre transitorio (es. blip auth dopo il logout
+                    // → navigazione a index.html, lock navigator.locks ancora in assestamento).
+                    // NON mostrare il toast subito: rilancia e lascia gestire al catch esterno
+                    // (contatore + retry silenzioso a 5s, toast solo al 3° fallimento consecutivo),
+                    // identico al path admin/utente. Evita il falso allarme dopo un logout normale.
+                    throw new Error('get_availability_range error: ' + (error.message || error));
                 }
                 // Capienza/posti residui server-authoritative per il rendering
                 this._indexAvailability(availData);
