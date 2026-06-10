@@ -78,16 +78,15 @@ const LOCK_ACQUIRE_MS       = 500;     // era 3000 → troppo alto, blocca l'UI
 const LOCKS_BROKEN_WINDOW_MS = 30000;
 const LOCKS_BROKEN_PENALTY_MS = 60000;
 
-// #9: sulle pagine admin gestiamo NOI il refresh del token (auth.js _proactiveRefreshTick),
+// #9 (esteso a TUTTE le pagine): gestiamo NOI il refresh del token (auth.js _proactiveRefreshTick),
 // disabilitando l'auto-refresh INTERNO di supabase-js (timer + suo listener visibilitychange)
-// che al rientro da idle si appendeva sul lock auth bloccato. Sulle pagine utente
-// (allenamento/prenotazioni) resta l'autoRefresh di supabase-js: lì funziona bene, non si tocca.
-// NB: location.pathname.includes('admin.html') copre sia admin.html sia super-admin.html.
-const _ADMIN_PAGE = (typeof location !== 'undefined') && location.pathname.includes('admin.html');
+// che al rientro da idle si appendeva sul lock auth bloccato. Prima era confinato all'admin, ma
+// lo stesso hang colpiva anche le pagine utente (allenamento/prenotazioni) al rientro in foreground:
+// ora il refresh proattivo è attivo OVUNQUE (window._isManagedAuthPage = true più sotto).
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
-        autoRefreshToken: !_ADMIN_PAGE, // #9: su admin il refresh lo gestiamo noi
+        autoRefreshToken: false, // #9: il refresh lo gestiamo NOI su tutte le pagine (auth.js _proactiveRefreshTick)
         // Contratto supabase-js:
         //   acquireTimeout === 0 → "non-blocking": se il lock è già preso,
         //     NON aspettare, salta l'operazione. Usato dall'auto-refresh tick
@@ -105,7 +104,13 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
                         return _withFnWatchdog(name, fn);
                     });
                 }
-                const timeout = Math.min(acquireTimeout ?? LOCK_ACQUIRE_MS, LOCK_ACQUIRE_MS);
+                // supabase-js può passare acquireTimeout = -1 ("attendi indefinitamente"):
+                // Math.min(-1, 500) darebbe -1 → l'AbortController abortirebbe SUBITO ogni
+                // acquisizione e navigator.locks verrebbe marcato "rotto" anche da sano.
+                // Accetta solo timeout positivi, altrimenti usa il cap LOCK_ACQUIRE_MS.
+                const timeout = (typeof acquireTimeout === 'number' && acquireTimeout > 0)
+                    ? Math.min(acquireTimeout, LOCK_ACQUIRE_MS)
+                    : LOCK_ACQUIRE_MS;
                 const ac = new AbortController();
                 const timer = setTimeout(() => ac.abort(), timeout);
                 try {
@@ -141,7 +146,8 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 });
 
 // #9: esposti per il refresh proattivo gestito da noi (auth.js _proactiveRefreshTick).
-window._isManagedAuthPage = _ADMIN_PAGE;
+// _isManagedAuthPage = true su OGNI pagina → il tick proattivo gira ovunque (non più solo admin).
+window._isManagedAuthPage = true;
 window._manualTokenRefresh = function () { return supabaseClient.auth.refreshSession(); };
 
 // Log click on "Andrea Pompili" credit link

@@ -287,11 +287,12 @@ async function ensureValidSession({ timeoutMs = 12000, force = false } = {}) {
 
 window.ensureValidSession = ensureValidSession;
 
-// #9 — Refresh PROATTIVO del token, gestito da noi, SOLO sulle pagine admin (dove
-// supabase-client ha messo autoRefreshToken:false). L'auto-refresh interno di supabase-js
+// #9 — Refresh PROATTIVO del token, gestito da noi, su TUTTE le pagine (supabase-client ha
+// messo autoRefreshToken:false ovunque, non più solo admin). L'auto-refresh interno di supabase-js
 // si appendeva sul lock al rientro da idle; rinnovando noi a tempo controllato (token vicino
-// alla scadenza, a pagina VISIBILE, quando il trainer NON sta scrivendo) si evita il clog.
+// alla scadenza, a pagina VISIBILE, quando l'utente NON sta scrivendo) si evita il clog.
 // A pagina nascosta non rinnoviamo: il recupero avviene al foreground via ensureValidSession (#5).
+// Gate: window._isManagedAuthPage (ora = true su ogni pagina).
 (function _initProactiveTokenRefresh() {
     if (typeof window === 'undefined' || !window._isManagedAuthPage) return;
     var REFRESH_BEFORE_SEC = 5 * 60;  // rinnova se mancano < 5 min alla scadenza

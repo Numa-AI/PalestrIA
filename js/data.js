@@ -963,6 +963,14 @@ class BookingStorage {
             return { ok: false, error: 'offline', booking };
         }
 
+        // Guard di sessione: garantisce un access_token fresco PRIMA della RPC (stesso pattern
+        // già usato in admin-payments.js prima delle RPC non-idempotenti). Senza, su tab tornata
+        // da background book_slot restava appesa fino al safety-timeout del bottone (50s) senza
+        // prenotare. Best-effort: se fallisce, la RPC parte comunque (RLS/401 decideranno l'esito).
+        if (typeof ensureValidSession === 'function') {
+            try { await ensureValidSession(); } catch (_) { /* best-effort */ }
+        }
+
         // book_slot risolve org/capienza/tipo/prezzo server-side: il client passa
         // solo lo slug org + i dati del booking (niente p_slot_type/p_max_capacity).
         // user_id e modello di billing sono risolti dal server via auth.uid().

@@ -51,6 +51,58 @@ function initBookingForm() {
     });
 }
 
+// Caricamento iscritti di uno slot. Estratto da openBookingModal per gestire:
+//  - anti-race: un contatore modulo-level scarta le risposte di slot precedenti se nel
+//    frattempo si riapre il modal su un altro slot;
+//  - retry automatico: al primo fallimento rinfresca la sessione e ritenta una volta (la
+//    tab può tornare da background con token scaduto); al secondo mostra "Riprova";
+//  - timeout RPC 8s: col token già letto da storage, una RPC appesa è inutile.
+let _attendeesLoadSeq = 0;
+function _loadSlotAttendees(attendeesList, slotDate, slotTime, isRetry) {
+    if (!attendeesList) return;
+    const mySeq = ++_attendeesLoadSeq;
+    attendeesList.innerHTML = '<li style="color:#9ca3af;font-style:italic">Caricamento...</li>';
+
+    const _ac = new AbortController();
+    const _t = setTimeout(() => _ac.abort(), 8000);
+
+    supabaseClient.rpc('get_slot_attendees', {
+        p_org_slug: window._orgSlug,
+        p_date: slotDate,
+        p_time: slotTime
+    }).abortSignal(_ac.signal).then(({ data, error }) => {
+        clearTimeout(_t);
+        if (mySeq !== _attendeesLoadSeq) return; // slot cambiato nel frattempo → scarta
+        if (error) throw error;                  // niente più "errore == lista vuota": il catch gestisce
+        if (!data || data.length === 0) {
+            attendeesList.innerHTML = '<li class="slot-attendees-empty">Nessuna persona visibile per questo slot.</li>';
+        } else {
+            attendeesList.innerHTML = data.map(a => `<li>👤 ${_escHtml(a.name)}</li>`).join('');
+        }
+    }).catch(async (err) => {
+        clearTimeout(_t);
+        if (mySeq !== _attendeesLoadSeq) return; // slot cambiato → non sovrascrivere l'UI corrente
+        console.warn('[Booking] get_slot_attendees fallita:', err && err.message);
+        if (!isRetry) {
+            // Primo fallimento: la sessione potrebbe essere scaduta (tab tornata da background).
+            // Rinfrescala e ritenta una volta sola.
+            if (typeof ensureValidSession === 'function') {
+                try { await ensureValidSession(); } catch (_) {}
+            }
+            if (mySeq !== _attendeesLoadSeq) return; // slot cambiato durante il refresh
+            _loadSlotAttendees(attendeesList, slotDate, slotTime, true);
+            return;
+        }
+        // Secondo fallimento: messaggio + link "Riprova" che rilancia il load da capo.
+        attendeesList.innerHTML = '<li class="slot-attendees-empty">Impossibile caricare gli iscritti. <a href="#" class="slot-attendees-retry">Riprova</a></li>';
+        const _retry = attendeesList.querySelector('.slot-attendees-retry');
+        if (_retry) _retry.addEventListener('click', (e) => {
+            e.preventDefault();
+            _loadSlotAttendees(attendeesList, slotDate, slotTime);
+        });
+    });
+}
+
 function openBookingModal(dateInfo, timeSlot, slotType, remainingSpots) {
     // Populate slot info
     const badge = document.getElementById('modalSlotTypeBadge');
@@ -143,20 +195,7 @@ function openBookingModal(dateInfo, timeSlot, slotType, remainingSpots) {
         if (user.privacy_prenotazioni !== false) {
             attendeesList.innerHTML = '<li class="slot-attendees-empty">Disattiva la privacy per vedere chi è iscritto.</li>';
         } else {
-            attendeesList.innerHTML = '<li style="color:#9ca3af;font-style:italic">Caricamento...</li>';
-            supabaseClient.rpc('get_slot_attendees', {
-                p_org_slug: window._orgSlug,
-                p_date: selectedSlot ? selectedSlot.date : dateInfo.formatted,
-                p_time: timeSlot
-            }).then(({ data, error }) => {
-                if (error || !data || data.length === 0) {
-                    attendeesList.innerHTML = '<li class="slot-attendees-empty">Nessuna persona visibile per questo slot.</li>';
-                } else {
-                    attendeesList.innerHTML = data.map(a =>
-                        `<li>👤 ${_escHtml(a.name)}</li>`
-                    ).join('');
-                }
-            });
+            _loadSlotAttendees(attendeesList, selectedSlot ? selectedSlot.date : dateInfo.formatted, timeSlot);
         }
     } else if (attendeesContainer) {
         attendeesContainer.style.display = 'none';
