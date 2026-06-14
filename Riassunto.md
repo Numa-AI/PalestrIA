@@ -68,3 +68,25 @@ Diagnosi con workflow dynamic (8 aree di analisi + verifica avversariale a 2 len
 ### Da fare dopo (deploy)
 - `supabase db push` per applicare l'indice + deploy GitHub Pages.
 - Verifica: hook `egressReport()` su sessione admin reale (~10 min), confrontare KB su `/rest/v1/bookings` prima/dopo; controllare i log `admin DELTA: N righe cambiate` sui sync successivi al primo FULL; test multi-azione (insert/pagamento/annullo/hard-delete/reconcile) e check 2 org.
+
+## Task: Fix errori console (app_settings 404 + monthly_reports.year_month 400 in loop)
+**Data:** 2026-06-14
+**Durata stimata:** ~25 min lavoro Claude + ~2 min prompt utente
+
+### Modifiche effettuate
+Due root cause distinte, residui della migrazione single-tenant → SaaS:
+
+1. **404 su `app_settings`** — lo scrittore di `clearAllData` era già migrato a `org_settings` (RPC `upsert_org_setting`, key `data_cleared_at`), ma il lettore `syncAppSettingsFromSupabase` (data.js) interrogava ancora la tabella morta `app_settings`. Derivato il marker `data_cleared_at` dal risultato `org_settings` già fetchato e rimossa la query morta (una query in meno per page-load).
+2. **400 in loop su `monthly_reports.year_month`** — (a) la baseline aveva uno STUB della tabella (`month`/`tone`/`content`) mentre tutto il codice usa lo schema ricco (`year_month`/`scorecard`/...): forward migration idempotente `00000000000015` che allinea le colonne di lettura; (b) il retry frontend (admin-schede.js) non incrementava il contatore fallimenti sul ramo `if(error)`, quindi il circuit-breaker non scattava mai → reschedule infinito al backoff minimo. Aggiunto l'incremento su errore hard in entrambe le funzioni Actual.
+
+Gli errori `Permissions-Policy`/`content.js` provengono da un'estensione del browser, non dal codice.
+
+### Decisioni prese
+- **Scope mirato alla console**: fixati solo i path di LETTURA. La GENERAZIONE dei report AI NON è portata al SaaS (mancano le RPC org-scoped `generate_monthly_scorecard`/`build_*` e l'edge function non passa `org_id` nell'INSERT) → lasciata come TODO security-sensitive separato (rischio data-leak cross-tenant), non inclusa silenziosamente.
+- **Realtime su tabelle morte** (`app_settings`/`settings` in index.html/admin.html): non generano errori console → segnalate come follow-up, non toccate (Impatto Minimo).
+
+### File toccati
+- `js/data.js` — lettore `data_cleared_at` da org_settings; rimossa query app_settings (v87→v88, 9 pagine)
+- `js/admin-schede.js` — circuit-breaker su errore hard nelle 2 funzioni Actual (v44→v45)
+- `supabase/migrations/00000000000015_monthly_reports_schema.sql` — nuovo: allinea colonne lettura monthly_reports
+- `sw.js` — CACHE_NAME v554→v555

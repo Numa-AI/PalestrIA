@@ -705,6 +705,9 @@ async function _schedeActualFetchLoggedToday(todayFormatted) {
             .select('user_id')
             .eq('log_date', todayFormatted));
         if (error) {
+            // Errore "hard": conta come fallimento → il circuit-breaker nel finally interviene
+            // (stesso pattern di _schedeActualFetchReportsLastMonth).
+            _schedeActualLoggedTodayFailures++;
             console.warn('[Schede Actual] fetch logged today error:', error.message);
             return;
         }
@@ -760,6 +763,9 @@ async function _schedeActualFetchReportsLastMonth(yearMonth) {
             .select('user_id')
             .eq('year_month', yearMonth));
         if (error) {
+            // Errore "hard" (es. schema/permessi): conta come fallimento così il circuit-breaker
+            // nel finally smette di rischedulare invece di martellare al backoff minimo all'infinito.
+            _schedeActualReportLastMonthFailures++;
             console.warn('[Schede Actual] fetch reports last month error:', error.message);
             return;
         }

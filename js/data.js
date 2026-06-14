@@ -1895,19 +1895,23 @@ class BookingStorage {
                         : Promise.resolve({ data: null, error: null });
                 })();
             const _results = await Promise.allSettled([
-                _queryWithTimeout(supabaseClient.from('app_settings').select('value').eq('key', 'data_cleared_at').maybeSingle()),
                 fetchAllPaginated(() => supabaseClient.from('schedule_overrides').select('date, time, slot_type, slot_type_id, capacity, client_name, client_email, client_whatsapp, booking_id').order('date').order('time')),
                 _queryWithTimeout(_settingsQuery),
             ]);
-            const _syncLabels = ['app_settings', 'schedule_overrides', 'org_settings'];
+            const _syncLabels = ['schedule_overrides', 'org_settings'];
             _results.forEach((r, i) => { if (r.status === 'rejected') console.warn(`[Supabase] syncAppSettings: ${_syncLabels[i]} skipped (timeout/error)`); });
             const _v = (i) => _results[i].status === 'fulfilled' ? _results[i].value : { data: null, error: 'rejected' };
-            const { data: clearedRow }               = _v(0);
-            const { data: overridesData, error: e5 }  = _v(1);
-            const { data: settingsData, error: e6 }   = _v(2);
+            const { data: overridesData, error: e5 }  = _v(0);
+            const { data: settingsData, error: e6 }   = _v(1);
 
-            // 1. Propaga clearAllData: data_cleared_at ancora su app_settings per la propagazione Realtime
-            const remoteClearedAt = clearedRow?.value?.ts || null;
+            // org_settings.value è jsonb: select → array [{key,value}], RPC pubblica → oggetto {key:value}.
+            const sMap = Array.isArray(settingsData)
+                ? Object.fromEntries(settingsData.map(r => [r.key, r.value]))
+                : (settingsData && typeof settingsData === 'object' ? settingsData : null);
+
+            // 1. Propaga clearAllData: il marker data_cleared_at vive ora su org_settings (ex tabella
+            //    app_settings, rimossa nello schema SaaS), scritto da clearAllData via upsert_org_setting.
+            const remoteClearedAt = sMap?.data_cleared_at?.ts || null;
             if (remoteClearedAt) {
                 const localClearedAt = localStorage.getItem('dataLastCleared') || '0';
                 if (remoteClearedAt > localClearedAt) {
@@ -1942,11 +1946,7 @@ class BookingStorage {
                 _lsSet(_schedOverridesLsKey(), JSON.stringify(overrides));
             }
 
-            // 3. Settings — chiavi nel DB senza prefisso gym_, in localStorage con prefisso.
-            //    org_settings.value è jsonb: select → array [{key,value}], RPC pubblica → oggetto {key:value}.
-            const sMap = Array.isArray(settingsData)
-                ? Object.fromEntries(settingsData.map(r => [r.key, r.value]))
-                : (settingsData && typeof settingsData === 'object' ? settingsData : null);
+            // 3. Settings — chiavi nel DB senza prefisso gym_, in localStorage con prefisso (sMap già calcolata sopra).
             if (!e6 && sMap && Object.keys(sMap).length) {
                 // jsonb: primitivi → String(); oggetti/array → JSON.stringify (le getter fanno JSON.parse)
                 const _s = (lsKey, dbKey) => {
