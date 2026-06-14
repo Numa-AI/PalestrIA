@@ -90,3 +90,19 @@ Gli errori `Permissions-Policy`/`content.js` provengono da un'estensione del bro
 - `js/admin-schede.js` — circuit-breaker su errore hard nelle 2 funzioni Actual (v44→v45)
 - `supabase/migrations/00000000000015_monthly_reports_schema.sql` — nuovo: allinea colonne lettura monthly_reports
 - `sw.js` — CACHE_NAME v554→v555
+
+## Task: Fix CI rosso (db-baseline guard + deno check edge functions)
+**Data:** 2026-06-14
+**Durata stimata:** ~30 min lavoro Claude + ~2 min prompt utente
+
+### Modifiche effettuate
+Due job CI fallivano "da sempre", indipendenti dai fix precedenti:
+1. **db-baseline — Guard statico USING(true)**: il grep matchava i COMMENTI della baseline che citano testualmente "USING(true)" → exit 1 in ~5s. Aggiunto strip dei commenti SQL (`sed 's/--.*//'`) prima del match in `.github/workflows/ci.yml`.
+2. **functions — deno check**: 6 type error. 5× TS2322 da `npm:stripe@17` driftato a 17.7.0 (apiVersion literal `2025-02-24.acacia` vs `2024-12-18.acacia` nel codice) → cast `as any` per preservare la versione API testata. 1× TS18046 in `image-proxy` (`e.message` su `unknown`) → guard `instanceof Error`.
+
+Verificato localmente (deno installato apposta): guard passa, `deno check --no-lock` exit 0. Gli step Docker-dipendenti di db-baseline (db reset, RLS test) non riproducibili in locale ma il guard era il blocco a 5s e la migration 00015 è idempotente.
+
+### File toccati
+- `.github/workflows/ci.yml` — guard ignora i commenti SQL
+- `supabase/functions/{billing-checkout,billing-portal,create-checkout,stripe-connect,stripe-webhook}/index.ts` — cast apiVersion
+- `supabase/functions/image-proxy/index.ts` — catch unknown-safe
