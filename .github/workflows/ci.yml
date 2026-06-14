@@ -56,8 +56,15 @@ jobs:
       - name: Guard statico — nessuna policy USING(true) fuori whitelist
         run: |
           set -euo pipefail
-          hits=$(grep -rniE 'using[[:space:]]*\([[:space:]]*true[[:space:]]*\)|with[[:space:]]+check[[:space:]]*\([[:space:]]*true[[:space:]]*\)' \
-                   supabase/migrations/*.sql | grep -vi 'plans' || true)
+          # Strip dei commenti SQL (--...) PRIMA del match: la prosa descrittiva che
+          # cita testualmente "USING(true)" nei commenti (es. l'intestazione della
+          # baseline) non deve far scattare il guard — solo il codice reale conta.
+          hits=$(for f in supabase/migrations/*.sql; do
+                   sed 's/--.*//' "$f" \
+                     | grep -niE 'using[[:space:]]*\([[:space:]]*true[[:space:]]*\)|with[[:space:]]+check[[:space:]]*\([[:space:]]*true[[:space:]]*\)' \
+                     | grep -vi 'plans' \
+                     | sed "s|^|$f:|" || true
+                 done)
           if [ -n "$hits" ]; then
             echo "::error::Policy RLS con USING(true)/WITH CHECK(true) fuori whitelist (possibile data-leak cross-tenant):"
             echo "$hits"

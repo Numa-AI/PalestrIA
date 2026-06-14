@@ -25,7 +25,9 @@ if (!SUPABASE_URL)      console.error("[billing-checkout] FATAL: SUPABASE_URL no
 if (!SUPABASE_KEY)      console.error("[billing-checkout] FATAL: SUPABASE_SERVICE_ROLE_KEY not configured");
 
 const stripe = STRIPE_SECRET_KEY
-    ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" })
+    // apiVersion pinnata di proposito: l'SDK npm:stripe@17 vincola il literal alla SUA
+    // default (che drifta tra minor) → cast `as any` per mantenere la versione testata.
+    ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" as any })
     : null;
 
 const corsHeaders = {

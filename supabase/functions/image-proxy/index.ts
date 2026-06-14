@@ -36,6 +36,6 @@ Deno.serve(async (req) => {
       },
     });
   } catch (e) {
-    return new Response("Errore proxy: " + e.message, { status: 500 });
+    return new Response("Errore proxy: " + (e instanceof Error ? e.message : String(e)), { status: 500 });
   }
 });

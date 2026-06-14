@@ -35,7 +35,7 @@ if (!STRIPE_WEBHOOK_SECRET) console.error("[stripe-webhook] FATAL: STRIPE_WEBHOO
 if (!SUPABASE_URL)          console.error("[stripe-webhook] FATAL: SUPABASE_URL mancante");
 if (!SUPABASE_KEY)          console.error("[stripe-webhook] FATAL: SUPABASE_SERVICE_ROLE_KEY mancante");
 
-const stripe   = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" });
+const stripe   = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" as any });
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ─────────────────────────────────────────────────────────────────────────────

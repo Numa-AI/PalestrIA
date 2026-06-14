@@ -31,7 +31,7 @@ if (!SUPABASE_URL)      console.error("[stripe-connect] FATAL: SUPABASE_URL not 
 if (!SUPABASE_KEY)      console.error("[stripe-connect] FATAL: SUPABASE_SERVICE_ROLE_KEY not configured");
 
 const stripe = STRIPE_SECRET_KEY
-    ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" })
+    ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" as any })
     : null;
 
 // redirect_uri del callback: DEVE essere registrato in Stripe → Connect → Settings → Redirects.
