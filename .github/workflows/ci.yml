@@ -73,9 +73,13 @@ jobs:
           echo "OK: nessuna policy USING(true)/WITH CHECK(true) inattesa (sola eccezione: plans)."
 
       - name: Setup Supabase CLI
+        # Versione PINNATA (non `latest`): con `latest` l'action interroga l'API
+        # GitHub per risolvere l'ultima release e sul runner condiviso finiva in
+        # "rate limit exceeded" (job rosso a ~5s). Una versione concreta usa il
+        # download diretto della release, senza chiamata API. Bumpare all'occorrenza.
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.106.0
 
       - name: Isola la baseline (escludi lo storico single-tenant)
         # Spostiamo fuori tutte le migration tranne la baseline, così `db reset`
