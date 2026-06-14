@@ -663,6 +663,28 @@ class BookingStorage {
     static _BK_RECONCILE_MS = 5 * 60 * 1000;
     static _syncFailCount = 0; // #10: toast "errore connessione" solo dopo 3 fallimenti consecutivi
 
+    // ── Delta-sync (admin full-list): quando il fingerprint cambia, invece di riscaricare
+    //    l'intera finestra (60+90 gg) scarica SOLO le righe con updated_at >= cursore.
+    //    Il count del fingerprint regala la rilevazione degli hard-delete: se scende → FULL.
+    static _DELTA_OVERLAP_MS = 5000; // overlap finestra anti clock-skew (merge idempotente per _sbId)
+
+    // Spezza il fingerprint "<count>|<max updated_at>" nei suoi componenti.
+    static _parseFingerprint(fp) {
+        if (!fp || typeof fp !== 'string') return null;
+        const i = fp.indexOf('|');
+        if (i < 0) return null;
+        const countRaw = fp.slice(0, i);
+        const count = countRaw === '?' ? null : parseInt(countRaw, 10);
+        return { count: Number.isNaN(count) ? null : count, maxUpd: fp.slice(i + 1) };
+    }
+
+    // Forza un FULL-fetch al prossimo sync (azzera cursore + reconcile). Chiamato dopo gli
+    // hard-delete (admin_delete_booking/client_data/clear_all_data) per reattività sul client.
+    static invalidateDelta() {
+        this._bkFingerprint = null;
+        this._bkLastFullFetch = 0;
+    }
+
     // Fingerprint cheap: una query (count exact + riga col max updated_at). null su errore.
     static async _bookingsFingerprint(pastStr, futureStr) {
         try {
@@ -693,6 +715,9 @@ class BookingStorage {
         try {
             const user    = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
             const isAdmin = sessionStorage.getItem('adminAuth') === 'true';
+            // Snapshot anti-race: se la cache viene svuotata (logout/clear) DURANTE la sync,
+            // non ricommittare dati vecchi sopra una cache appena pulita (controllo prima del commit).
+            const clearedAtStart = localStorage.getItem('dataLastCleared') || '0';
 
             // Date range for availability RPC (~3 months forward)
             const todayStr = _localDateStr();
@@ -742,17 +767,28 @@ class BookingStorage {
                 await ensureValidSession({ force: false, timeoutMs: 3000 }).catch(() => null);
             }
 
-            // ── Sync incrementale (solo admin full-list): se il fingerprint (count + max
-            //    updated_at) è invariato e la cache è popolata, SALTA il full-fetch → wake
-            //    quasi istantaneo. Reconcile periodico (5 min) come safety net.
+            // ── Sync incrementale (solo admin full-list), basato sul fingerprint (count + max
+            //    updated_at): 1) invariato → SKIP (wake istantaneo). 2) cambiato senza delete
+            //    (count non sceso) → DELTA, scarica solo le righe con updated_at >= cursore.
+            //    3) altrimenti (primo load, count sceso = hard-delete, reconcile dovuto) → FULL.
+            //    Reconcile periodico (5 min) come safety net per delete/edge a count invariato.
+            let isDelta = false, deltaFrom = null, deltaNewFp = null;
             if (isAdmin && !ownOnly) {
                 const reconcileDue = !this._bkLastFullFetch || (Date.now() - this._bkLastFullFetch > this._BK_RECONCILE_MS);
-                if (!reconcileDue && this._bkFingerprint && this._cache.length > 0) {
+                const prev = this._parseFingerprint(this._bkFingerprint);
+                if (prev && this._cache.length > 0) {
                     const fp = await this._bookingsFingerprint(pastStr, futureStr);
                     if (fp !== null && fp === this._bkFingerprint) {
                         console.log('[Supabase] syncFromSupabase (admin): fingerprint invariato → skip full-fetch');
                         this._syncFailCount = 0; // #10: skip = successo
                         return;
+                    }
+                    const cur = this._parseFingerprint(fp);
+                    if (!reconcileDue && fp !== null && cur && cur.count != null && prev.count != null
+                        && cur.count >= prev.count && prev.maxUpd && !isNaN(Date.parse(prev.maxUpd))) {
+                        isDelta = true;
+                        deltaFrom = new Date(Date.parse(prev.maxUpd) - this._DELTA_OVERLAP_MS).toISOString();
+                        deltaNewFp = fp; // il fingerprint server appena calcolato dopo il merge
                     }
                 }
             }
@@ -762,9 +798,12 @@ class BookingStorage {
             let data = [], pageFrom = 0, done = false;
             while (!done) {
                 let q = supabaseClient.from('bookings').select(bookingSelect)
-                    .order('created_at', { ascending: false })
+                    .order(isDelta ? 'updated_at' : 'created_at', { ascending: false })
                     .range(pageFrom, pageFrom + PAGE - 1)
                     .gte('date', pastStr).lte('date', futureStr);
+                // DELTA: solo le righe modificate dall'ultimo cursore (overlap anti clock-skew).
+                // Mantiene la finestra date per restare coerente col count del fingerprint.
+                if (isDelta) q = q.gte('updated_at', deltaFrom);
                 if (ownOnly && user) q = q.eq('user_id', user.id);
                 // Timeout 12s: senza, su rete lenta/wake-from-idle questa query raw
                 // appende l'intero sync e refreshInFlight non si resetta mai (→ freeze).
@@ -816,16 +855,41 @@ class BookingStorage {
                 return true;
             });
 
-            this._cache = [...mapped, ...synth, ...pending];
-            if (isAdmin && !ownOnly) {
-                // Aggiorna il fingerprint dai dati appena scaricati (count = righe in finestra,
-                // + max updated_at) — gratis, niente query extra — e segna il full-fetch.
-                let _maxUpd = '';
-                for (const r of data) { if (r.updated_at && r.updated_at > _maxUpd) _maxUpd = r.updated_at; }
-                this._bkFingerprint = `${data.length}|${_maxUpd}`;
-                this._bkLastFullFetch = Date.now();
+            // Guardia anti-race: se la cache è stata svuotata durante la sync, non ricommittare.
+            if ((localStorage.getItem('dataLastCleared') || '0') !== clearedAtStart) {
+                console.log('[Supabase] syncFromSupabase: dataLastCleared cambiato durante la sync → skip commit');
+                return;
             }
-            console.log(`[Supabase] syncFromSupabase (${isAdmin ? 'admin' : 'user'}): ${mapped.length} da Supabase, ${synth.length} sintetici, ${pending.length} pending`);
+
+            if (isDelta) {
+                // Merge incrementale (admin): upsert per _sbId nelle righe reali esistenti,
+                // preservando sintetici e pending (righe senza _sbId). Le righe cancelled
+                // arrivano nel delta e sovrascrivono → restano in cache come cancelled (no fantasmi).
+                // Idempotente (Map per id) → l'overlap di 5s non crea doppioni.
+                const byId = new Map();
+                const others = [];
+                for (const b of this._cache) {
+                    if (b._sbId) byId.set(b._sbId, b);
+                    else others.push(b);
+                }
+                for (const m of mapped) { if (m._sbId) byId.set(m._sbId, m); }
+                this._cache = [...byId.values(), ...others];
+                // Riusa il fingerprint server già calcolato (count+max corretti). NON tocca
+                // _bkLastFullFetch → il reconcile periodico (5 min) resta garantito come safety net.
+                if (deltaNewFp) this._bkFingerprint = deltaNewFp;
+                console.log(`[Supabase] syncFromSupabase (admin DELTA): ${mapped.length} righe cambiate, ${this._cache.length} totali in cache`);
+            } else {
+                this._cache = [...mapped, ...synth, ...pending];
+                if (isAdmin && !ownOnly) {
+                    // Aggiorna il fingerprint dai dati appena scaricati (count = righe in finestra,
+                    // + max updated_at) — gratis, niente query extra — e segna il full-fetch.
+                    let _maxUpd = '';
+                    for (const r of data) { if (r.updated_at && r.updated_at > _maxUpd) _maxUpd = r.updated_at; }
+                    this._bkFingerprint = `${data.length}|${_maxUpd}`;
+                    this._bkLastFullFetch = Date.now();
+                }
+                console.log(`[Supabase] syncFromSupabase (${isAdmin ? 'admin FULL' : 'user'}): ${mapped.length} da Supabase, ${synth.length} sintetici, ${pending.length} pending`);
+            }
 
             this._retryPending(pending, user);
             // Sync riuscita — cancella eventuale retry pendente

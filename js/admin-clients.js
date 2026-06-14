@@ -1085,6 +1085,8 @@ async function deleteClientData(index, whatsapp, email) {
             if (error) console.error('[deleteClientData] RPC error:', error.message);
             else console.log('[deleteClientData] Supabase:', data);
         } catch (e) { console.error('[deleteClientData] Supabase error:', e); }
+        // Hard-delete: forza un FULL al prossimo sync (il delta non vede i DELETE).
+        BookingStorage.invalidateDelta();
     }
 
     showToast(`Dati di ${clientName} eliminati (${removedBookings} prenotazioni rimosse).`, 'success');
@@ -1260,6 +1262,8 @@ async function deleteBookingFromClients(bookingId, bookingName) {
                 return;
             }
 
+            // Hard-delete: forza un FULL al prossimo sync (il delta non vede i DELETE).
+            BookingStorage.invalidateDelta();
             await BookingStorage.syncFromSupabase();
         } catch (ex) {
             console.error('[deleteBookingFromClients] unexpected error:', ex);

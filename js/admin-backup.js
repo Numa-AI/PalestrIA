@@ -713,6 +713,7 @@ async function clearAllData() {
 
     // 2. Svuota cache in memoria + localStorage settings
     BookingStorage._cache = [];
+    BookingStorage.invalidateDelta(); // hard-delete totale: forza FULL al prossimo sync
     UserStorage._cache = [];
     localStorage.removeItem(BookingStorage.STATS_KEY);
     localStorage.removeItem('scheduleOverrides');
