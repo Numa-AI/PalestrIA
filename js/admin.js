@@ -117,6 +117,11 @@ async function initAdmin() {
     if (window._adminInitialized) return;
     window._adminInitialized = true;
 
+    // 0) Gate accesso admin: attende la verifica del ruolo fatta dal boot di
+    //    admin.html (window._adminAccessGate). I non-admin sono già rediretti dal
+    //    gate; qui ci limitiamo a NON renderizzare nulla (niente showDashboard).
+    if (window._adminAccessGate && (await window._adminAccessGate) !== true) return;
+
     // 1) Contesto org PRIMA di tutto (serve a orari/impostazioni per gli insert org_id).
     await _ensureAdminOrgContext();
     // 2) Ricarica config orari (slot_types/fasce/template attivo) e impostazioni org
@@ -150,6 +155,9 @@ async function initAdmin() {
 
 
 function showDashboard() {
+    // Difesa-in-profondità: assicura la rimozione dell'overlay del gate accesso
+    // (di norma già rimosso dal boot quando adminAuth è confermato).
+    document.getElementById('adminGateOverlay')?.remove();
     // Rimuove l'inline style precedente (da hideDashboard), lascia decidere al CSS
     // (su desktop >=1024px .dashboard-section diventa flex per il layout sidebar+main).
     document.getElementById('dashboardSection').style.display = '';

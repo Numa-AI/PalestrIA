@@ -1,6 +1,6 @@
 # TODO — PalestrIA SaaS
 
-Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-10.
+Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-17.
 
 > Stato: la piattaforma multi-tenant funziona (signup self-serve, orari flessibili, clienti, prenotazioni, billing-cliente, impostazioni 11 sotto-tab, branding). Deployata su Supabase `rwaiekhllujximrqftmp` + GitHub Pages (`renumaa.github.io/PalestrIA`). Mancano soprattutto: incassi reali (Stripe), dominio/landing, e alcune rifiniture + chiusure di sicurezza.
 
@@ -44,6 +44,16 @@ Diagnosi: workflow dynamic 8 aree + verifica avversariale a 2 lenti (11 bug grav
 - [ ] **(consigliato) Auto-recupero auth lato client**: rilevare `401 PGRST301 "No suitable key"` → signOut + pulizia sessione + redirect login, così gli utenti con token vecchio si sbloccano da soli invece di restare con UI a metà / 401 a raffica.
 - [x] **(audit) altre chiamate `.auth` sul client DATI**: verificato con grep — `super-admin.js` era l'**unico** file a chiamare `.auth` su `supabaseClient`. Nessun altro offender dopo lo split in 2 client.
 - [x] **Link Super Admin invisibile da mobile**: la voce `👑 Super Admin` esisteva solo in `.nav-desktop-links` (nascosta sotto i 768px); il menu hamburger (`.nav-sidebar-links`) non la conteneva → irraggiungibile da mobile via menu. Fix (`admin.html`): aggiunta `<li id="superAdminNavItemMobile">` nella sidebar mobile + il `.then` di `is_platform_admin` ora sblocca entrambe le voci. Resta dietro la stessa RPC, quindi quando si chiuderà l'`open_access` (riga sotto) sparirà da sé. Cache-bust: sw `palestria-v551`→`v552`. ⚠️ **DA DEPLOYARE** (`git push origin saas-main:main`).
+
+---
+
+## 🚪 Gate accesso `admin.html` (2026-06-17) — FIX APPLICATO
+Diagnosi: aprendo `admin.html` da URL **senza login** (o da cliente non-admin) il boot eseguiva `initAuth()` → sync → render senza mai controllare il ruolo → UI admin + fatturato stimato visibili (defense-in-depth mancante; i DATI reali restano protetti da RLS + `is_org_admin()`). A differenza del gemello single-tenant qui c'erano **2 boot path** (IIFE in fondo a `admin.html` + `initAdmin()` da `admin-messaggi.js` su DOMContentLoaded): gateati **entrambi** con una promise condivisa.
+- [x] **Overlay opaco** (`#adminGateOverlay`, z-index max, brand `#8B5CF6`) subito dopo `<body>`: niente lampo di dashboard durante il redirect; rimosso solo a ruolo confermato.
+- [x] **Gate condiviso** `window._adminAccessGate` nell'IIFE di boot: `await initAuth()` → se `sessionStorage.adminAuth==='true'` (owner/admin, via `_applyOrgContext` con fallback `org_members`) procede, altrimenti `location.replace` → loggato non-admin = `index.html`, anonimo = `login.html?redirect=admin.html`. `initAdmin()` (admin.js) attende la stessa promise e non renderizza per i non-admin. `showDashboard()` rimuove l'overlay (difesa-in-profondità).
+- [x] **Verifica empirica** (server statico locale + playwright, browser pulito): `admin.html` → redirect a `login.html?redirect=admin.html`, `#monthlyRevenue` = `null`, `adminAuth` = `null`, dashboard mai renderizzata. `location.replace` → il tasto "indietro" non riporta alla dashboard.
+- Cache-bust: `admin.js` v118→v119, sw `palestria-v555`→`v556`. ⚠️ **DA DEPLOYARE** (`git push origin saas-main:main`). HTML è network-first → arriva al prossimo caricamento online.
+- Note: `super-admin.html` ha già il suo gate (session + `is_platform_admin()`). `tablet.html` è un kiosk condiviso (link/UUID), **non** una pagina admin → fuori scope. `staff` non ha `adminAuth='true'` per design esistente → finirebbe su `index.html` (coerente con `bookForClient` ecc.).
 
 ---
 

@@ -42,6 +42,11 @@
 <script src="js/branding-boot.js?v=2"></script>
 </head>
 <body>
+    <!-- Gate accesso admin: overlay opaco mostrato finché il boot non conferma il
+         ruolo (owner/admin). Per i non-admin resta visibile durante il redirect,
+         così non trapela mai un lampo della dashboard (navbar/tab/fatturato).
+         Rimosso solo quando sessionStorage.adminAuth === 'true' (vedi boot in fondo). -->
+    <div id="adminGateOverlay" style="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:#ffffff;color:#8B5CF6;font-family:system-ui,-apple-system,sans-serif;font-size:0.95rem;font-weight:600;letter-spacing:0.5px;">Verifica accesso…</div>
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand" style="display:flex; align-items:center; gap:0.75rem;">
@@ -1016,7 +1021,7 @@
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/push.js?v=23"></script>
     <script src="js/chart-mini.js?v=12"></script>
-    <script src="js/admin.js?v=118"></script>
+    <script src="js/admin.js?v=119"></script>
     <script src="js/admin-analytics.js?v=5"></script>
     <script src="js/admin-backup.js?v=5"></script>
     <script src="js/admin-calendar.js?v=17"></script>
@@ -1035,7 +1040,24 @@
     <script>
         // Avvia auth, sincronizza i booking da Supabase, poi aggiorna la dashboard
         (async function () {
-            await initAuth();
+            // ── GATE ACCESSO ADMIN (anti-leak UI/fatturato a non-admin) ──────────
+            // Esposto come promise condivisa così ANCHE initAdmin() (admin.js, avviato
+            // da admin-messaggi.js su DOMContentLoaded) la attende prima di renderizzare:
+            // nessun boot path mostra la dashboard ai non-admin. initAuth() →
+            // _applyOrgContext() propaga sessionStorage.adminAuth='true' solo per
+            // owner/admin (con fallback org_members). Tutti gli altri (anonimi inclusi)
+            // vengono rediretti PRIMA di qualsiasi sync/render.
+            window._adminAccessGate = (async function () {
+                try { await initAuth(); } catch (_) {}
+                if (sessionStorage.getItem('adminAuth') === 'true') {
+                    document.getElementById('adminGateOverlay')?.remove();
+                    return true;
+                }
+                // Loggato ma non admin → home; non autenticato → login (con ritorno).
+                location.replace(window._currentUser ? 'index.html' : 'login.html?redirect=admin.html');
+                return false;
+            })();
+            if (!(await window._adminAccessGate)) return;  // non-admin: stop, niente sync/render
             // ── Link Super-Admin di piattaforma: visibile solo a chi è autorizzato
             //    (is_platform_admin lato server). Non blocca il boot. ──
             if (typeof supabaseClient !== 'undefined') {
