@@ -409,6 +409,23 @@ function getSlotName(slotType) {
     return SLOT_NAMES[slotType] || slotType;
 }
 
+// Colore (hex) di un tipo slot — fonte di verità per pip/badge nel calendario.
+// Preferisce slot_types.color per-org (_ORG_SLOT_TYPES); fallback ai colori
+// storici delle chiavi single-tenant e infine al viola di default del brand.
+const _LEGACY_SLOT_COLORS = {
+    'personal-training': '#16a34a',
+    'small-group':       '#f59e0b',
+    'group-class':       '#ef4444',
+    'cleaning':          '#64748b',
+};
+function getSlotColor(slotType) {
+    _hydrateOrgScheduleFromCache();
+    if (_ORG_SLOT_TYPES && _ORG_SLOT_TYPES[slotType] && _ORG_SLOT_TYPES[slotType].color) {
+        return _ORG_SLOT_TYPES[slotType].color;
+    }
+    return _LEGACY_SLOT_COLORS[slotType] || '#8B5CF6';
+}
+
 // Elenco fasce orarie attive per la org (etichette 'HH:MM - HH:MM').
 // Preferisce _ORG_TIME_SLOTS (dal DB), fallback alle costanti TIME_SLOTS.
 function getTimeSlots() {

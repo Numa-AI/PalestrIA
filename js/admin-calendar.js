@@ -528,15 +528,13 @@ function _participantAvatarHue(name) {
     return h % 6;
 }
 
-// Helper: classe CSS colore per pip in base al tipo slot.
-function _pipTypeClass(slotType) {
-    switch (slotType) {
-        case 'personal-training': return 'pip-pt';
-        case 'small-group':       return 'pip-sg';
-        case 'group-class':       return 'pip-gc';
-        case 'cleaning':          return 'pip-cl';
-        default:                  return 'pip-pt';
-    }
+// Helper: markup di un pip colorato col colore reale del tipo slot
+// (slot_types.color via getSlotColor). I pip "empty" usano lo stesso colore
+// attenuato. Lo stile inline ha la precedenza sulle regole .pip in admin.css.
+function _pipMarkup(slotType, empty) {
+    const color = (typeof getSlotColor === 'function') ? getSlotColor(slotType) : '#8B5CF6';
+    const style = empty ? `background:${color};opacity:.28` : `background:${color}`;
+    return `<span class="pip${empty ? ' empty' : ''}" style="${style}"></span>`;
 }
 
 // Capacità giornaliera totale (somma capacity di tutti gli slot programmati)
@@ -686,14 +684,14 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
     const pipParts = [];
     if (showPips && displayCap > 0) {
         for (let i = 0; i < displayCap; i++) {
-            pipParts.push(`<span class="pip ${_pipTypeClass(mainType)}${i < mainConfirmed ? '' : ' empty'}"></span>`);
+            pipParts.push(_pipMarkup(mainType, i >= mainConfirmed));
         }
     }
     for (const t of extraTypes) {
         const ec = BookingStorage.getEffectiveCapacity(date, timeSlot, t);
         const eConf = realBookings.filter(b => b.slotType === t && b.status === 'confirmed').length;
         for (let i = 0; i < ec; i++) {
-            pipParts.push(`<span class="pip ${_pipTypeClass(t)}${i < eConf ? '' : ' empty'}"></span>`);
+            pipParts.push(_pipMarkup(t, i >= eConf));
         }
     }
     const capPipsHTML = pipParts.length > 0 && pipParts.length <= 12

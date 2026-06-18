@@ -3,6 +3,18 @@ let currentWeekOffset = 0;
 let selectedSlot = null;
 let selectedMobileDay = null;
 
+// Converte un colore hex (#rgb o #rrggbb) in rgba() con l'alpha dato.
+// Usato per i gradienti delle card slot basati su slot_types.color.
+function _hexToRgba(hex, alpha) {
+    let h = String(hex || '').trim().replace('#', '');
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    if (h.length !== 6) return `rgba(139, 92, 246, ${alpha})`; // fallback viola brand
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Slot effettivi per una data: override puntuale se presente, altrimenti il
 // template settimanale ATTIVO per quel giorno. (Prima il template veniva ignorato:
 // il calendario mostrava slot solo sulle date con override espliciti.)
@@ -569,6 +581,15 @@ function createMobileSlotCard(dateInfo, scheduledSlot) {
             <div class="mobile-slot-type">🧹 Pulizia</div>`;
         slotCard.style.cursor = 'default';
         return slotCard;
+    }
+
+    // Colore reale del tipo (slot_types.color) come bordo + gradiente, così il
+    // colore scelto in Gestione Orari guida davvero la card. Lo stile inline ha
+    // la precedenza sulle classi .mobile-slot-card.<tipo> in style.css.
+    const _slotColor = (typeof getSlotColor === 'function') ? getSlotColor(slotType) : '';
+    if (_slotColor) {
+        slotCard.style.borderLeftColor = _slotColor;
+        slotCard.style.background = `linear-gradient(to right, ${_hexToRgba(_slotColor, 0.22)}, ${_hexToRgba(_slotColor, 0.05)})`;
     }
 
     slotCard.innerHTML = `
