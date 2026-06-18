@@ -792,27 +792,35 @@ function _schedeActualParseSlot(slotStr) {
     };
 }
 
+// Fasce orarie attive della org (org-aware via getTimeSlots), fallback alle
+// costanti legacy solo se data.js non è caricato. Unica fonte per il picker e
+// il render: così la vista live rispetta la gestione orari del tenant corrente.
+function _schedeActualTimeSlots() {
+    return (typeof getTimeSlots === 'function') ? getTimeSlots() : TIME_SLOTS.slice();
+}
+
 function _schedeActualPickSlots(now) {
-    // Return { prev, current, next } indices into TIME_SLOTS (or null each).
+    // Return { prev, current, next } indices into le fasce org (or null each).
+    const slots = _schedeActualTimeSlots();
     const nowMin = now.getHours() * 60 + now.getMinutes();
     let currentIdx = -1;
-    for (let i = 0; i < TIME_SLOTS.length; i++) {
-        const r = _schedeActualParseSlot(TIME_SLOTS[i]);
+    for (let i = 0; i < slots.length; i++) {
+        const r = _schedeActualParseSlot(slots[i]);
         if (!r) continue;
         if (nowMin >= r.startMin && nowMin < r.endMin) { currentIdx = i; break; }
     }
     let prevIdx = -1, nextIdx = -1;
     if (currentIdx === -1) {
         // Prima del primo slot o dopo l'ultimo
-        const first = _schedeActualParseSlot(TIME_SLOTS[0]);
+        const first = slots.length ? _schedeActualParseSlot(slots[0]) : null;
         if (first && nowMin < first.startMin) {
             nextIdx = 0;
-        } else {
-            prevIdx = TIME_SLOTS.length - 1;
+        } else if (slots.length) {
+            prevIdx = slots.length - 1;
         }
     } else {
         if (currentIdx > 0) prevIdx = currentIdx - 1;
-        if (currentIdx < TIME_SLOTS.length - 1) nextIdx = currentIdx + 1;
+        if (currentIdx < slots.length - 1) nextIdx = currentIdx + 1;
     }
     return { prevIdx, currentIdx, nextIdx };
 }
@@ -829,14 +837,15 @@ function _schedeActualSlotTypeForDate(dateFormatted, slotTime) {
             }
         }
     } catch (e) { /* ignore, fallback below */ }
-    // Fallback: DEFAULT_WEEKLY_SCHEDULE by day name
+    // Fallback: schedule settimanale org-aware (template attivo dal DB), per nome giorno.
     try {
         const d = new Date(dateFormatted + 'T00:00:00');
         const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
         const dayName = dayNames[d.getDay()];
-        const week = (typeof DEFAULT_WEEKLY_SCHEDULE !== 'undefined') ? DEFAULT_WEEKLY_SCHEDULE[dayName] : null;
-        if (week) {
-            const hit = week.find(s => s.time === slotTime);
+        const week = (typeof getWeeklySchedule === 'function') ? getWeeklySchedule() : null;
+        const daySlots = week ? week[dayName] : null;
+        if (daySlots) {
+            const hit = daySlots.find(s => s.time === slotTime);
             if (hit) return hit.type;
         }
     } catch (e) { /* ignore */ }
@@ -844,17 +853,32 @@ function _schedeActualSlotTypeForDate(dateFormatted, slotTime) {
 }
 
 function _schedeActualSlotTypeLabel(type) {
+    if (!type) return '';
+    // Nome del tipo slot org-aware (slot_types.label del tenant); fallback legacy.
+    if (typeof getSlotName === 'function') {
+        const lbl = getSlotName(type);
+        // getSlotName ritorna la key stessa se sconosciuta: in quel caso non mostriamo
+        // una key grezza ("group-class") ma niente tag.
+        return (lbl && lbl !== type) ? lbl : (typeof SLOT_NAMES !== 'undefined' && SLOT_NAMES[type] ? SLOT_NAMES[type] : '');
+    }
     if (typeof SLOT_NAMES !== 'undefined' && SLOT_NAMES[type]) return SLOT_NAMES[type];
     return '';
 }
 
-function _schedeActualSlotTypeClass(type) {
-    if (type === 'personal-training') return 'schede-actual-type--personal';
-    if (type === 'small-group')       return 'schede-actual-type--group';
-    if (type === 'group-class')       return 'schede-actual-type--private';
-    if (type === 'couple')            return 'schede-actual-type--couple';
-    if (type === 'cleaning')          return 'schede-actual-type--cleaning';
-    return '';
+// Colore (hex) del tipo slot org-aware — fonte di verità per il tag colorato.
+// Preferisce slot_types.color del tenant (via getSlotColor); '' se non risolvibile.
+function _schedeActualSlotTypeColor(type) {
+    if (!type) return '';
+    return (typeof getSlotColor === 'function') ? getSlotColor(type) : '';
+}
+
+// hex (#rrggbb) → rgba con alpha. Locale: calendar.js (che ha _hexToRgba) non è
+// caricato su admin.html. Ritorna il colore grezzo se non è un hex a 6 cifre.
+function _schedeActualHexToRgba(hex, alpha) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!m) return hex || '';
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 // Avatar helpers — colore stabile (hash del nome) + iniziali
@@ -967,7 +991,8 @@ function _schedeActualRenderSlot(position, slotIdx, ctx) {
         ? '<span class="sa-pill sa-pill--live"><span class="sa-pulse"></span>LIVE</span>'
         : `<span class="sa-pill sa-pill--${position}">${pillLabel}</span>`;
 
-    if (slotIdx < 0 || slotIdx >= TIME_SLOTS.length) {
+    const slots = _schedeActualTimeSlots();
+    if (slotIdx < 0 || slotIdx >= slots.length) {
         const emptyMsg = position === 'prev'    ? 'Nessuno slot prima'
                        : position === 'current' ? 'Nessuno slot attivo'
                        : 'Giornata terminata';
@@ -979,11 +1004,16 @@ function _schedeActualRenderSlot(position, slotIdx, ctx) {
         </div>`;
     }
 
-    const slotTime  = TIME_SLOTS[slotIdx];
+    const slotTime  = slots[slotIdx];
     const slotRange = _schedeActualParseSlot(slotTime);
     const slotType  = _schedeActualSlotTypeForDate(ctx.todayFormatted, slotTime);
     const typeLabel = _schedeActualSlotTypeLabel(slotType);
-    const typeClass = _schedeActualSlotTypeClass(slotType);
+    const slotColor = _schedeActualSlotTypeColor(slotType);
+    // Tag colorato col colore del tipo slot org solo per lo slot LIVE: prev/next
+    // restano mutati (grigio/viola) tramite le regole CSS per posizione.
+    const typeStyle = (position === 'current' && slotColor)
+        ? `style="background:${_schedeActualHexToRgba(slotColor, 0.18)};color:${slotColor};border-color:${_schedeActualHexToRgba(slotColor, 0.4)};"`
+        : '';
     const startTime = slotTime.split(' - ')[0] || '';
     const endTime   = slotTime.split(' - ')[1] || '';
 
@@ -1095,7 +1125,7 @@ function _schedeActualRenderSlot(position, slotIdx, ctx) {
                 <div class="sa-time-now">${_escHtml(startTime)}</div>
                 <div class="sa-time-end">→ ${_escHtml(endTime)}</div>
             </div>
-            ${typeLabel ? `<div class="sa-tag-row"><span class="sa-type ${typeClass}">${_escHtml(typeLabel)}</span></div>` : ''}
+            ${typeLabel ? `<div class="sa-tag-row"><span class="sa-type" ${typeStyle}>${_escHtml(typeLabel)}</span></div>` : ''}
             <div class="sa-progress"><div class="sa-progress-fill" style="width:${progressPct}%;"></div></div>
             <div class="sa-progress-foot">
                 <span>${_escHtml(startTime)}</span>
