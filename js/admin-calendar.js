@@ -239,10 +239,10 @@ function openClientBookingPicker(date, time, pickerId) {
     }
 }
 
-// Apre lo stesso picker cliente forzando "Slot prenotato" (group-class):
+// Apre lo stesso picker cliente forzando il tipo group-class ("Slot prenotato"):
 // dopo la selezione cliente mostrerà direttamente "Conferma", senza chiedere
-// il tipo lezione. Se lo slot ha già 1 persona, creerà il 2° booking sullo
-// stesso slot condiviso (prezzo server-side; vedi TODO in bookForClient).
+// il tipo lezione. La capienza (e quindi quante persone) è decisa dal server
+// (book_slot). I posti sono fatturati al prezzo standard del tipo slot.
 function openClientBookingPickerForSlotPrenotato(date, time, pickerId) {
     openClientBookingPicker(date, time, pickerId);
     _clientPickerState.forcedSlotType = SLOT_TYPES.GROUP_CLASS;
@@ -389,54 +389,7 @@ async function bookForClient(slotType) {
         dateDisplay,
     };
 
-    // ── Caso speciale: "Slot prenotato" con 1 cliente già presente → slot condiviso ─
-    // Creiamo il 2° booking sullo stesso slot group-class. Con nessuno prenotato
-    // il flusso è quello standard.
-    // IMPORTANTE: includiamo anche 'cancellation_requested' perché lato server
-    // book_slot li conta nella capacità (status in confirmed/cancellation_requested).
-    const existingGC = slotType === SLOT_TYPES.GROUP_CLASS
-        ? BookingStorage.getBookingsForSlot(date, time)
-              .filter(b => (b.status === 'confirmed' || b.status === 'cancellation_requested')
-                         && b.slotType === SLOT_TYPES.GROUP_CLASS)
-        : [];
-    const isSharedFlow = slotType === SLOT_TYPES.GROUP_CLASS && existingGC.length >= 1;
-    console.log('[bookForClient] existingGC.length =', existingGC.length, 'isSharedFlow =', isSharedFlow);
-
-    if (isSharedFlow) {
-        if (existingGC.length >= 2) {
-            console.warn('[bookForClient] slot già pieno con 2 persone');
-            showToast('Slot pieno: già 2 persone prenotate.', 'error');
-            return;
-        }
-        if (typeof supabaseClient === 'undefined') {
-            showToast('Offline — impossibile creare la prenotazione ora.', 'error');
-            return;
-        }
-        const other = existingGC[0];
-
-        // book_slot(p_org_slug, ...) risolve org/capienza/tipo/prezzo server-side
-        // usando window._orgSlug. Il custom_price=15 dello slot condiviso NON è
-        // più passabile dal client (prezzo server-authoritative).
-        // TODO(server): serve supporto server per il prezzo "slot condiviso" (15€
-        //   cad. su entrambi i booking group-class quando lo slot ha 2 persone),
-        //   es. un parametro admin-only in book_slot o una RPC dedicata. Per ora
-        //   il prezzo resta quello di default dello slot_type (omesso custom_price).
-        const result = await BookingStorage.saveBookingForClient(booking, clientUserId);
-        if (!result.ok) {
-            if (result.error === 'slot_full') showToast('Slot pieno — qualcun altro ha prenotato prima.', 'error');
-            else showToast('⚠️ Prenotazione non riuscita: ' + (result.error || 'errore') + '. Riprova.', 'error');
-            if (window._currentAdminDate) renderAdminDayView(window._currentAdminDate);
-            return;
-        }
-
-        BookingStorage.fulfillPendingCancellations(date, time);
-        showToast(`Slot condiviso: ${client.name} + ${other.name}`, 'success');
-        invalidateStatsCache();
-        if (window._currentAdminDate) renderAdminDayView(window._currentAdminDate);
-        return;
-    }
-
-    // ── Flusso standard (Autonomia / Lezione di Gruppo / 1° cliente group-class) ──
+    // ── Flusso standard (tutti i tipi, incluse più persone su group-class) ──
     // NON gonfiare automaticamente la capienza override (anti-pattern §12): se lo
     // slot è pieno lasciamo fallire book_slot con 'slot_full' e mostriamo il
     // messaggio. L'aumento posti resta un'azione esplicita dell'admin (pulsante ＋
@@ -699,23 +652,15 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
         (b.status === 'confirmed' || b.status === 'cancellation_requested')
         && b.slotType === SLOT_TYPES.GROUP_CLASS
     ).length;
-    const isSharedSlot    = mainType === SLOT_TYPES.GROUP_CLASS && groupClassActiveCount >= 2;
     const canAddSlotPren  = mainType === SLOT_TYPES.GROUP_CLASS && groupClassActiveCount === 1;
 
-    // In split view il badge "Slot condiviso" sostituisce il titolo della
-    // colonna group-class, quindi non mostriamo anche il badge in alto.
-    // TODO(server): il prezzo dello slot condiviso è ora server-side e non più
-    //   fisso a 15€; mostrare l'importo solo quando disponibile dal backend.
-    const sharedBadgeHTML = (isSharedSlot && !hasMixedExtras)
-        ? `<div class="admin-shared-badge">Slot condiviso</div>`
-        : '';
     const slotPrenBtnHTML = canAddSlotPren
         ? `<button class="extra-picker-btn" style="background:#ef4444;color:#fff;border-color:#ef4444" onclick="openClientBookingPickerForSlotPrenotato('${dE}','${tE}','${pickerId}')">Slot prenotato</button>`
         : '';
 
     // ── Capacità + pip per tipo ─────────────────────────────────────────────
     // capStr e pips: tutti i tipi tranne 'cleaning'. Group-class: base capacity=0
-    // → mostra almeno 1 posto, e per shared (2 prenotazioni) sempre 2 pip rossi.
+    // → mostra almeno 1 posto (capienza decisa dal server).
     const showPips = mainType !== 'cleaning';
     let displayCap;
     if (mainType === 'group-class') {
@@ -808,12 +753,7 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
     } else {
         // Vista divisa in colonne
         const mainBookings = realBookings.filter(b => !b.slotType || b.slotType === mainType);
-        // Per group-class shared, il titolo della colonna sostituisce sia
-        // "Slot prenotato" sia il badge separato "Slot condiviso".
-        // TODO(server): prezzo condiviso server-side (non più fisso a 15€).
-        const leftColLabel = (isSharedSlot && mainType === SLOT_TYPES.GROUP_CLASS)
-            ? 'Slot condiviso'
-            : getSlotName(mainType);
+        const leftColLabel = getSlotName(mainType);
         const leftCol = `
             <div class="split-column">
                 <div class="split-col-title ${mainType}">${leftColLabel}</div>
@@ -839,7 +779,7 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
     // sibling del body, sempre disponibile a prescindere dallo stato.
     slotCard.innerHTML = headerHTML
         + pickerHTML
-        + `<div class="admin-slot-body">${sharedBadgeHTML}${extrasBarHTML}${participantsHTML}</div>`;
+        + `<div class="admin-slot-body">${extrasBarHTML}${participantsHTML}</div>`;
 
     // Salva HTML iniziale del picker per restore dopo modalità ricerca
     const pickerEl = slotCard.querySelector('.extra-picker');

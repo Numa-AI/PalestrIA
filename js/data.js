@@ -148,7 +148,7 @@ const SLOT_PRICES = {
     'cleaning': 0
 };
 
-// Prezzo effettivo di un booking: rispetta custom_price (slot condiviso),
+// Prezzo effettivo di un booking: rispetta custom_price (override prezzo per booking),
 // poi il prezzo org-scoped (OrgSettings: price.<slotType> o slot_types.default_price
 // sincronizzati lato client), infine il fallback deprecato SLOT_PRICES.
 // Usare SEMPRE questo helper al posto di SLOT_PRICES[b.slotType] quando si

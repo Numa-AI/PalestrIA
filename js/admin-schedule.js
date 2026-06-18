@@ -210,7 +210,7 @@ function _schedRenderTypes() {
                         ${st.is_active ? '' : '<span class="sched-badge sched-badge--off">disattivo</span>'}
                     </div>
                     <div class="sched-row-sub">
-                        <code>${_escHtml(st.key)}</code> · capienza ${st.default_capacity} · €${Number(st.default_price || 0).toFixed(2)}
+                        capienza ${st.default_capacity} · €${Number(st.default_price || 0).toFixed(2)}
                     </div>
                 </div>
                 <div class="sched-row-actions">
@@ -248,10 +248,6 @@ function schedEditType(id) {
                 <label class="sched-field">
                     <span>Etichetta</span>
                     <input type="text" id="stLabel" value="${_escHtml(v.label)}" placeholder="Personal Training">
-                </label>
-                <label class="sched-field">
-                    <span>Chiave (key)</span>
-                    <input type="text" id="stKey" value="${_escHtml(v.key)}" placeholder="personal-training" ${st ? 'readonly' : ''}>
                 </label>
                 <label class="sched-field">
                     <span>Colore</span>
@@ -306,15 +302,26 @@ function _schedSlugify(s) {
         .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+// Genera una chiave univoca dall'etichetta, evitando collisioni con i tipi
+// già esistenti (la chiave non è più modificabile dall'utente).
+function _schedUniqueKey(label) {
+    const base = _schedSlugify(label) || 'slot';
+    const existing = new Set((_schedData.slotTypes || []).map(s => s.key));
+    let key = base, i = 2;
+    while (existing.has(key)) key = `${base}-${i++}`;
+    return key;
+}
+
 async function schedSaveType(id) {
     const org = _schedRequireOrg();
     if (!org) return;
 
     const label = (document.getElementById('stLabel')?.value || '').trim();
-    let key = (document.getElementById('stKey')?.value || '').trim();
     if (!label) { _schedToast('⚠️ Inserisci un\'etichetta.', 'error'); return; }
-    if (!id && !key) key = _schedSlugify(label);
-    if (!key) { _schedToast('⚠️ Chiave non valida.', 'error'); return; }
+    // La chiave (key) non è più esposta in UI: per i nuovi tipi la generiamo
+    // automaticamente dall'etichetta, garantendone l'unicità. Per i tipi esistenti
+    // resta invariata (non è nel payload di update).
+    const key = id ? null : _schedUniqueKey(label);
 
     const payload = {
         label,
