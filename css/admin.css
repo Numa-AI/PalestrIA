@@ -6,6 +6,16 @@
     display: none;
 }
 
+/* Nome studio multi-parola: ogni parola va a capo invece di restare sulla
+   stessa riga. Il word-spacing enorme forza il break ad ogni spazio (i nomi
+   di una sola parola restano invariati). line-height ridotto per non gonfiare
+   l'altezza della headbar quando le righe sono più di una. */
+.adm-brand-org {
+    white-space: normal;
+    word-spacing: 100vw;
+    line-height: 1.1;
+}
+
 /* Navbar a tutta larghezza sull'admin.
    Il container globale della navbar è centrato e su desktop (≥769px) si
    restringe a 900px, mentre il corpo della dashboard arriva a 1400px / full-
