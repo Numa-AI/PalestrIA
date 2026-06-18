@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="css/login.css?v=4">
     <link rel="stylesheet" href="css/prenotazioni.css?v=11">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=2"></script>
+<script src="js/branding-boot.js?v=3"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -130,7 +130,7 @@
             <li><a href="chi-sono.html">Chi sono</a></li>
             <li><a href="dove-sono.html">Dove sono</a></li>
         </ul>
-        <p class="nav-sidebar-credit">powered by <a id="creditLink" href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link" onclick="logCreditClick(event)">Andrea Pompili</a></p>
+        <p class="nav-sidebar-credit">powered by <a id="creditLink" href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link">Andrea Pompili</a></p>
     </nav>
 
     <!-- Weekly chart modal -->
@@ -259,16 +259,17 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=10"></script>
-    <script src="js/org-settings.js?v=8"></script>
+    <script src="js/supabase-client.js?v=11"></script>
+    <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=3"></script>
-    <script src="js/data.js?v=88"></script>
-    <script src="js/auth.js?v=31"></script>
+    <script src="js/modals.js?v=2"></script>
+    <script src="js/data.js?v=89"></script>
+    <script src="js/auth.js?v=32"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
-    <script src="js/maintenance.js?v=2"></script>
-    <script src="js/push.js?v=23"></script>
-    <script src="js/chart-mini.js?v=12"></script>
+    <script src="js/maintenance.js?v=3"></script>
+    <script src="js/push.js?v=24"></script>
+    <script src="js/chart-mini.js?v=13"></script>
     <script>
         // ── Guard async: aspetta la sessione Supabase prima di controllare ─
 
@@ -424,12 +425,6 @@
                     } catch {}
                 }
                 updateNavAuth();
-                // Nascondi credit link per utente specifico
-                const _cu = getCurrentUser();
-                if (_cu && _cu.id === 'b6461979-3684-4dcb-9fbb-b164862c23fa') {
-                    const _cl = document.getElementById('creditLink');
-                    if (_cl) _cl.parentElement.style.display = 'none';
-                }
             }
             // Settings per-org (prezzi, branding, policy): carica il layer org-scoped + applica branding
             if (typeof OrgSettings !== 'undefined') {
@@ -577,9 +572,9 @@
             if (booking.slotType === 'group-class') {
                 const msg = 'Confermare l\'annullamento?\n\n' +
                     'La prenotazione sarà annullata e lo slot diventerà una Lezione di Gruppo aperta al pubblico.';
-                if (!confirm(msg)) return;
+                if (!await showConfirm({ message: msg, confirmText: 'Annulla prenotazione', cancelText: 'Indietro' })) return;
             } else {
-                if (!confirm('Confermare l\'annullamento della prenotazione?')) return;
+                if (!await showConfirm({ message: 'Confermare l\'annullamento della prenotazione?', confirmText: 'Annulla prenotazione', cancelText: 'Indietro' })) return;
             }
 
             if (typeof supabaseClient !== 'undefined' && booking._sbId) {
@@ -591,17 +586,17 @@
                     }));
                     if (error) {
                         console.error('[cancelDirect] RPC error:', error.message);
-                        alert('⚠️ Errore: ' + error.message);
+                        showAlert('Errore: ' + error.message, { type:'error' });
                         return;
                     }
                     if (data && !data.success) {
-                        alert('⚠️ ' + (data.error || 'Errore sconosciuto'));
+                        showAlert(data.error || 'Errore sconosciuto', { type:'error' });
                         return;
                     }
                     await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[cancel] booking sync:', e?.message || e));
                 } catch (e) {
                     console.error('[cancelDirect] exception:', e);
-                    alert('⚠️ Errore di rete. Riprova.');
+                    showAlert('Errore di rete. Riprova.', { type:'error' });
                     return;
                 }
             } else {
@@ -622,7 +617,7 @@
             const msg = 'Richiedere l\'annullamento?\n\n' +
                 '• Se qualcuno prenota al tuo posto, la prenotazione sarà annullata.\n' +
                 '• Se entro 2 ore dalla lezione nessuno ha preso il tuo posto, l\'annullamento viene negato e dovrai presentarti.';
-            if (!confirm(msg)) return;
+            if (!await showConfirm({ message: msg, confirmText: 'Richiedi annullamento', cancelText: 'Indietro' })) return;
 
             const booking = BookingStorage.getAllBookings().find(b => b.id === id);
             if (typeof supabaseClient !== 'undefined' && booking?._sbId) {
@@ -632,13 +627,13 @@
                     }));
                     if (error) {
                         console.error('[requestCancellation] RPC error:', error.message);
-                        alert('⚠️ Errore: ' + error.message);
+                        showAlert('Errore: ' + error.message, { type:'error' });
                         return;
                     }
                     await BookingStorage.syncFromSupabase({ ownOnly: true });
                 } catch (e) {
                     console.error('[requestCancellation] exception:', e);
-                    alert('⚠️ Errore di rete. Riprova.');
+                    showAlert('Errore di rete. Riprova.', { type:'error' });
                     return;
                 }
             } else {

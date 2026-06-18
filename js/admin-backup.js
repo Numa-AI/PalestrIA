@@ -237,12 +237,14 @@ function _exportBackupCSV(tables, statusEl) {
     if (statusEl) statusEl.textContent = `✅ Backup CSV esportato il ${new Date().toLocaleString('it-IT')}`;
 }
 
-function importBackup(input) {
+async function importBackup(input) {
     const file = input.files[0];
     if (!file) return;
-    const pw = prompt('Inserisci la password per importare il backup:');
-    if (pw !== 'Palestra123') {
-        alert('Password errata');
+    // Conferma esplicita digitata dall'utente (niente password hardcoded nel bundle).
+    // L'import è distruttivo: chiediamo di digitare IMPORTA per procedere.
+    const conferma = await showPrompt('L\'import sovrascrive i dati attuali.\n\nPer confermare, digita IMPORTA (in maiuscolo)', '', { confirmText:'Importa', placeholder:'IMPORTA' });
+    if ((conferma || '').trim().toUpperCase() !== 'IMPORTA') {
+        if (conferma !== null) showAlert('Conferma non valida. Import annullato.', { type:'warn' });
         input.value = '';
         return;
     }
@@ -278,7 +280,7 @@ function importBackup(input) {
             const exportDate = (backup.exportedAt || backup.generated_at)
                 ? new Date(backup.exportedAt || backup.generated_at).toLocaleString('it-IT')
                 : 'data sconosciuta';
-            if (!confirm(`Ripristinare il backup del ${exportDate}?\n\nConterrà ${keyCount} sezioni di dati.\n\n⚠️ ATTENZIONE: tutti i dati attuali verranno sovrascritti.`)) {
+            if (!await showConfirm(`Ripristinare il backup del ${exportDate}?\n\nConterrà ${keyCount} sezioni di dati.\n\nATTENZIONE: tutti i dati attuali verranno sovrascritti.`, { danger:true })) {
                 input.value = '';
                 return;
             }
@@ -305,6 +307,9 @@ function importBackup(input) {
                         const bRows = bookings
                             .filter(b => b.id && !b.id.startsWith('demo-') && !b.id.startsWith('_avail_'))
                             .map(b => ({
+                                // org_id forzato alla org corrente: si scarta qualsiasi org_id in arrivo dal file.
+                                // L'id (UUID PK) è server-generato → non viene mai inviato dal client.
+                                org_id:                    window._orgId,
                                 local_id:                  b.id,
                                 user_id:                   b.userId || null,
                                 date:                      b.date,
@@ -332,29 +337,47 @@ function importBackup(input) {
                     }
 
                     // 2. Payments (ledger unificato) — sostituisce crediti/debiti/bonus
+                    // SICUREZZA: il ledger è fatturato. Forziamo org_id alla org corrente
+                    // (si scarta l'org_id del file) e NON inviamo l'id client (PK server-generato),
+                    // così l'import non può iniettare/sovrascrivere righe di altri tenant né per id.
+                    // Niente più upsert onConflict:'id' → solo insert con id server-side.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('payments');
                     if (backup.data._payments) {
-                        const payRows = JSON.parse(backup.data._payments || '[]');
+                        const payRows = JSON.parse(backup.data._payments || '[]').map(p => {
+                            const { id, ...rest } = p;            // scarta l'id dal client
+                            return { ...rest, org_id: window._orgId };  // forza org corrente
+                        });
                         if (payRows.length > 0) {
-                            promises.push(_queryWithTimeout(supabaseClient.from('payments').upsert(payRows, { onConflict: 'id' }), _T).catch(e => { _restoreErrors.push('payments'); }));
+                            promises.push(_queryWithTimeout(supabaseClient.from('payments').insert(payRows), _T).catch(e => { _restoreErrors.push('payments'); }));
                         }
                     }
 
                     // 3. Client packages
+                    // SICUREZZA: org_id forzato alla org corrente, id (PK server) non inviato → insert.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('client_packages');
                     if (backup.data._client_packages) {
-                        const cpRows = JSON.parse(backup.data._client_packages || '[]');
+                        const cpRows = JSON.parse(backup.data._client_packages || '[]').map(r => {
+                            const { id, ...rest } = r;
+                            return { ...rest, org_id: window._orgId };
+                        });
                         if (cpRows.length > 0) {
-                            promises.push(_queryWithTimeout(supabaseClient.from('client_packages').upsert(cpRows, { onConflict: 'id' }), _T).catch(e => { _restoreErrors.push('client_packages'); }));
+                            promises.push(_queryWithTimeout(supabaseClient.from('client_packages').insert(cpRows), _T).catch(e => { _restoreErrors.push('client_packages'); }));
                         }
                     }
 
                     // 4. Client memberships
+                    // SICUREZZA: org_id forzato alla org corrente, id (PK server) non inviato → insert.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('client_memberships');
                     if (backup.data._client_memberships) {
-                        const cmRows = JSON.parse(backup.data._client_memberships || '[]');
+                        const cmRows = JSON.parse(backup.data._client_memberships || '[]').map(r => {
+                            const { id, ...rest } = r;
+                            return { ...rest, org_id: window._orgId };
+                        });
                         if (cmRows.length > 0) {
-                            promises.push(_queryWithTimeout(supabaseClient.from('client_memberships').upsert(cmRows, { onConflict: 'id' }), _T).catch(e => { _restoreErrors.push('client_memberships'); }));
+                            promises.push(_queryWithTimeout(supabaseClient.from('client_memberships').insert(cmRows), _T).catch(e => { _restoreErrors.push('client_memberships'); }));
                         }
                     }
 
@@ -375,30 +398,36 @@ function importBackup(input) {
                     }
 
                     // 6. Scheduling config (slot_types, time_slots_config, weekly templates)
+                    // SICUREZZA: org_id forzato alla org corrente su ogni riga (si scarta l'org_id
+                    // del file). L'id resta per preservare i riferimenti incrociati (slot_type_id, ecc.);
+                    // l'upsert per id su una riga di altro tenant è comunque respinto dalle policy RLS.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('slot_types');
                     if (backup.data._slot_types) {
-                        const stRows = JSON.parse(backup.data._slot_types || '[]');
+                        const stRows = JSON.parse(backup.data._slot_types || '[]').map(r => ({ ...r, org_id: window._orgId }));
                         if (stRows.length > 0) {
                             promises.push(_queryWithTimeout(supabaseClient.from('slot_types').upsert(stRows, { onConflict: 'id' }), _T).catch(e => { _restoreErrors.push('slot_types'); }));
                         }
                     }
                     if (backup.data._time_slots_config) {
-                        const tscRows = JSON.parse(backup.data._time_slots_config || '[]');
+                        const tscRows = JSON.parse(backup.data._time_slots_config || '[]').map(r => ({ ...r, org_id: window._orgId }));
                         if (tscRows.length > 0) {
                             promises.push(_queryWithTimeout(supabaseClient.from('time_slots_config').upsert(tscRows, { onConflict: 'id' }), _T).catch(e => { _restoreErrors.push('time_slots_config'); }));
                         }
                     }
                     if (backup.data._weekly_schedule_templates) {
-                        const wstRows = JSON.parse(backup.data._weekly_schedule_templates || '[]');
+                        const wstRows = JSON.parse(backup.data._weekly_schedule_templates || '[]').map(r => ({ ...r, org_id: window._orgId }));
                         if (wstRows.length > 0) {
                             promises.push(_queryWithTimeout(supabaseClient.from('weekly_schedule_templates').upsert(wstRows, { onConflict: 'id' }), _T).catch(e => { _restoreErrors.push('weekly_schedule_templates'); }));
                         }
                     }
 
                     // 7. Org settings (tabella Supabase, ex 'settings')
+                    // SICUREZZA: org_id forzato alla org corrente (l'onConflict è org_id,key).
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('org_settings');
                     if (backup.data._org_settings) {
-                        const sRows = JSON.parse(backup.data._org_settings || '[]');
+                        const sRows = JSON.parse(backup.data._org_settings || '[]').map(r => ({ ...r, org_id: window._orgId }));
                         if (sRows.length > 0) {
                             promises.push(_queryWithTimeout(supabaseClient.from('org_settings').upsert(sRows, { onConflict: 'org_id,key' }), _T).catch(e => { _restoreErrors.push('org_settings'); }));
                         }
@@ -446,31 +475,44 @@ function importBackup(input) {
                     }
 
                     // 10. Admin audit log
+                    // SICUREZZA: niente più blanket delete (cancellava tutto l'audit dell'org corrente).
+                    // org_id forzato alla org corrente, id (PK server) non inviato → solo insert.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('admin_audit_log');
                     if (backup.data._admin_audit_log) {
-                        const alRows = JSON.parse(backup.data._admin_audit_log || '[]');
+                        const alRows = JSON.parse(backup.data._admin_audit_log || '[]').map(r => {
+                            const { id, ...rest } = r;
+                            return { ...rest, org_id: window._orgId };
+                        });
                         if (alRows.length > 0) {
-                            await _queryWithTimeout(supabaseClient.from('admin_audit_log').delete().neq('id', '00000000-0000-0000-0000-000000000000'), _T).catch(() => {});
                             promises.push(_queryWithTimeout(supabaseClient.from('admin_audit_log').insert(alRows), _T).catch(() => { _restoreErrors.push('admin_audit_log'); }));
                         }
                     }
 
                     // 11. Admin messages
+                    // SICUREZZA: niente più blanket delete; org_id forzato, id non inviato → insert.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('admin_messages');
                     if (backup.data._admin_messages) {
-                        const amRows = JSON.parse(backup.data._admin_messages || '[]');
+                        const amRows = JSON.parse(backup.data._admin_messages || '[]').map(r => {
+                            const { id, ...rest } = r;
+                            return { ...rest, org_id: window._orgId };
+                        });
                         if (amRows.length > 0) {
-                            await _queryWithTimeout(supabaseClient.from('admin_messages').delete().neq('id', '00000000-0000-0000-0000-000000000000'), _T).catch(() => {});
                             promises.push(_queryWithTimeout(supabaseClient.from('admin_messages').insert(amRows), _T).catch(() => { _restoreErrors.push('admin_messages'); }));
                         }
                     }
 
                     // 12. Client notifications
+                    // SICUREZZA: niente più blanket delete; org_id forzato, id non inviato → insert.
+                    // TODO: spostare l'import su RPC server-side che valida ownership.
                     _restoreStep('client_notifications');
                     if (backup.data._client_notifications) {
-                        const cnRows = JSON.parse(backup.data._client_notifications || '[]');
+                        const cnRows = JSON.parse(backup.data._client_notifications || '[]').map(r => {
+                            const { id, ...rest } = r;
+                            return { ...rest, org_id: window._orgId };
+                        });
                         if (cnRows.length > 0) {
-                            await _queryWithTimeout(supabaseClient.from('client_notifications').delete().neq('id', '00000000-0000-0000-0000-000000000000'), _T).catch(() => {});
                             promises.push(_queryWithTimeout(supabaseClient.from('client_notifications').insert(cnRows), _T).catch(() => { _restoreErrors.push('client_notifications'); }));
                         }
                     }
@@ -495,7 +537,7 @@ function importBackup(input) {
                 : '✅ Backup ripristinato. Ricarico...';
             setTimeout(() => location.reload(), 1200);
         } catch (err) {
-            alert('Errore durante l\'importazione: ' + err.message);
+            showAlert('Errore durante l\'importazione: ' + err.message, { type:'error' });
             const s = document.getElementById('backupStatus');
             if (s) s.textContent = '❌ Importazione fallita: ' + err.message;
         } finally {
@@ -674,20 +716,28 @@ async function exportData() {
     }
 }
 
-function resetDemoData() {
-    if (confirm('⚠️ ATTENZIONE: Questo cancellerà tutti i dati esistenti e genererà nuovi dati demo da Gennaio al 15 Marzo. Continuare?')) {
+async function resetDemoData() {
+    if (await showConfirm({
+        title: 'Rigenera dati demo',
+        message: 'ATTENZIONE: Questo cancellerà tutti i dati esistenti e genererà nuovi dati demo da Gennaio al 15 Marzo. Continuare?',
+        confirmText: 'Continua', danger: true,
+    })) {
         BookingStorage._cache = [];
         localStorage.removeItem(BookingStorage.STATS_KEY);
         localStorage.removeItem('scheduleOverrides');
         localStorage.removeItem('dataClearedByUser');
         BookingStorage.initializeDemoData();
-        alert('✅ Dati demo rigenerati con successo!');
+        await showAlert('Dati demo rigenerati con successo!', { type: 'success' });
         location.reload();
     }
 }
 
 async function clearAllData() {
-    if (!confirm('⚠️ ATTENZIONE: Questo eliminerà definitivamente tutte le prenotazioni e i dati sia localmente che su Supabase. NON verranno generati nuovi dati demo. Continuare?')) return;
+    if (!await showConfirm({
+        title: 'Elimina tutti i dati',
+        message: 'ATTENZIONE: Questo eliminerà definitivamente tutte le prenotazioni e i dati sia localmente che su Supabase. NON verranno generati nuovi dati demo. Continuare?',
+        confirmText: 'Elimina tutto', danger: true,
+    })) return;
 
     // 1. Cancella Supabase PRIMA del localStorage — così il sync post-reload
     //    non riscarica dati che stiamo per eliminare.
@@ -699,7 +749,7 @@ async function clearAllData() {
         const { error: rpcErr } = await supabaseClient.rpc('admin_clear_all_data');
         if (rpcErr) {
             console.error('[Supabase] admin_clear_all_data RPC error:', rpcErr.message, rpcErr.code);
-            alert('⚠️ Errore durante la cancellazione su Supabase: ' + rpcErr.message);
+            showAlert('Errore durante la cancellazione su Supabase: ' + rpcErr.message, { type: 'error' });
             return;
         }
         const now = new Date().toISOString();
@@ -727,14 +777,15 @@ async function clearAllData() {
         } catch (_) {}
     }
 
-    alert('✅ Tutti i dati sono stati eliminati (localStorage + Supabase).');
+    await showAlert('Tutti i dati sono stati eliminati (localStorage + Supabase).', { type: 'success' });
     location.reload();
 }
 
-function pruneOldData() {
-    const months = parseInt(prompt(
-        'Eliminare dati demo e prenotazioni più vecchie di quanti mesi?\n(es. 6 = tutto ciò che precede 6 mesi fa)',
-        '12'
+async function pruneOldData() {
+    const months = parseInt(await showPrompt(
+        'Eliminare dati demo e prenotazioni più vecchie di quanti mesi?',
+        '12',
+        { numeric: true, subtitle: 'es. 6 = tutto ciò che precede 6 mesi fa', confirmText: 'Avanti' }
     ));
     if (!months || isNaN(months) || months <= 0) return;
 
@@ -742,7 +793,11 @@ function pruneOldData() {
     cutoff.setMonth(cutoff.getMonth() - months);
     const cutoffStr = _localDateStr(cutoff);
 
-    if (!confirm(`⚠️ Verranno eliminati definitivamente:\n• Tutte le prenotazioni DEMO\n• Prenotazioni reali con data precedente al ${cutoff.toLocaleDateString('it-IT')}\n\nContinuare?`)) return;
+    if (!await showConfirm({
+        title: 'Elimina dati storici',
+        message: `Verranno eliminati definitivamente:\n• Tutte le prenotazioni DEMO\n• Prenotazioni reali con data precedente al ${cutoff.toLocaleDateString('it-IT')}\n\nContinuare?`,
+        confirmText: 'Elimina', danger: true,
+    })) return;
 
     // 1. Rimuovi prenotazioni demo (sempre) + prenotazioni reali più vecchie del cutoff
     const bookings = BookingStorage.getAllBookings();
@@ -752,7 +807,7 @@ function pruneOldData() {
     // Impedisci che initializeDemoData rigeneri i dati al prossimo reload
     localStorage.setItem('dataClearedByUser', 'true');
 
-    alert('✅ Dati storici e demo eliminati.');
+    await showAlert('Dati storici e demo eliminati.', { type: 'success' });
     location.reload();
 }
 

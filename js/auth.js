@@ -8,18 +8,32 @@ window._currentUser = null;
 let _isManualLogout = false;
 
 // ── Phone normalization ───────────────────────────────────────────────────────
-// Returns E.164 format (+39XXXXXXXXXX) for WhatsApp API compatibility.
-// La regola "starts with 39" considera il prefisso paese SOLO se la lunghezza
-// totale è 12 (39 + 10 cifre cellulare). Senza questo controllo, un cellulare
-// 10-digit che inizia per 39X (es. 392, 393, 395...) verrebbe interpretato come
-// "ha già il +39" e perderebbe le prime 2 cifre.
+// Restituisce il formato E.164 (+39XXXXXXXXXX) per la compatibilità con le API WhatsApp.
+// Regole (valutate in quest'ordine):
+//   1) prefisso internazionale già presente (+ o 00) → preservalo, non forzare +39;
+//   2) numero nazionale con 0 iniziale (fisso, es. 030...) → +39 + numero senza lo 0;
+//   3) numero plausibilmente italiano (mobile 9-10 cifre) → antepone +39;
+//      ATTENZIONE: i mobile IT iniziano spesso per 3 (e quindi 39, 392, 393...) → NON
+//      vanno scambiati per "hanno già il prefisso 39". Si applica +39 SOLO dopo aver
+//      validato la lunghezza nazionale; un "39XXXXXXXX" (cellulare che inizia per 39)
+//      ottiene quindi +39 39... correttamente, senza perdere le prime due cifre;
+//   4) numeri non plausibilmente italiani → restituiti senza forzare +39.
 function normalizePhone(raw) {
     if (!raw) return '';
-    let n = raw.replace(/[\s\-().]/g, '');
-    if      (n.startsWith('0039'))                                      n = '+39' + n.slice(4);
-    else if (n.startsWith('39') && n.length === 12 && n[0] !== '+')     n = '+' + n;
-    else if (n.startsWith('0'))                                         n = '+39' + n.slice(1);
-    else if (!n.startsWith('+'))                                        n = '+39' + n;
+    let n = String(raw).replace(/[\s\-().]/g, '');
+
+    // 1) Già in formato internazionale: preserva.
+    if (n.startsWith('+'))   return n;
+    if (n.startsWith('00'))  return '+' + n.slice(2);
+
+    // 2) Numero nazionale con 0 iniziale (tipico dei fissi): +39 senza lo 0.
+    if (n.startsWith('0'))   return '+39' + n.slice(1);
+
+    // 3) Numero nazionale plausibilmente italiano (9-10 cifre, solo numerico):
+    //    es. mobile "3xx xxxxxxx" (10 cifre) o fisso compatto (9-10) → +39.
+    if (/^\d{9,10}$/.test(n)) return '+39' + n;
+
+    // 4) Non plausibilmente italiano (lunghezza fuori range): non forzare +39.
     return n;
 }
 
@@ -143,9 +157,25 @@ let _refreshInFlight = null;
 function _readSessionFromStorageDirect() {
     try {
         let raw = null;
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && /^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; }
+        // L4: pinna il ref del progetto ricavandolo da SUPABASE_URL (sottodominio prima
+        // di .supabase.co) e costruisci la chiave esatta sb-<ref>-auth-token. Su origin
+        // condivisa la regex wildcard poteva prendere il token del progetto sbagliato.
+        let projectRef = null;
+        try {
+            if (typeof SUPABASE_URL !== 'undefined') {
+                const host = new URL(SUPABASE_URL).hostname; // <ref>.supabase.co
+                projectRef = host.split('.')[0] || null;
+            }
+        } catch (_) {}
+        if (projectRef) {
+            raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+        }
+        // Fallback: se la chiave pinnata non è presente, ripiega sulla scansione wildcard.
+        if (!raw) {
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && /^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; }
+            }
         }
         if (!raw) return null;
         if (raw.startsWith('base64-')) {
@@ -644,15 +674,33 @@ async function logoutUser() {
     window._currentUser = null;
     localStorage.removeItem('adminAuthenticated');
     sessionStorage.removeItem('adminAuth');
-    // Svuota cache in memoria
-    BookingStorage._cache = [];
-    UserStorage._cache = [];
+
+    // ── Teardown completo dello stato per-tenant (H2: bleed cross-tenant su device
+    //    condiviso). PRIMA i reset in-memory/localStorage, POI il signOut esistente.
+    //    Tutto best-effort: un errore non deve bloccare il logout/redirect.
+    // Svuota cache in memoria booking/utenti
+    try { BookingStorage._cache = []; } catch (_) {}
+    try { UserStorage._cache = []; } catch (_) {}
     // Invalida la cache override (namespaced per org): evita bleed tra account diversi
-    BookingStorage._scheduleOverridesCache = null;
-    BookingStorage._scheduleOverridesCacheOrg = null;
+    try { BookingStorage._scheduleOverridesCache = null; BookingStorage._scheduleOverridesCacheOrg = null; } catch (_) {}
+    // gym_stats: ledger statistiche locale → rimuovi da localStorage + reset cache
+    try { if (typeof BookingStorage.clearStats === 'function') BookingStorage.clearStats(); } catch (_) {}
+    // _availabilityByKey: capienze/posti residui server-authoritative → reset Map/oggetto
+    try { if (typeof BookingStorage.clearAvailability === 'function') BookingStorage.clearAvailability(); } catch (_) {}
+    // Schede + log allenamento: cache in memoria + localStorage TTL (admin e client)
+    try { if (typeof WorkoutPlanStorage !== 'undefined' && WorkoutPlanStorage.clearCache) WorkoutPlanStorage.clearCache(); } catch (_) {}
+    try { if (typeof WorkoutLogStorage !== 'undefined' && WorkoutLogStorage.clearCache) WorkoutLogStorage.clearCache(); } catch (_) {}
+    // Push: rimuove backup locale + unsubscribe best-effort
+    try { if (typeof teardownPushOnLogout === 'function') await teardownPushOnLogout(); } catch (_) {}
+    // OrgSettings: svuota cache, chiavi localStorage org_* correnti, canale Realtime
+    try { if (typeof OrgSettings !== 'undefined' && OrgSettings.reset) OrgSettings.reset(); } catch (_) {}
+    // Branding snapshot (chiave unica non namespaced): evita flash brand di A su B
+    try { localStorage.removeItem('_brandingSnapshot'); } catch (_) {}
+
     // Pulisce il contesto org (claim app_metadata)
     window._orgId = null;
     window._orgRole = null;
+    window._orgSlug = null;
     // signOut con timeout: se Supabase non risponde entro 3s, procedi comunque
     try {
         await Promise.race([

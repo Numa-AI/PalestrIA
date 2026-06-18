@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://rwaiekhllujximrqftmp.supabase.co" crossorigin>
     <link rel="stylesheet" href="css/tablet.css?v=5">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=2"></script>
+<script src="js/branding-boot.js?v=3"></script>
 </head>
 <body class="tab-body">
 
@@ -94,7 +94,8 @@
     <div id="tabToastContainer" class="tab-toast-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=10"></script>
+    <script src="js/supabase-client.js?v=11"></script>
+    <script src="js/modals.js?v=2"></script>
     <script>
     /* ═══════════════════════════════════════════════════════════════════════════
        TABLET ALLENAMENTO — Standalone kiosk mode
@@ -119,6 +120,16 @@
     // su "Caricamento..." per race condition tra promise interlacciate.
     let _loadingInProgress = false;
     const INACTIVITY_MS = 20 * 60 * 1000; // 20 minutes
+
+    // ── Kiosk client ISOLATO (fix C2) ───────────────────────────────────────
+    // Il tablet è un kiosk condiviso e NON deve MAI riusare la sessione admin
+    // lasciata in localStorage (storicamente operava con privilegi admin
+    // sull'intera org → data-leak/abuso). Usiamo un client Supabase dedicato,
+    // ANONIMO e senza persistenza sessione (storageKey isolato), che parla solo
+    // con le RPC kiosk_* (SECURITY DEFINER, vincolate al singolo uid scansionato).
+    const kioskClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, storageKey: 'sb-kiosk-isolated' }
+    });
 
     // ── Helpers ───────────────────────────────────────────────────────────
     function _esc(str) {
@@ -342,53 +353,32 @@
         const aborted = () => _userId !== userId;
 
         try {
-            // Step 1: plan (critico) + profile (best-effort, solo per nome display).
-            // profile e plan in Promise.allSettled perche' un timeout/errore sulla
-            // tabella profiles non deve bloccare il caricamento della scheda.
-            const [profileRes, plansRes] = await Promise.allSettled([
-                _queryWithTimeout(supabaseClient.from('profiles').select('name, email').eq('id', userId).single()),
-                _queryWithTimeout(supabaseClient.from('workout_plans').select('*, workout_exercises(*)').eq('user_id', userId).eq('active', true).order('updated_at', { ascending: false }).limit(1))
-            ]);
-
+            // Carico scheda + esercizi + log (ultimi 30 gg) in un'unica RPC kiosk
+            // anonima, vincolata al solo uid scansionato (fix C2: niente più query
+            // dirette sulle tabelle con la sessione admin riusata).
+            const loadRes = await _queryWithTimeout(kioskClient.rpc('kiosk_load_workout', { p_uid: userId }));
             if (aborted()) return;
+            if (loadRes.error) throw loadRes.error;
+            const payload = loadRes.data || {};
 
-            _userName = profileRes.status === 'fulfilled'
-                ? (profileRes.value.data?.name || profileRes.value.data?.email || 'Utente')
-                : 'Utente';
+            _userName = payload.user_name || 'Utente';
 
-            if (plansRes.status === 'rejected') throw plansRes.reason;
-            const plansData = plansRes.value;
-            if (plansData.error) throw plansData.error;
-            if (!plansData.data?.length) {
+            if (!payload.plan) {
                 if (statusEl) statusEl.textContent = 'Nessuna scheda attiva trovata per questo utente.';
                 _userId = null;
                 _startScanner();
                 return;
             }
 
-            _plan = plansData.data[0];
+            _plan = payload.plan;
+            _plan.workout_exercises = payload.exercises || [];
             _exercises = (_plan.workout_exercises || []).sort((a, b) => a.sort_order - b.sort_order);
 
-            // Step 2: exercise catalog (only needed names) + logs (last 30 days) in parallel
-            const exIds = _exercises.map(e => e.id);
-            const exNames = [...new Set(_exercises.map(e => e.exercise_name))];
-            const cutoff = _localDate(new Date(Date.now() - 30 * 86400000));
-            const logsPromise = exIds.length
-                ? _queryWithTimeout(supabaseClient.from('workout_logs')
-                    .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rpe')
-                    .in('exercise_id', exIds).eq('user_id', userId)
-                    .gte('log_date', cutoff)
-                    .order('log_date', { ascending: false })
-                    .order('set_number', { ascending: true }))
-                : Promise.resolve({ data: [] });
-
-            const [, logsRes] = await Promise.all([
-                _loadExDB(exNames),
-                logsPromise
-            ]);
+            // Catalogo esercizi (per picker/thumbnail) via RPC kiosk org-aware.
+            await _loadExDB();
 
             if (aborted()) return;
-            _logs = logsRes.data || [];
+            _logs = payload.logs || [];
 
             // Persist uid in URL so refresh keeps the session
             const url = new URL(window.location);
@@ -423,12 +413,11 @@
         }
     }
 
-    async function _loadExDB(exerciseNames) {
-        if (_exDBLoaded) return;
+    async function _loadExDB() {
+        if (_exDBLoaded || !_userId) return;
         try {
-            // Load ALL exercises for picker support
-            const { data } = await _queryWithTimeout(supabaseClient.from('imported_exercises')
-                .select('nome_it, nome_en, categoria, slug, immagine, immagine_thumbnail, video'));
+            // Catalogo completo (per picker) via RPC kiosk, org-aware sull'uid.
+            const { data } = await _queryWithTimeout(kioskClient.rpc('kiosk_exercise_catalog', { p_uid: _userId }));
             _exDB = (data || []).map(e => ({
                 nome_it: e.nome_it, nome_en: e.nome_en || '', categoria: e.categoria,
                 slug: e.slug, img: e.immagine_thumbnail || e.immagine || '',
@@ -562,8 +551,8 @@
                     <div class="all-ss-header" onclick="toggleTabSs('${ssId}')">
                         <div class="all-ss-thumbs">
                             <span class="all-ss-badge">SS</span>
-                            ${th1?`<img src="${th1}" class="all-ss-thumb" alt="" loading="lazy" onclick="event.stopPropagation();showTabExDetail('${_esc(sl1)}')">` :''}
-                            ${th2?`<img src="${th2}" class="all-ss-thumb" alt="" loading="lazy" onclick="event.stopPropagation();showTabExDetail('${_esc(sl2)}')">` :''}
+                            ${th1?`<img src="${_esc(th1)}" class="all-ss-thumb" alt="" loading="lazy" onclick="event.stopPropagation();showTabExDetail('${_esc(sl1)}')">` :''}
+                            ${th2?`<img src="${_esc(th2)}" class="all-ss-thumb" alt="" loading="lazy" onclick="event.stopPropagation();showTabExDetail('${_esc(sl2)}')">` :''}
                         </div>
                         <div class="all-ss-info">
                             <div class="all-ss-names">
@@ -585,7 +574,7 @@
 
                     html += `<div class="all-ss-divider">Esercizio ${idx+1}</div>`;
                     html += `<div class="all-ss-ex-header">
-                        ${sT?`<img src="${sT}" alt="" loading="lazy" onclick="showTabExDetail('${_esc(sS)}')">`:''}
+                        ${sT?`<img src="${_esc(sT)}" alt="" loading="lazy" onclick="showTabExDetail('${_esc(sS)}')">`:''}
                         <div class="all-ss-ex-header-info">
                             <div class="all-ss-ex-header-name">${_esc(ssEx.exercise_name)}<button class="tab-ex-edit-btn" onclick="showTabEditExercise('${ssEx.id}')" title="Modifica">&#9998;</button></div>
                             <div class="all-ss-ex-header-target">${ssEx.sets} \u00d7 ${ssEx.reps}${ssEx.rest_seconds?' \u00b7 '+ssEx.rest_seconds+'s pausa':' \u00b7 no pausa'}</div>
@@ -647,7 +636,7 @@
                 </div>
                 <div class="tab-ex-swipe-content">
                 <div class="tab-ex-header" onclick="toggleTabEx('${ex.id}')">
-                    ${thumb ? `<img src="${thumb}" class="tab-ex-thumb" alt="" loading="lazy"${dbEx?.slug ? ` onclick="event.stopPropagation();showTabExDetail('${_esc(dbEx.slug)}')"` : ''}>` : '<div class="tab-ex-thumb-placeholder"></div>'}
+                    ${thumb ? `<img src="${_esc(thumb)}" class="tab-ex-thumb" alt="" loading="lazy"${dbEx?.slug ? ` onclick="event.stopPropagation();showTabExDetail('${_esc(dbEx.slug)}')"` : ''}>` : '<div class="tab-ex-thumb-placeholder"></div>'}
                     <div class="tab-ex-info">
                         <div class="tab-ex-name">${_esc(ex.exercise_name)}<button class="tab-ex-edit-btn" onclick="event.stopPropagation();showTabEditExercise('${ex.id}')" title="Modifica esercizio">&#9998;</button></div>
                         <div class="tab-ex-target">${target}${!isCardio && ex.rest_seconds ? ' &middot; rec. ' + ex.rest_seconds + 's' : ''}</div>
@@ -775,13 +764,13 @@
     async function renameTabPlan() {
         if (!_plan) return;
         const current = _plan.name || '';
-        const next = prompt('Nuovo nome scheda:', current);
+        const next = await showPrompt('Nuovo nome scheda:', current);
         if (next == null) return;
         const trimmed = next.trim();
         if (!trimmed || trimmed === current) return;
         try {
             const { error } = await _queryWithTimeout(
-                supabaseClient.from('workout_plans').update({ name: trimmed }).eq('id', _plan.id)
+                kioskClient.rpc('kiosk_rename_plan', { p_uid: _userId, p_plan_id: _plan.id, p_name: trimmed })
             );
             if (error) throw error;
             _plan.name = trimmed;
@@ -885,7 +874,7 @@
             }
 
             const { error: saveErr } = await _queryWithTimeout(
-                supabaseClient.from('workout_exercises').update(updates).eq('id', exId)
+                kioskClient.rpc('kiosk_update_exercise', { p_uid: _userId, p_ex_id: exId, p_updates: updates })
             );
             if (saveErr) throw saveErr;
 
@@ -897,7 +886,7 @@
             renderTabScheda();
         } catch (err) {
             console.error('Errore salvataggio:', err);
-            alert('Errore nel salvataggio');
+            showAlert('Errore nel salvataggio', { type:'error' });
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = 'Salva modifiche'; }
         }
@@ -956,9 +945,7 @@
                 return;
             }
             const { data, error: logErr } = await _queryWithTimeout(
-                supabaseClient.from('workout_logs')
-                    .upsert(batch, { onConflict: 'exercise_id,user_id,log_date,set_number' })
-                    .select()
+                kioskClient.rpc('kiosk_save_logs', { p_uid: _userId, p_logs: batch })
             );
             if (logErr) throw logErr;
             if (data) {
@@ -1014,18 +1001,15 @@
     }
 
     async function tabDeleteLog(exId, btn) {
-        if (!confirm('Eliminare il log di oggi per questo esercizio?')) return;
+        if (!await showConfirm('Eliminare il log di oggi per questo esercizio?')) return;
         if (!_userId) return;
         const today = _localDate();
         btn.disabled = true;
         try {
-            const todayForEx = _logs.filter(l => l.exercise_id === exId && l.log_date === today);
-            for (const log of todayForEx) {
-                const { error: delErr } = await _queryWithTimeout(
-                    supabaseClient.from('workout_logs').delete().eq('id', log.id)
-                );
-                if (delErr) throw delErr;
-            }
+            const { error: delErr } = await _queryWithTimeout(
+                kioskClient.rpc('kiosk_delete_logs', { p_uid: _userId, p_exercise_id: exId, p_date: today })
+            );
+            if (delErr) throw delErr;
             _logs = _logs.filter(l => !(l.exercise_id === exId && l.log_date === today));
             _toast('Log eliminato');
             renderTabScheda();
@@ -1048,31 +1032,21 @@
         c.innerHTML = '<div class="tab-loading">Caricamento progressi...</div>';
 
         try {
-            // Fetch all plans + logs (last 90 days, only needed columns) in parallel.
-            // Timeout 15s su entrambe le query: senza, in caso di auth lock contention
-            // restavano appese e il tab Progressi era bloccato su "Caricamento progressi...".
-            const progCutoff = _localDate(new Date(Date.now() - 90 * 86400000));
-            const { data: allPlans, error: plansErr } = await _queryWithTimeout(supabaseClient
-                .from('workout_plans')
-                .select('id, workout_exercises(id, exercise_name, muscle_group, sets, reps, weight_kg)')
-                .eq('user_id', _userId), 15000);
-            if (plansErr) throw plansErr;
+            // Tutti gli esercizi + log (ultimi 90 gg) via RPC kiosk, vincolata
+            // all'uid (fix C2). Timeout 15s: senza, in caso di lentezza il tab
+            // Progressi restava appeso su "Caricamento progressi...".
+            const { data: progData, error: progErr } = await _queryWithTimeout(
+                kioskClient.rpc('kiosk_load_progress', { p_uid: _userId }), 15000);
+            if (progErr) throw progErr;
 
-            const allEx = (allPlans || []).flatMap(p => p.workout_exercises || []);
+            const allEx = (progData && progData.exercises) || [];
             const allExIds = allEx.map(e => e.id);
             if (!allExIds.length) {
                 c.innerHTML = '<div class="tab-empty">Nessun esercizio nelle schede.</div>';
                 return;
             }
 
-            const { data: logs, error: logsErr } = await _queryWithTimeout(supabaseClient
-                .from('workout_logs')
-                .select('exercise_id,log_date,set_number,reps_done,weight_done')
-                .in('exercise_id', allExIds)
-                .eq('user_id', _userId)
-                .gte('log_date', progCutoff)
-                .order('log_date', { ascending: true }), 15000);
-            if (logsErr) throw logsErr;
+            const logs = (progData && progData.logs) || [];
 
             if (!logs?.length) {
                 c.innerHTML = '<div class="tab-empty">Nessun log registrato. Inizia ad allenarti!</div>';
@@ -1443,7 +1417,7 @@
         const shown = exercises.slice(0, 50);
         listEl.innerHTML = shown.map(ex => `
             <div class="tab-picker-item">
-                <img src="${ex.img}" class="tab-picker-item-img" alt="" loading="lazy">
+                <img src="${_esc(ex.img)}" class="tab-picker-item-img" alt="" loading="lazy">
                 <div class="tab-picker-item-info" onclick="tabPickExercise('${_esc(ex.nome_it).replace(/'/g, "\\'")}')">
                     <span class="tab-picker-item-name">${_esc(ex.nome_it)}</span>
                     <span class="tab-picker-item-cat">${_esc(ex.categoria)}</span>
@@ -1461,15 +1435,15 @@
 
         let sets = 1, reps = '20', rest = 0;
         if (!isCardio) {
-            const setsVal = prompt('Numero di serie:', '3');
+            const setsVal = await showPrompt('Numero di serie:', '3', { numeric:true });
             if (setsVal === null) return;
             sets = parseInt(setsVal) || 3;
 
-            const repsVal = prompt('Numero di ripetizioni:', '10');
+            const repsVal = await showPrompt('Numero di ripetizioni:', '10', { numeric:true });
             if (repsVal === null) return;
             reps = repsVal || '10';
 
-            const restVal = prompt('Riposo tra le serie (secondi):', '90');
+            const restVal = await showPrompt('Riposo tra le serie (secondi):', '90', { numeric:true });
             if (restVal === null) return;
             rest = parseInt(restVal) || 90;
         }
@@ -1490,16 +1464,12 @@
                 rest_seconds: rest,
                 notes: null,
             };
-            const { data: newEx, error } = await _queryWithTimeout(
-                supabaseClient
-                    .from('workout_exercises')
-                    .insert(exerciseData)
-                    .select()
-                    .single()
+            const { data: newRows, error } = await _queryWithTimeout(
+                kioskClient.rpc('kiosk_add_exercises', { p_uid: _userId, p_plan_id: _plan.id, p_rows: [exerciseData] })
             );
             if (error) throw error;
-            _exercises.push(newEx);
-            _plan.workout_exercises = _exercises;
+            const newEx = (newRows || [])[0];
+            if (newEx) { _exercises.push(newEx); _plan.workout_exercises = _exercises; }
             renderTabScheda();
             _toast('Esercizio aggiunto!');
         } catch (e) {
@@ -1509,7 +1479,7 @@
     }
 
     async function tabPickCustom() {
-        const name = prompt('Nome esercizio personalizzato:');
+        const name = await showPrompt('Nome esercizio personalizzato:');
         if (!name || !name.trim()) return;
         await tabPickExercise(name.trim());
     }
@@ -1530,12 +1500,12 @@
         }, 50);
     }
 
-    function _tabSsPickExercise(exerciseName) {
+    async function _tabSsPickExercise(exerciseName) {
         const ex = _findEx(exerciseName);
         const isCardio = ex && (ex.categoria || '').toLowerCase() === 'cardio';
         let reps = '10';
         if (!isCardio) {
-            const rv = prompt('Numero di ripetizioni:', '10');
+            const rv = await showPrompt('Numero di ripetizioni:', '10', { numeric:true });
             if (rv === null) { _tabSsMode = false; tabCloseExercisePicker(); return; }
             reps = rv || '10';
         } else { reps = '20'; }
@@ -1550,10 +1520,10 @@
             const t = document.querySelector('#tabExPickerOverlay .tab-picker-title');
             if (t) t.textContent = 'Super Serie \u2014 Esercizio 2 di 2';
         } else {
-            const sv = prompt('Numero di serie (per entrambi):', '3');
+            const sv = await showPrompt('Numero di serie (per entrambi):', '3', { numeric:true });
             if (sv === null) { _tabSsMode = false; tabCloseExercisePicker(); return; }
             const sets = parseInt(sv) || 3;
-            const rv2 = prompt('Riposo dopo la super serie (secondi):', '90');
+            const rv2 = await showPrompt('Riposo dopo la super serie (secondi):', '90', { numeric:true });
             if (rv2 === null) { _tabSsMode = false; tabCloseExercisePicker(); return; }
             const rest = parseInt(rv2) || 90;
             _tabSsFirst.sets = sets;
@@ -1566,7 +1536,7 @@
     async function _tabSaveSupersetPair(first, second, rest) {
         const dayLabel = _activeDay || 'Giorno A';
         try {
-            // tablet.html non carica js/data.js: insert diretti via supabaseClient
+            // tablet.html non carica js/data.js: insert via RPC kiosk (vincolata all'uid)
             const maxOrder = _exercises.reduce((m, e) => Math.max(m, e.sort_order), -1);
             const groupId = crypto.randomUUID();
             const rows = [
@@ -1598,13 +1568,10 @@
                 },
             ];
             const { data, error } = await _queryWithTimeout(
-                supabaseClient
-                    .from('workout_exercises')
-                    .insert(rows)
-                    .select()
+                kioskClient.rpc('kiosk_add_exercises', { p_uid: _userId, p_plan_id: _plan.id, p_rows: rows })
             );
             if (error) throw error;
-            _exercises.push(...data);
+            _exercises.push(...(data || []));
             _plan.workout_exercises = _exercises;
             renderTabScheda();
             _toast('Super Serie aggiunta!');
@@ -1800,18 +1767,19 @@
         const base = Number.isFinite(minSort) ? minSort : 0;
 
         try {
+            const orders = [];
             for (let i = 0; i < newOrder.length; i++) {
                 const newSort = base + i;
                 if (newOrder[i].sort_order !== newSort) {
-                    const { error } = await _queryWithTimeout(
-                        supabaseClient
-                            .from('workout_exercises')
-                            .update({ sort_order: newSort })
-                            .eq('id', newOrder[i].id)
-                    );
-                    if (error) throw error;
+                    orders.push({ id: newOrder[i].id, sort_order: newSort });
                     newOrder[i].sort_order = newSort;
                 }
+            }
+            if (orders.length) {
+                const { error } = await _queryWithTimeout(
+                    kioskClient.rpc('kiosk_reorder_exercises', { p_uid: _userId, p_orders: orders })
+                );
+                if (error) throw error;
             }
             _exercises = (_plan.workout_exercises || []).sort((a, b) => a.sort_order - b.sort_order);
             renderTabScheda();
@@ -1824,13 +1792,10 @@
 
     // ── Delete from plan ─────────────────────────────────────────────────
     async function deleteExerciseFromTabPlan(exId) {
-        if (!confirm('Eliminare questo esercizio dalla scheda?')) return;
+        if (!await showConfirm('Eliminare questo esercizio dalla scheda?')) return;
         try {
             const { error } = await _queryWithTimeout(
-                supabaseClient
-                    .from('workout_exercises')
-                    .delete()
-                    .eq('id', exId)
+                kioskClient.rpc('kiosk_delete_exercise', { p_uid: _userId, p_ex_id: exId })
             );
             if (error) throw error;
             _exercises = _exercises.filter(e => e.id !== exId);
@@ -1844,13 +1809,10 @@
     }
 
     async function deleteSupersetFromTabPlan(groupId) {
-        if (!confirm('Eliminare questa super serie dalla scheda?')) return;
+        if (!await showConfirm('Eliminare questa super serie dalla scheda?')) return;
         try {
             const { error } = await _queryWithTimeout(
-                supabaseClient
-                    .from('workout_exercises')
-                    .delete()
-                    .eq('superset_group', groupId)
+                kioskClient.rpc('kiosk_delete_superset', { p_uid: _userId, p_group_id: groupId })
             );
             if (error) throw error;
             _exercises = _exercises.filter(e => e.superset_group !== groupId);
@@ -1889,38 +1851,21 @@
         if (_loadingInProgress) return;
         const uidAtStart = _userId;
         try {
-            // Ricarica piano + esercizi (possono essere cambiati durante il background:
-            // edit, aggiunta, rimozione, riordino)
-            const { data: planData, error: planErr } = await _queryWithTimeout(
-                supabaseClient.from('workout_plans')
-                    .select('*, workout_exercises(*)')
-                    .eq('id', _plan.id)
-                    .single()
+            // Ricarica scheda + esercizi + log (ultimi 30 gg) via RPC kiosk: piano
+            // ed esercizi possono essere cambiati durante il background (edit,
+            // aggiunta, rimozione, riordino).
+            const { data: refreshed, error: refErr } = await _queryWithTimeout(
+                kioskClient.rpc('kiosk_load_workout', { p_uid: _userId })
             );
-            if (planErr) throw planErr;
+            if (refErr) throw refErr;
             // Se l'utente ha cambiato sessione mentre eravamo in background,
             // abortisci prima di sovrascrivere lo stato della nuova sessione.
             if (_userId !== uidAtStart) return;
-            if (planData) {
-                _plan = planData;
+            if (refreshed && refreshed.plan) {
+                _plan = refreshed.plan;
+                _plan.workout_exercises = refreshed.exercises || [];
                 _exercises = (_plan.workout_exercises || []).sort((a, b) => a.sort_order - b.sort_order);
-            }
-
-            // Ricarica log (ultimi 30 gg) con gli exercise_id aggiornati
-            const exIds = _exercises.map(e => e.id);
-            if (exIds.length) {
-                const cutoff = _localDate(new Date(Date.now() - 30 * 86400000));
-                const { data: logsData, error: logsErr } = await _queryWithTimeout(
-                    supabaseClient.from('workout_logs')
-                        .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rpe')
-                        .in('exercise_id', exIds).eq('user_id', _userId)
-                        .gte('log_date', cutoff)
-                        .order('log_date', { ascending: false })
-                        .order('set_number', { ascending: true })
-                );
-                if (logsErr) throw logsErr;
-                if (_userId !== uidAtStart) return;
-                if (logsData) _logs = logsData;
+                _logs = refreshed.logs || [];
             } else {
                 _logs = [];
             }

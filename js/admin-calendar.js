@@ -1,4 +1,7 @@
 // Admin Calendar Functions
+// L10: riferimento al handler resize per poterlo rimuovere prima di ri-aggiungerlo.
+let _adminCalResizeHandler = null;
+
 function setupAdminCalendar() {
     renderAdminCalendar();
 
@@ -15,8 +18,12 @@ function setupAdminCalendar() {
     });
 
     // Sticky: navbar → admin-tabs → week-bar, senza gap
+    // L10: rimuovi il listener precedente prima di ri-aggiungerlo per evitare
+    // accumulo di listener su re-render della dashboard (come fa admin.js).
     _updateStickyOffsets();
-    window.addEventListener('resize', _updateStickyOffsets);
+    if (_adminCalResizeHandler) window.removeEventListener('resize', _adminCalResizeHandler);
+    _adminCalResizeHandler = _updateStickyOffsets;
+    window.addEventListener('resize', _adminCalResizeHandler);
 }
 
 function _updateStickyOffsets() {
@@ -97,6 +104,10 @@ function renderAdminDaySelector(_weekDates) {
     selector.innerHTML = '';
     const todayFormatted = formatAdminDate(new Date());
 
+    // M19: leggi i booking UNA sola volta fuori dai loop (3 settimane × 7 giorni =
+    // 21 day-card). Prima getAllBookings() veniva chiamato per ogni card.
+    const allBookings = BookingStorage.getAllBookings();
+
     [-1, 0, 1].forEach(off => {
         const weekDates = getAdminWeekDates(adminWeekOffset + off);
         const pageEl = document.createElement('div');
@@ -104,8 +115,7 @@ function renderAdminDaySelector(_weekDates) {
         pageEl.dataset.relOffset = String(off);
 
         weekDates.forEach(dateInfo => {
-            const bookings = BookingStorage.getAllBookings();
-            const dayBookings = bookings.filter(b => b.date === dateInfo.formatted && b.status !== 'cancelled' && !b.id?.startsWith('_avail_'));
+            const dayBookings = allBookings.filter(b => b.date === dateInfo.formatted && b.status !== 'cancelled' && !b.id?.startsWith('_avail_'));
             const dayBookingsCount = dayBookings.length;
             const dayCapacity = _adminDayCapacity(dateInfo);
             const fillPct = dayCapacity > 0 ? Math.min(100, Math.round(dayBookingsCount * 100 / dayCapacity)) : 0;
@@ -336,9 +346,11 @@ function _selectClientForBooking(client) {
 
 async function bookForClient(slotType) {
     console.log('[bookForClient] start', { slotType, state: _clientPickerState });
-    // Guard: sessione admin deve essere attiva (il backend verifica is_admin() sulle RPC)
-    if (sessionStorage.getItem('adminAuth') !== 'true') {
-        console.warn('[bookForClient] admin session expired');
+    // Guard: l'utente deve avere accesso UI admin in base al RUOLO verificato
+    // server-side (owner/admin/staff), non al flag sessionStorage. Il backend
+    // verifica comunque is_org_admin()/RLS sulle RPC.
+    if (typeof hasAdminUiAccess === 'function' ? !hasAdminUiAccess() : sessionStorage.getItem('adminAuth') !== 'true') {
+        console.warn('[bookForClient] accesso admin non valido per il ruolo corrente');
         showToast('Sessione admin scaduta. Ricarica la pagina e accedi di nuovo.', 'error');
         return;
     }
@@ -425,11 +437,13 @@ async function bookForClient(slotType) {
     }
 
     // ── Flusso standard (Autonomia / Lezione di Gruppo / 1° cliente group-class) ──
-    const remaining = BookingStorage.getRemainingSpots(date, time, slotType);
-    if (remaining <= 0) BookingStorage.addExtraSpot(date, time, slotType);
+    // NON gonfiare automaticamente la capienza override (anti-pattern §12): se lo
+    // slot è pieno lasciamo fallire book_slot con 'slot_full' e mostriamo il
+    // messaggio. L'aumento posti resta un'azione esplicita dell'admin (pulsante ＋
+    // → "Aggiungi posto allo slot").
     const result = await BookingStorage.saveBookingForClient(booking, clientUserId);
     if (!result.ok) {
-        if (result.error === 'slot_full') showToast('Slot pieno — qualcun altro ha prenotato prima.', 'error');
+        if (result.error === 'slot_full') showToast('Slot pieno: usa il pulsante ＋ per aggiungere un posto, poi riprova.', 'error');
         else showToast('⚠️ Errore: prenotazione non riuscita. Riprova.', 'error');
         if (window._currentAdminDate) renderAdminDayView(window._currentAdminDate);
         return;
@@ -619,17 +633,6 @@ function renderAdminDayView(dateInfo) {
         dayView.appendChild(slotCard);
     });
 
-}
-
-function _adminScrollIfFirstOpen() {
-    if (_adminInitialScrollDone) return;
-    const dayView = document.getElementById('adminDayView');
-    if (!dayView) return;
-    const todayStr = _localDateStr();
-    if (window._currentAdminDate && window._currentAdminDate.formatted === todayStr) {
-        _adminInitialScrollDone = true;
-        _scrollToCurrentAdminSlot(dayView);
-    }
 }
 
 function _scrollToCurrentAdminSlot(container) {
@@ -884,7 +887,7 @@ function createAdminSlotCard(dateInfo, scheduledSlot) {
 }
 
 
-function deleteBooking(bookingId, bookingName) {
+async function deleteBooking(bookingId, bookingName) {
     const bookings = [...BookingStorage.getAllBookings()];
     const index = bookings.findIndex(b => b.id === bookingId);
     if (index === -1) return;
@@ -895,7 +898,7 @@ function deleteBooking(bookingId, bookingName) {
     // un semplice cambio stato → 'cancelled' (+ conversione group-class → small-group
     // lato server). Eventuali rimborsi/penali si gestiscono come pagamenti dedicati
     // nel ledger 'payments', non più qui.
-    if (!confirm(`Confermare l'annullamento della prenotazione di ${bookingName}?`)) return;
+    if (!await showConfirm(`Confermare l'annullamento della prenotazione di ${bookingName}?`)) return;
 
     const useSupabase = typeof supabaseClient !== 'undefined' && booking._sbId;
 

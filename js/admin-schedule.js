@@ -287,6 +287,17 @@ function schedCloseTypeForm() {
     if (host) host.innerHTML = '';
 }
 
+// Parse di un intero non-negativo da input (capienza/serie/ordine).
+// Distingue esplicitamente "vuoto/invalido" da uno 0 legittimo:
+//   '' / testo non numerico → fallback; '0' → 0.
+function _schedParseInt(raw, fallback = 0) {
+    const trimmed = String(raw ?? '').trim();
+    if (trimmed === '') return fallback;
+    const n = parseInt(trimmed, 10);
+    if (Number.isNaN(n)) return fallback;
+    return n;
+}
+
 // Genera una chiave "slug" da un'etichetta
 function _schedSlugify(s) {
     return String(s || '').toLowerCase().trim()
@@ -308,11 +319,11 @@ async function schedSaveType(id) {
     const payload = {
         label,
         color: document.getElementById('stColor')?.value || '#8B5CF6',
-        default_capacity: parseInt(document.getElementById('stCapacity')?.value || '0', 10) || 0,
+        default_capacity: _schedParseInt(document.getElementById('stCapacity')?.value, 0),
         default_price: parseFloat(document.getElementById('stPrice')?.value || '0') || 0,
         bookable: !!document.getElementById('stBookable')?.checked,
         is_active: !!document.getElementById('stActive')?.checked,
-        sort_order: parseInt(document.getElementById('stSort')?.value || '0', 10) || 0
+        sort_order: _schedParseInt(document.getElementById('stSort')?.value, 0)
     };
 
     try {
@@ -339,7 +350,7 @@ async function schedDeleteType(id) {
     const org = _schedRequireOrg();
     if (!org) return;
     const st = _schedData.slotTypes.find(s => s.id === id);
-    if (!confirm(`Eliminare il tipo "${st?.label || ''}"? Verrà rimosso anche dalle settimane tipo.`)) return;
+    if (!await showConfirm(`Eliminare il tipo "${st?.label || ''}"? Verrà rimosso anche dalle settimane tipo.`)) return;
     try {
         const { error } = await supabaseClient.from('slot_types').delete().eq('id', id).eq('org_id', org);
         if (error) throw error;
@@ -471,7 +482,7 @@ async function schedDeleteSlot(id) {
     const org = _schedRequireOrg();
     if (!org) return;
     const ts = _schedData.timeSlots.find(s => s.id === id);
-    if (!confirm(`Eliminare la fascia "${_schedSlotLabel(ts)}"? Verrà rimossa dalle settimane tipo.`)) return;
+    if (!await showConfirm(`Eliminare la fascia "${_schedSlotLabel(ts)}"? Verrà rimossa dalle settimane tipo.`)) return;
     try {
         const { error } = await supabaseClient.from('time_slots_config').delete().eq('id', id).eq('org_id', org);
         if (error) throw error;
@@ -585,7 +596,7 @@ function schedSelectTemplate(id) {
 async function schedNewTemplate() {
     const org = _schedRequireOrg();
     if (!org) return;
-    const name = (prompt('Nome della nuova settimana tipo:', `Settimana ${_schedData.templates.length + 1}`) || '').trim();
+    const name = (await showPrompt('Nome della nuova settimana tipo:', `Settimana ${_schedData.templates.length + 1}`, { confirmText: 'Crea' }) || '').trim();
     if (!name) return;
     try {
         const isFirst = _schedData.templates.length === 0;
@@ -609,7 +620,7 @@ async function schedRenameTemplate(id) {
     const org = _schedRequireOrg();
     if (!org) return;
     const tpl = _schedData.templates.find(t => t.id === id);
-    const name = (prompt('Nuovo nome:', tpl?.name || '') || '').trim();
+    const name = (await showPrompt('Nuovo nome:', tpl?.name || '', { confirmText: 'Rinomina' }) || '').trim();
     if (!name) return;
     try {
         const { error } = await supabaseClient.from('weekly_schedule_templates').update({ name }).eq('id', id).eq('org_id', org);
@@ -643,7 +654,7 @@ async function schedDeleteTemplate(id) {
     const org = _schedRequireOrg();
     if (!org) return;
     const tpl = _schedData.templates.find(t => t.id === id);
-    if (!confirm(`Eliminare la settimana "${tpl?.name || ''}" e tutte le sue celle?`)) return;
+    if (!await showConfirm(`Eliminare la settimana "${tpl?.name || ''}" e tutte le sue celle?`)) return;
     try {
         // weekly_template_slots ha ON DELETE CASCADE sul template
         const { error } = await supabaseClient.from('weekly_schedule_templates').delete().eq('id', id).eq('org_id', org);
@@ -672,8 +683,10 @@ async function schedSetCell(weekday, timeSlotId, stId, capacity) {
                 if (error) throw error;
             }
         } else if (existing) {
-            const patch = { slot_type_id: stId };
-            if (capacity !== null) patch.capacity = capacity;
+            // Al cambio TIPO della cella resettiamo SEMPRE la capienza (anche se è già null):
+            // così la cella eredita la default_capacity del nuovo tipo invece di trattenere
+            // la capienza assoluta del tipo precedente. Il null viene quindi persistito.
+            const patch = { slot_type_id: stId, capacity };
             const { error } = await supabaseClient.from('weekly_template_slots').update(patch).eq('id', existing.id).eq('org_id', org);
             if (error) throw error;
         } else {
@@ -701,8 +714,9 @@ async function schedSetCellCapacity(weekday, timeSlotId, rawValue) {
     if (!org) return;
     const existing = _schedData.tplSlots.find(w => w.weekday === weekday && w.time_slot_id === timeSlotId);
     if (!existing) return;   // nessun tipo selezionato: niente da fare
+    // vuoto/invalido → null (= eredita default del tipo); '0' resta uno 0 legittimo
     const trimmed = String(rawValue).trim();
-    const capacity = trimmed === '' ? null : (parseInt(trimmed, 10) || 0);
+    const capacity = trimmed === '' ? null : _schedParseInt(trimmed, null);
     try {
         const { error } = await supabaseClient.from('weekly_template_slots').update({ capacity }).eq('id', existing.id).eq('org_id', org);
         if (error) throw error;
@@ -728,9 +742,21 @@ function _schedRenderOverrides() {
         _schedOverrideDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
-    // Mappa override per orario
+    // Mappa override per orario (la chiave è l'etichetta "HH:MM - HH:MM").
+    // NB: schedule_overrides è indicizzato per label `time`, sia qui che server-side in
+    // resolve_slot_config — non c'è un time_slot_id stabile sulla riga override.
+    // Conseguenza: se si modifica l'orario di una fascia, l'etichetta cambia e l'override
+    // salvato con la vecchia etichetta diventa "orfano" — invisibile sotto la nuova fascia
+    // e non più applicato da resolve_slot_config (che cerca per label). Per evitare che resti
+    // nascosto nel DB lo rendiamo visibile più sotto, così l'admin può rimuoverlo.
+    // (Un fix completo "per id" richiede una colonna time_slot_id su schedule_overrides e la
+    //  riscrittura di resolve_slot_config: fuori dallo scope di questo file.)
     const ovrMap = {};
     _schedData.overrides.forEach(o => { ovrMap[o.time] = o; });
+
+    // Etichette delle fasce attive correnti → tutto ciò che non vi rientra è orfano.
+    const activeLabels = new Set(slots.map(ts => _schedSlotLabel(ts)));
+    const orphanOvrs = _schedData.overrides.filter(o => !activeLabels.has(o.time));
 
     let rows = '';
     if (slots.length === 0) {
@@ -759,6 +785,30 @@ function _schedRenderOverrides() {
         }).join('') + '</div>';
     }
 
+    // Override "orfani": la loro etichetta non corrisponde più a nessuna fascia attiva
+    // (tipicamente perché la fascia è stata modificata/rinominata o disattivata).
+    // Resterebbero invisibili: li mostriamo per consentirne la rimozione.
+    let orphanBlock = '';
+    if (orphanOvrs.length) {
+        const orphanRows = orphanOvrs.map(o => {
+            const stO = types.find(t => t.id === (o.slot_type_id || ''));
+            const capO = o.capacity != null ? o.capacity : '';
+            return `
+                <div class="sched-row sched-ovr-row has-ovr is-inactive">
+                    <span class="sched-time-chip">⚠️ ${_escHtml(o.time)}</span>
+                    <div class="sched-ovr-controls">
+                        <span class="sched-row-sub">Override orfano: fascia non più attiva${stO ? ` · ${_escHtml(stO.label)}` : ''}${capO !== '' ? ` · cap ${capO}` : ''}</span>
+                        <button class="sched-btn-icon sched-btn-icon--danger" title="Rimuovi override orfano" onclick="schedDeleteOverride('${_escHtml(o.time).replace(/'/g, "\\'")}')">🗑️</button>
+                    </div>
+                </div>`;
+        }).join('');
+        orphanBlock = `
+            <div class="sched-ovr-orphans">
+                <p class="sched-section-desc">⚠️ Override per orari non più tra le fasce attive (non vengono più applicati). Rimuovili per fare pulizia.</p>
+                <div class="sched-list">${orphanRows}</div>
+            </div>`;
+    }
+
     return `
         <div class="sched-section">
             <div class="sched-section-head">
@@ -772,6 +822,7 @@ function _schedRenderOverrides() {
                 </label>
             </div>
             ${rows}
+            ${orphanBlock}
         </div>`;
 }
 
@@ -789,7 +840,8 @@ async function schedSaveOverride(timeLabel, tsId) {
 
     if (!stId) { _schedToast('⚠️ Seleziona un tipo di slot per l\'override.', 'error'); return; }
     const st = _schedData.slotTypes.find(t => t.id === stId);
-    const capacity = rawCap === '' ? null : (parseInt(rawCap, 10) || 0);
+    // vuoto/invalido → null (= default del tipo); '0' resta uno 0 legittimo
+    const capacity = rawCap === '' ? null : _schedParseInt(rawCap, null);
 
     const payload = {
         org_id: org,
@@ -818,7 +870,7 @@ async function schedSaveOverride(timeLabel, tsId) {
 async function schedDeleteOverride(timeLabel) {
     const org = _schedRequireOrg();
     if (!org || !_schedOverrideDate) return;
-    if (!confirm(`Rimuovere l'override delle ${timeLabel} del ${_schedOverrideDate}?`)) return;
+    if (!await showConfirm(`Rimuovere l'override delle ${timeLabel} del ${_schedOverrideDate}?`)) return;
     try {
         const { error } = await supabaseClient
             .from('schedule_overrides')

@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="css/login.css?v=4">
     <link rel="stylesheet" href="css/allenamento.css?v=56">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=2"></script>
+<script src="js/branding-boot.js?v=3"></script>
 </head>
 <body class="allenamento-body">
     <nav class="navbar">
@@ -144,7 +144,7 @@
             <li><a href="chi-sono.html">Chi sono</a></li>
             <li><a href="dove-sono.html">Dove sono</a></li>
         </ul>
-        <p class="nav-sidebar-credit">powered by <a href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link" onclick="logCreditClick(event)">Andrea Pompili</a></p>
+        <p class="nav-sidebar-credit">powered by <a href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link">Andrea Pompili</a></p>
     </nav>
 
     <script>
@@ -238,10 +238,11 @@
         }());
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=10"></script>
+    <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=3"></script>
-    <script src="js/data.js?v=88"></script>
-    <script src="js/auth.js?v=31"></script>
+    <script src="js/modals.js?v=2"></script>
+    <script src="js/data.js?v=89"></script>
+    <script src="js/auth.js?v=32"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <!-- chart-mini.js non serve: usa drawDarkLineChart() interno -->
@@ -597,7 +598,7 @@
                     closeEditExOverlay();
                 } else {
                     if (btn) { btn.disabled = false; btn.textContent = 'Salva modifiche'; }
-                    alert('Errore nel salvataggio');
+                    showAlert('Errore nel salvataggio', { type:'error' });
                 }
             }
         }
@@ -899,7 +900,7 @@
         async function renamePlan() {
             if (!_allPlan) return;
             const current = _allPlan.name || '';
-            const next = prompt('Nuovo nome scheda:', current);
+            const next = await showPrompt('Nuovo nome scheda:', current, { confirmText:'Rinomina' });
             if (next == null) return;
             const trimmed = next.trim();
             if (!trimmed || trimmed === current) return;
@@ -1151,8 +1152,8 @@
                         <div class="all-ss-header" onclick="openSupersetDetail('${ssId}')">
                             <div class="all-ss-thumbs">
                                 <span class="all-ss-badge">SS</span>
-                                ${thumb1 ? `<img src="${thumb1}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
-                                ${thumb2 ? `<img src="${thumb2}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
+                                ${thumb1 ? `<img src="${_escHtml(thumb1)}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
+                                ${thumb2 ? `<img src="${_escHtml(thumb2)}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
                             </div>
                             <div class="all-ss-info">
                                 <ul class="all-ss-names">
@@ -1179,7 +1180,7 @@
                     const thumbsHtml = items.slice(0, 4).map(it => {
                         const db = _findExForCard(it);
                         return db && db.immagine_url_small
-                            ? `<img src="${db.immagine_url_small}" class="all-cc-thumb" alt="" loading="lazy">`
+                            ? `<img src="${_escHtml(db.immagine_url_small)}" class="all-cc-thumb" alt="" loading="lazy">`
                             : '';
                     }).join('');
                     const extra = items.length > 4 ? `<span class="all-cc-thumb-more">+${items.length - 4}</span>` : '';
@@ -1232,7 +1233,7 @@
                     </div>
                     <div class="all-ex-swipe-content">
                     <div class="all-ex-header" onclick="openExerciseDetail('${ex.id}')">
-                        ${thumbSrc ? `<img src="${thumbSrc}" class="all-ex-thumb" alt="" loading="lazy">` : ''}
+                        ${thumbSrc ? `<img src="${_escHtml(thumbSrc)}" class="all-ex-thumb" alt="" loading="lazy">` : ''}
                         <div class="all-ex-info">
                             <div class="all-ex-name">${_escHtml(dbEx ? dbEx.nome_it : ex.exercise_name)}</div>
                             <div class="all-ex-target">${target}</div>
@@ -1617,7 +1618,7 @@
         }
 
         async function deleteTodayLog(exerciseId, btn) {
-            if (!confirm('Eliminare il log di oggi per questo esercizio?')) return;
+            if (!await showConfirm('Eliminare il log di oggi per questo esercizio?')) return;
             const user = getCurrentUser();
             if (!user) return;
             const today = _localDateStr();
@@ -1781,7 +1782,7 @@
 
                 html += `<div class="all-storico-card ${isOpen ? 'open' : ''}">
                     <div class="all-storico-header" onclick="toggleStoricoCard('${_escHtml(name)}')">
-                        ${thumb ? `<img src="${thumb}" class="all-storico-thumb" alt="" loading="lazy">` : '<div class="all-storico-thumb all-storico-thumb-placeholder"></div>'}
+                        ${thumb ? `<img src="${_escHtml(thumb)}" class="all-storico-thumb" alt="" loading="lazy">` : '<div class="all-storico-thumb all-storico-thumb-placeholder"></div>'}
                         <div class="all-storico-info">
                             <div class="all-storico-name">${_escHtml(name)}</div>
                             <div class="all-storico-meta">${nLogs} log · ${nSessions} ${nSessions === 1 ? 'sessione' : 'sessioni'}</div>
@@ -1889,7 +1890,7 @@
         }
 
         async function deleteStoricoLog(logId, btn) {
-            if (!confirm('Eliminare questo set?')) return;
+            if (!await showConfirm('Eliminare questo set?')) return;
             btn.disabled = true;
             try {
                 await WorkoutLogStorage.deleteLog(logId);
@@ -1905,7 +1906,7 @@
         }
 
         async function deleteStoricoDay(exerciseId, logDate) {
-            if (!confirm(`Eliminare tutti i set del ${_fmtDateAll(logDate)}?`)) return;
+            if (!await showConfirm(`Eliminare tutti i set del ${_fmtDateAll(logDate)}?`)) return;
             try {
                 const toDel = _storicoLogsCache.filter(l => l.exercise_id === exerciseId && l.log_date === logDate);
                 for (const l of toDel) {
@@ -2978,7 +2979,7 @@
 
         // ── Delete exercise from plan ───────────────────────────────────
         async function deleteExerciseFromPlan(exId) {
-            if (!confirm('Eliminare questo esercizio dalla scheda?')) return;
+            if (!await showConfirm('Eliminare questo esercizio dalla scheda?')) return;
             try {
                 await WorkoutPlanStorage.deleteExercise(exId);
                 if (_allPlan) {
@@ -2993,7 +2994,7 @@
         }
 
         async function deleteSupersetFromPlan(groupId) {
-            if (!confirm('Eliminare questa super serie dalla scheda?')) return;
+            if (!await showConfirm('Eliminare questa super serie dalla scheda?')) return;
             try {
                 const toDelete = (_allPlan?.workout_exercises || []).filter(e => e.superset_group === groupId);
                 for (const ex of toDelete) {
@@ -3185,7 +3186,7 @@
         }
 
         async function _renameDayTab(dayLabel) {
-            const newName = prompt('Rinomina giorno:', dayLabel);
+            const newName = await showPrompt('Rinomina giorno:', dayLabel, { confirmText:'Rinomina' });
             if (!newName || !newName.trim() || newName.trim() === dayLabel) return;
             const trimmed = newName.trim();
             const existingDays = [...new Set((_allPlan.workout_exercises || []).map(e => e.day_label))];
@@ -3211,7 +3212,7 @@
         async function _deleteDayFromScheda(dayLabel) {
             if (!_allPlan) return;
             const dayExercises = (_allPlan.workout_exercises || []).filter(e => e.day_label === dayLabel);
-            if (!confirm(`Eliminare "${dayLabel}" e i suoi ${dayExercises.length} esercizi?`)) return;
+            if (!await showConfirm(`Eliminare "${dayLabel}" e i suoi ${dayExercises.length} esercizi?`)) return;
             try {
                 for (const ex of dayExercises) {
                     await WorkoutPlanStorage.deleteExercise(ex.id);
@@ -3228,7 +3229,7 @@
 
         let _pendingDayLabel = null; // giorno in attesa di primo esercizio
 
-        function addDayToScheda() {
+        async function addDayToScheda() {
             if (!_allPlan) return;
             const exercises = _allPlan.workout_exercises || [];
             const existingDays = [...new Set(exercises.map(e => e.day_label))];
@@ -3237,7 +3238,7 @@
             for (const l of letters) {
                 if (!existingDays.includes('Giorno ' + l)) { nextLetter = l; break; }
             }
-            const name = prompt('Nome del nuovo giorno:', 'Giorno ' + nextLetter);
+            const name = await showPrompt('Nome del nuovo giorno:', 'Giorno ' + nextLetter, { confirmText:'Crea' });
             if (!name || !name.trim()) return;
             const dayLabel = name.trim();
             if (existingDays.includes(dayLabel)) {
@@ -3515,7 +3516,7 @@
             const shown = exercises.slice(0, 50);
             listEl.innerHTML = shown.map(ex => `
                 <div class="schede-picker-item">
-                    <img src="${ex.immagine_url_small}" class="schede-picker-item-img" alt="" loading="lazy">
+                    <img src="${_escHtml(ex.immagine_url_small)}" class="schede-picker-item-img" alt="" loading="lazy">
                     <div class="schede-picker-item-info" onclick="pickExerciseFromPicker('${_escHtml(ex.nome_it).replace(/'/g, "\\'")}')">
                         <span class="schede-picker-item-name">${_escHtml(ex.nome_it)}</span>
                         <span class="schede-picker-item-cat">${_escHtml(ex.categoria)}</span>
@@ -3527,8 +3528,8 @@
 
         async function pickExerciseFromPicker(exerciseName) {
             // Route to superset/circuit flow if active
-            if (_supersetMode) { _supersetPickExercise(exerciseName); return; }
-            if (_circuitMode)  { _circuitPickExercise(exerciseName);  return; }
+            if (_supersetMode) { await _supersetPickExercise(exerciseName); return; }
+            if (_circuitMode)  { await _circuitPickExercise(exerciseName);  return; }
             if (_addToCircuitId) { await _appendExerciseToCircuit(exerciseName); return; }
 
             const ex = _findEx(exerciseName);
@@ -3537,15 +3538,15 @@
             // Chiedi serie, ripetizioni, riposo
             let sets = 1, reps = '20', rest = 0;
             if (!isCardio) {
-                const setsVal = prompt('Numero di serie:', '3');
+                const setsVal = await showPrompt('Numero di serie:', '3', { numeric:true, confirmText:'Avanti' });
                 if (setsVal === null) return;
                 sets = parseInt(setsVal) || 3;
 
-                const repsVal = prompt('Numero di ripetizioni:', '10');
+                const repsVal = await showPrompt('Numero di ripetizioni:', '10', { numeric:true, confirmText:'Avanti' });
                 if (repsVal === null) return;
                 reps = repsVal || '10';
 
-                const restVal = prompt('Riposo tra le serie (secondi):', '90');
+                const restVal = await showPrompt('Riposo tra le serie (secondi):', '90', { numeric:true, confirmText:'Aggiungi' });
                 if (restVal === null) return;
                 rest = parseInt(restVal) || 90;
             }
@@ -3582,12 +3583,12 @@
         }
 
         async function pickCustomExercise() {
-            const name = prompt('Nome esercizio personalizzato:');
+            const name = await showPrompt('Nome esercizio personalizzato:', '', { confirmText:'Avanti' });
             if (!name || !name.trim()) return;
             if (_supersetMode) {
-                _supersetPickExercise(name.trim());
+                await _supersetPickExercise(name.trim());
             } else if (_circuitMode) {
-                _circuitPickExercise(name.trim());
+                await _circuitPickExercise(name.trim());
             } else if (_addToCircuitId) {
                 await _appendExerciseToCircuit(name.trim());
             } else {
@@ -3611,12 +3612,12 @@
             }, 50);
         }
 
-        function _supersetPickExercise(exerciseName) {
+        async function _supersetPickExercise(exerciseName) {
             const ex = _findEx(exerciseName);
             const isCardio = ex && (ex.categoria || '').toLowerCase() === 'cardio';
             let reps = '10';
             if (!isCardio) {
-                const repsVal = prompt('Numero di ripetizioni:', '10');
+                const repsVal = await showPrompt('Numero di ripetizioni:', '10', { numeric: true });
                 if (repsVal === null) { _supersetMode = false; closeExercisePicker(); return; }
                 reps = repsVal || '10';
             } else { reps = '20'; }
@@ -3636,10 +3637,10 @@
                 if (title) title.textContent = 'Super Serie \u2014 Esercizio 2 di 2';
             } else {
                 // Serie condivise per entrambi gli esercizi
-                const setsVal = prompt('Numero di serie (per entrambi):', '3');
+                const setsVal = await showPrompt('Numero di serie (per entrambi):', '3', { numeric: true });
                 if (setsVal === null) { _supersetMode = false; closeExercisePicker(); return; }
                 const sets = parseInt(setsVal) || 3;
-                const restVal = prompt('Riposo dopo la super serie (secondi):', '90');
+                const restVal = await showPrompt('Riposo dopo la super serie (secondi):', '90', { numeric: true });
                 if (restVal === null) { _supersetMode = false; closeExercisePicker(); return; }
                 const rest = parseInt(restVal) || 90;
                 _supersetFirst.sets = sets;
@@ -3730,16 +3731,16 @@
             `;
         }
 
-        function _circuitPickExercise(exerciseName) {
+        async function _circuitPickExercise(exerciseName) {
             const ex = _findEx(exerciseName);
             const isCardio = ex && (ex.categoria || '').toLowerCase() === 'cardio';
             let reps = '10';
             if (isCardio) {
-                const repsVal = prompt('Durata esercizio cardio (minuti):', '1');
+                const repsVal = await showPrompt('Durata esercizio cardio (minuti):', '1', { numeric: true });
                 if (repsVal === null) return;
                 reps = repsVal || '1';
             } else {
-                const repsVal = prompt(`Ripetizioni per "${exerciseName}":`, '10');
+                const repsVal = await showPrompt(`Ripetizioni per "${exerciseName}":`, '10', { numeric: true });
                 if (repsVal === null) return;
                 reps = repsVal || '10';
             }
@@ -3766,10 +3767,10 @@
                 if (typeof showToast === 'function') showToast('Aggiungi almeno 2 esercizi al circuito', 'error');
                 return;
             }
-            const setsVal = prompt('Numero di giri del circuito:', '3');
+            const setsVal = await showPrompt('Numero di giri del circuito:', '3', { numeric: true });
             if (setsVal === null) return;
             const sets = parseInt(setsVal) || 3;
-            const restVal = prompt('Riposo tra un giro e l’altro (secondi):', '90');
+            const restVal = await showPrompt('Riposo tra un giro e l’altro (secondi):', '90', { numeric: true });
             if (restVal === null) return;
             const rest = parseInt(restVal) || 90;
 
@@ -3810,7 +3811,7 @@
         }
 
         async function deleteCircuitFromPlan(groupId) {
-            if (!confirm('Eliminare questo circuito dalla scheda?')) return;
+            if (!await showConfirm('Eliminare questo circuito dalla scheda?')) return;
             try {
                 const toDelete = (_allPlan?.workout_exercises || []).filter(e => e.circuit_group === groupId);
                 for (const ex of toDelete) {
@@ -3977,7 +3978,7 @@
                 if (typeof showToast === 'function') showToast('Un circuito deve avere almeno 2 esercizi', 'error');
                 return;
             }
-            if (!confirm('Rimuovere questo esercizio dal circuito?')) return;
+            if (!await showConfirm('Rimuovere questo esercizio dal circuito?')) return;
             const target = items.find(e => e.id === exId);
             if (!target) return;
             const wasLast = items[items.length - 1].id === exId;
@@ -4045,11 +4046,11 @@
             const isCardio = ex && (ex.categoria || '').toLowerCase() === 'cardio';
             let reps = '10';
             if (isCardio) {
-                const v = prompt('Durata esercizio cardio (minuti):', '1');
+                const v = await showPrompt('Durata esercizio cardio (minuti):', '1', { numeric: true });
                 if (v === null) { closeExercisePicker(); return; }
                 reps = v || '1';
             } else {
-                const v = prompt(`Ripetizioni per "${exerciseName}":`, '10');
+                const v = await showPrompt(`Ripetizioni per "${exerciseName}":`, '10', { numeric: true });
                 if (v === null) { closeExercisePicker(); return; }
                 reps = v || '10';
             }
@@ -5040,11 +5041,11 @@
             navigator.clipboard.writeText(link).then(() => {
                 if (typeof showToast === 'function') showToast('Link copiato!', 'success');
             }).catch(() => {
-                prompt('Copia questo link:', link);
+                showPrompt('Copia questo link:', link, { confirmText: 'Chiudi' });
             });
         }
     </script>
-    <script src="js/allenamento-report.js?v=3"></script>
+    <script src="js/allenamento-report.js?v=5"></script>
     <script>
         // ── Mobile nav: barra singola + bottom sheet (≤768px) ──────────────
         // Proxy dei pill originali: il click su una voce dello sheet richiama

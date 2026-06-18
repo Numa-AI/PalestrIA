@@ -19,12 +19,21 @@ class SimpleChart {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Guard: nessun dato → stato vuoto invece di disegnare nulla
+        if (!data.values || data.values.length === 0) {
+            this.ctx.fillStyle = '#9ca3af';
+            this.ctx.font = '13px sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('Nessun dato', (this.canvas.width / 2) / 2, (this.canvas.height / 2) / 2);
+            return;
+        }
+
         // Find max value
         const maxValue = Math.max(...data.values, 1);
         const points = [];
 
-        // Calculate points
-        const stepX = chartWidth / (data.labels.length - 1);
+        // Calculate points — denom min 1 per evitare divisione per zero con un solo punto
+        const stepX = chartWidth / Math.max(1, data.labels.length - 1);
         data.values.forEach((value, i) => {
             const x = padding + i * stepX;
             const y = padding + chartHeight - (value / maxValue) * chartHeight;

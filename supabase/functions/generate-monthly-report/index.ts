@@ -500,8 +500,17 @@ Deno.serve(async (req) => {
             .eq("user_id", callerUserId)
             .eq("status", "active")
             .maybeSingle();
-        const callerOrgId = callerMember?.org_id ?? null;
         const isAdmin = ["owner", "admin"].includes(callerMember?.role ?? "");
+        // org del chiamante: staff/admin da org_members, cliente self-service da profiles.
+        let callerOrgId = callerMember?.org_id ?? null;
+        if (!callerOrgId) {
+            const { data: callerProfile } = await supabase
+                .from("profiles")
+                .select("org_id")
+                .eq("id", callerUserId)
+                .maybeSingle();
+            callerOrgId = callerProfile?.org_id ?? null;
+        }
 
         // ── Parse body ────────────────────────────────────────────────
         let body: any;
@@ -526,47 +535,44 @@ Deno.serve(async (req) => {
             return json({ error: "Invalid year_month format, expected YYYY-MM" }, 400);
         }
 
-        // ⚠️ TEMPORANEO: la feature è in fase di test/refinement. Durante questa
-        // fase, SOLO gli admin possono generare report (anche per se stessi).
-        // Rimuovere questo blocco e ripristinare la logica self-service cliente
-        // commentata sotto quando la feature è pronta per tutti gli utenti.
-        if (!isAdmin || !callerOrgId) {
+        // ── Autorizzazione ────────────────────────────────────────────
+        // Il chiamante deve appartenere a una org. Self-service: un cliente può
+        // generare SOLO il proprio report; l'admin può generarlo per chiunque
+        // nella propria org (il target è poi verificato per org_id più sotto).
+        if (!callerOrgId) {
             return json({
-                error: "La generazione report è attualmente disponibile solo per gli admin.",
-                code: "ADMIN_ONLY_TEMPORARY",
+                error: "Forbidden: chiamante senza org",
+                code: "NO_ORG",
+            }, 403);
+        }
+        const isSelfService = !isAdmin && user_id === callerUserId;
+        if (!isAdmin && !isSelfService) {
+            return json({
+                error: "Forbidden: puoi generare solo il tuo report",
+                code: "NOT_AUTHORIZED_FOR_USER",
+            }, 403);
+        }
+        // skip_consent_check è un flag riservato all'admin (bypassa il consenso GDPR).
+        if (!isAdmin && skip_consent_check) {
+            return json({
+                error: "skip_consent_check riservato all'admin",
+                code: "ADMIN_ONLY_FLAG",
             }, 403);
         }
 
-        // ── Autorizzazione originale (DISABILITATA durante la fase WIP) ───
-        // const isSelfService = !isAdmin && user_id === callerUserId;
-        // if (!isAdmin && !isSelfService) {
-        //     return json({
-        //         error: "Forbidden: puoi generare solo il tuo report",
-        //         code: "NOT_AUTHORIZED_FOR_USER",
-        //     }, 403);
-        // }
-        // if (!isAdmin && skip_consent_check) {
-        //     return json({
-        //         error: "skip_consent_check riservato all'admin",
-        //         code: "ADMIN_ONLY_FLAG",
-        //     }, 403);
-        // }
-
-        // Self-service: valida che year_month sia un mese già concluso.
-        // ⚠️ TEMPORANEAMENTE DISABILITATO per consentire test sul mese corrente (Aprile).
-        // Da RIATTIVARE quando i test sono completi.
-        // if (isSelfService) {
-        //     const now = new Date();
-        //     const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-        //     if (year_month >= currentYM) {
-        //         return json({
-        //             error: "Puoi generare solo report di mesi già conclusi",
-        //             code: "MONTH_NOT_AVAILABLE",
-        //             current_month: currentYM,
-        //             requested_month: year_month,
-        //         }, 400);
-        //     }
-        // }
+        // Self-service: si può generare solo un report di un mese già concluso.
+        if (isSelfService) {
+            const now = new Date();
+            const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+            if (year_month >= currentYM) {
+                return json({
+                    error: "Puoi generare solo report di mesi già conclusi",
+                    code: "MONTH_NOT_AVAILABLE",
+                    current_month: currentYM,
+                    requested_month: year_month,
+                }, 400);
+            }
+        }
 
         // ── Carica profilo utente target ──────────────────────────────
         const { data: profile, error: profErr } = await supabase
@@ -581,9 +587,8 @@ Deno.serve(async (req) => {
         }
 
         // ── GDPR: verifica consenso AI ────────────────────────────────
-        // Durante la fase WIP solo admin chiama questa funzione, quindi il
-        // messaggio è sempre quello "lato admin". Quando riabiliteremo il
-        // self-service cliente, il ramo isSelfService andrà ripristinato.
+        // Il consenso è obbligatorio sia in self-service sia quando l'admin genera
+        // per un cliente; l'admin può bypassarlo solo con skip_consent_check.
         if (!profile.report_ai_consent && !skip_consent_check) {
             return json({
                 error: `L'utente ${profile.name ?? user_id} non ha dato il consenso AI`,
@@ -603,6 +608,7 @@ Deno.serve(async (req) => {
             const { data: existingList } = await supabase
                 .from("monthly_reports")
                 .select("id, status, narrative, scorecard, cost_usd, tone, generated_at, model_used")
+                .eq("org_id", callerOrgId)
                 .eq("user_id", user_id)
                 .eq("year_month", year_month)
                 .eq("status", "generated")
@@ -633,6 +639,7 @@ Deno.serve(async (req) => {
             const { count: existingCount } = await supabase
                 .from("monthly_reports")
                 .select("id", { count: "exact", head: true })
+                .eq("org_id", callerOrgId)
                 .eq("user_id", user_id)
                 .eq("year_month", year_month)
                 .eq("status", "generated");
@@ -678,8 +685,9 @@ Deno.serve(async (req) => {
             // Salva comunque una riga 'failed' per tracciabilità (INSERT, non upsert:
             // i tentativi falliti non sovrascrivono i report precedenti.)
             await supabase.from("monthly_reports").insert({
+                org_id: callerOrgId,       // NOT NULL — scoping per org (M2)
                 user_id,
-                year_month,
+                year_month,                // la migration 15 ha rinominato month → year_month
                 tone,
                 scorecard,
                 status: "failed",
@@ -697,8 +705,9 @@ Deno.serve(async (req) => {
         const { data: saved, error: saveErr } = await supabase
             .from("monthly_reports")
             .insert({
+                org_id: callerOrgId,       // NOT NULL — scoping per org (M2)
                 user_id,
-                year_month,
+                year_month,                // la migration 15 ha rinominato month → year_month
                 tone,
                 scorecard,
                 narrative: aiResult.text,

@@ -40,7 +40,11 @@ let recentListVisible   = false;
 
 // Guard render: scarta risposte RPC non più correnti (tab switch rapidi).
 let _paymentsReqCounter = 0;
-let _recentPayments     = [];   // cache ultima fetch payments
+let _recentPayments     = [];   // cache ultima fetch payments (cappata a 50, solo per la lista UI)
+// KPI mese corrente: aggregati lato server sull'INTERO mese (non sulla lista cappata).
+// null finché non caricati → il paint mostra "—" invece di un valore sottostimato.
+let _monthRevenue       = null; // somma amount del mese corrente
+let _monthCount         = null; // conteggio pagamenti del mese corrente
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper booking (riusati anche da admin-calendar.js / admin-clients.js)
@@ -130,17 +134,49 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
 
     // 2) In background scarico i pagamenti recenti dal ledger e riallineo.
     if (typeof supabaseClient !== 'undefined') {
+        // Inizio mese corrente (ISO) per i KPI lato server.
+        const now = new Date();
+        const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         try {
-            const { data, error } = await _rpcWithTimeout(
-                supabaseClient.from('payments')
-                    .select('id, created_at, client_email, amount, currency, method, kind, note, period_start, period_end')
-                    .order('created_at', { ascending: false })
-                    .limit(50),
-                15000
-            );
+            // (a) Lista UI: ultime 50 righe (cappata, solo per la tabella).
+            // (b) KPI mese: aggregazione lato server sull'INTERO mese (H5 bug A) →
+            //     conteggio esatto via head+count e somma su una query separata filtrata
+            //     sul periodo, indipendente dal limite della lista.
+            const [recentRes, monthCountRes, monthSumRes] = await Promise.all([
+                _rpcWithTimeout(
+                    supabaseClient.from('payments')
+                        .select('id, created_at, client_email, amount, currency, method, kind, note, period_start, period_end')
+                        .order('created_at', { ascending: false })
+                        .limit(50),
+                    15000
+                ),
+                _rpcWithTimeout(
+                    supabaseClient.from('payments')
+                        .select('id', { count: 'exact', head: true })
+                        .gte('created_at', monthStartIso),
+                    15000
+                ),
+                _rpcWithTimeout(
+                    supabaseClient.from('payments')
+                        .select('amount')
+                        .gte('created_at', monthStartIso),
+                    15000
+                ),
+            ]);
             if (reqId !== _paymentsReqCounter) return; // render più recente → scarto
-            if (error) { console.warn('[Payments] fetch payments error:', error.message); return; }
-            _recentPayments = data || [];
+
+            if (recentRes?.error) { console.warn('[Payments] fetch payments error:', recentRes.error.message); }
+            else { _recentPayments = recentRes?.data || []; }
+
+            // KPI mese: aggiorna solo se la query è andata a buon fine, altrimenti lascia
+            // null → il paint mostra "—" (mai un valore sottostimato dalla lista cappata).
+            if (!monthCountRes?.error && typeof monthCountRes?.count === 'number') {
+                _monthCount = monthCountRes.count;
+            }
+            if (!monthSumRes?.error) {
+                _monthRevenue = (monthSumRes?.data || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+            }
+
             _paintPaymentsTab({ preserveUiState: true });
         } catch (e) {
             console.warn('[Payments] fetch payments fallita:', e?.message || e);
@@ -152,19 +188,19 @@ function _paintPaymentsTab({ preserveUiState }) {
     const contacts = _getUnpaidContacts();
     const totalUnpaid = contacts.reduce((s, c) => s + c.totalAmount, 0);
 
-    // Incasso del mese corrente dal ledger
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthRevenue = _recentPayments.reduce((s, p) => {
-        const d = new Date(p.created_at);
-        return d >= monthStart ? s + Number(p.amount || 0) : s;
-    }, 0);
+    // Incasso e conteggio del mese corrente: aggregati lato server sull'INTERO mese
+    // (H5 bug A). NON derivati dalla lista cappata a 50 (sottostimerebbe). Finché non
+    // caricati (_month* null) mostriamo "—" invece di uno 0 fuorviante.
+    const monthRevenueLabel = _monthRevenue == null
+        ? '—'
+        : `€${Math.round(_monthRevenue * 100) / 100}`;
+    const monthCountLabel = _monthCount == null ? '—' : _monthCount;
 
     // Stat cards (gli ID esistono già in admin.html)
     sensitiveSet('totalUnpaid', `€${Math.round(totalUnpaid * 100) / 100}`);
     sensitiveSet('totalDebtors', contacts.length);
-    sensitiveSet('totalCreditAmount', `€${Math.round(monthRevenue * 100) / 100}`);
-    sensitiveSet('totalCreditors', _recentPayments.length);
+    sensitiveSet('totalCreditAmount', monthRevenueLabel);
+    sensitiveSet('totalCreditors', monthCountLabel);
 
     const debtorsList = document.getElementById('debtorsList');
     const recentList  = document.getElementById('creditsList');
@@ -428,8 +464,6 @@ function toggleAllDebts(checked) {
 
 // Cambio metodo: aggiorna solo lo stato del pulsante (niente più logica credito).
 function onPaymentMethodChange() { _updateDebtTotal(); }
-// L'input importo non è più usato; manteniamo lo stub per gli oninput residui.
-function onAmountInput() { _updateDebtTotal(); }
 
 async function paySelectedDebts() {
     const checked = document.querySelectorAll('.debt-item-check:checked');

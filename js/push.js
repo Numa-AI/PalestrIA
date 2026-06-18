@@ -2,12 +2,35 @@
 // Chiave pubblica VAPID — la privata va nelle env vars di Supabase (secret VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC_KEY = 'BOIkkllAmpdW6-MWn85UW36xGPDk9rJDtEIs23w9gmVxGeKx3OSTqTVzcZOcz7gfm8kCHmzc3jp6J2IlEXC0AGA';
 
-// Helper: token per autenticazione Edge Functions
-// Usa ANON_KEY (accettata dalla gateway Supabase) — l'auth JWT utente
-// va configurata lato edge function deploy, non lato client
+// Flag esplicito: push in "Demo" (nessuna Edge Function di notifica push deployata).
+// Sostituisce i vecchi early-return che rendevano irraggiungibile il resto del file
+// (inclusa la cleanup VAPID per il logout). Gateando dietro un flag, il codice resta
+// raggiungibile e si può riattivare cambiando una sola riga.
+const PUSH_ENABLED = false;
+
+// Helper: token per autenticazione Edge Functions.
+// Per booking/cancellation va bene la ANON_KEY: la gateway Supabase l'accetta e le
+// edge notify-admin-* risolvono ora la org dal booking_id lato server (server-authoritative),
+// quindi non serve un Bearer utente. Se in futuro si vuole l'identità del caller, passare
+// qui il token di sessione con fallback alla anon key.
 function _getPushAuthToken() {
     return typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : null;
 }
+
+// Cleanup push al logout: rimuove il backup locale e (best-effort) annulla la
+// subscription attiva del browser, così l'endpoint push del tenant A non resta legato
+// all'identità di A su un device condiviso. Funziona anche con PUSH_ENABLED false.
+async function teardownPushOnLogout() {
+    try { localStorage.removeItem('push_subscription'); } catch (_) {}
+    try {
+        if (('PushManager' in window) && navigator.serviceWorker) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            const sub = reg && await reg.pushManager.getSubscription();
+            if (sub) { try { await sub.unsubscribe(); } catch (_) {} }
+        }
+    } catch (_) { /* best-effort */ }
+}
+if (typeof window !== 'undefined') window.teardownPushOnLogout = teardownPushOnLogout;
 
 // Colore primario per-org (branding) con fallback al viola di default.
 // Legge da OrgSettings se disponibile (guard typeof), altrimenti dalla CSS var
@@ -43,7 +66,7 @@ let _pushFailedThisSession = false;
 
 async function registerPushSubscription() {
     // Demo: push notifications disabilitate (no Edge Functions di notifica deployate)
-    return null;
+    if (!PUSH_ENABLED) return null;
 
     if (!('PushManager' in window) || !navigator.serviceWorker) return null;
     if (_pushInFlight) return _pushInFlight;
@@ -180,7 +203,7 @@ async function _doSavePush(json, userId, userEmail) {
 
 // Notifica "slot disponibile" dopo una cancellazione — chiamata dal client
 async function _disabledSlotAvailableBroadcast(booking) {
-    return;
+    if (!PUSH_ENABLED) return;
     if (typeof SUPABASE_URL === 'undefined') return;
 
     // Notifica solo se lo slot era pieno prima della cancellazione.
@@ -254,6 +277,8 @@ async function notifyAdminBooking(booking) {
                 'Authorization': 'Bearer ' + token,
             },
             body: JSON.stringify({
+                // La edge risolve la org dal booking_id (server-authoritative): non si invia più org_id.
+                booking_id: booking.id || null,
                 name: booking.name || '',
                 date_display: dateDisplay,
                 date,
@@ -270,7 +295,7 @@ async function notifyAdminBooking(booking) {
 }
 
 // Notifica admin dopo un annullamento
-async function notifyAdminCancellation(booking, { withBonus = false, withMora = false } = {}) {
+async function notifyAdminCancellation(booking) {
     console.log('[Push] notifyAdminCancellation chiamata', booking);
     if (typeof SUPABASE_URL === 'undefined') {
         console.warn('[Push] SUPABASE_URL non definito — notifica admin saltata');
@@ -296,14 +321,14 @@ async function notifyAdminCancellation(booking, { withBonus = false, withMora = 
                 'Authorization': 'Bearer ' + token,
             },
             body: JSON.stringify({
+                // La edge risolve la org dal booking_id (server-authoritative): non si invia più org_id.
+                booking_id: booking.id || null,
                 name: booking.name || '',
                 date_display: dateDisplay,
                 date,
                 time,
                 slot_type: slotType,
                 max_capacity: maxCapacity,
-                with_bonus: withBonus,
-                with_mora: withMora,
             }),
         });
         const result = await resp.json();
@@ -321,12 +346,23 @@ async function notifyAdminNewClient(name) {
         return;
     }
 
+    // La edge richiede ora un Bearer utente VALIDO (fa getUser() e deriva la org dal caller).
+    // Usa il token di sessione, non la anon key. login.html la chiama dopo signup → la sessione esiste.
+    let accessToken = null;
+    if (typeof supabaseAuth !== 'undefined') {
+        try {
+            const { data: { session } } = await supabaseAuth.auth.getSession();
+            accessToken = session?.access_token ?? null;
+        } catch (_) {}
+    }
+    if (!accessToken) { console.warn('[Push] notifyAdminNewClient: nessun token di sessione — chiamata saltata'); return; }
+
     try {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-new-client`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                'Authorization': 'Bearer ' + accessToken,
             },
             body: JSON.stringify({ name }),
         });

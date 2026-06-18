@@ -8,7 +8,12 @@
     if (typeof supabaseClient === 'undefined') return;
 
     const isAdminPage = location.pathname.includes('admin.html');
-    const isAdmin = () => sessionStorage.getItem('adminAuth') === 'true';
+    // L5: deriva il ruolo da window._orgRole (owner/admin verificato server-side),
+    // non dal flag sessionStorage.adminAuth (settabile a mano dalla console).
+    const isAdmin = () => {
+        const role = (typeof window !== 'undefined') ? window._orgRole : null;
+        return role === 'owner' || role === 'admin';
+    };
 
     function _orgSlug() {
         if (typeof window !== 'undefined' && window._orgSlug) return window._orgSlug;

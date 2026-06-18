@@ -93,6 +93,27 @@ function priceIdFromSubscription(sub: Stripe.Subscription): string | null {
     return sub.items?.data?.[0]?.price?.id ?? null;
 }
 
+/** Estrae lo stripe_customer_id (stringa) da un oggetto subscription Stripe. */
+function customerIdFromSubscription(sub: Stripe.Subscription): string | null {
+    return typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+}
+
+/**
+ * Risolve la org a partire dallo stripe_customer_id (fonte di verità lato server):
+ * lo customer è legato alla org in `subscriptions.stripe_customer_id`. Questo evita
+ * di fidarsi di metadata.org_id influenzabile dal mittente (cfr. M1).
+ */
+async function orgIdFromCustomer(customerId: string | null): Promise<string | null> {
+    if (!customerId) return null;
+    const { data: sub, error: subErr } = await supabase
+        .from("subscriptions")
+        .select("org_id")
+        .eq("stripe_customer_id", customerId)
+        .maybeSingle();
+    if (subErr) console.error("[stripe-webhook] lookup org da customer errore:", subErr.message);
+    return sub?.org_id ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sincronizzazione SUBSCRIPTION (SaaS)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,9 +128,19 @@ async function syncSubscription(sub: Stripe.Subscription, orgIdHint: string | nu
     const priceId  = priceIdFromSubscription(sub);
     const planId   = await planIdFromPriceId(priceId);
     const subStatus = normalizeSubStatus(sub.status);
+    const customerId = customerIdFromSubscription(sub);
 
-    // Determina la org di destinazione.
-    let orgId = orgIdHint;
+    // ── Determina la org di destinazione (fonte di verità = lato server) ──────
+    // 1) preferiamo l'org legata allo stripe_customer_id (in subscriptions);
+    // 2) poi l'org della riga subscriptions con lo stesso stripe_subscription_id;
+    // 3) infine il "hint" (client_reference_id del checkout o metadata.org_id):
+    //    serve SOLO alla PRIMA sincronizzazione, quando non esiste ancora una riga
+    //    da cui derivare l'org dal customer.
+    // Se sia il customer/sub esistente CHE il hint risolvono una org, devono
+    // combaciare: in caso contrario l'evento è mal-attribuito → log e usiamo
+    // la fonte server (customer), MAI il hint influenzabile (cfr. M1).
+    let orgId = await orgIdFromCustomer(customerId);
+
     if (!orgId) {
         const { data: existing, error } = await supabase
             .from("subscriptions")
@@ -118,6 +149,15 @@ async function syncSubscription(sub: Stripe.Subscription, orgIdHint: string | nu
             .maybeSingle();
         if (error) console.error("[stripe-webhook] lookup subscription org_id errore:", error.message);
         orgId = existing?.org_id ?? null;
+    }
+
+    if (orgId && orgIdHint && orgId !== orgIdHint) {
+        console.warn(`[stripe-webhook] subscription ${sub.id}: mismatch org server=${orgId} hint=${orgIdHint} → uso la fonte server`);
+    }
+
+    if (!orgId) {
+        // Nessuna org server-side: prima sincronizzazione → usiamo il hint.
+        orgId = orgIdHint;
     }
 
     if (!orgId) {
@@ -130,7 +170,7 @@ async function syncSubscription(sub: Stripe.Subscription, orgIdHint: string | nu
     const row: Record<string, unknown> = {
         org_id:                 orgId,
         plan_id:                planId,
-        stripe_customer_id:     typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null,
+        stripe_customer_id:     customerId,
         stripe_subscription_id: sub.id,
         status:                 subStatus,
         current_period_end:     tsToIso(sub.current_period_end),

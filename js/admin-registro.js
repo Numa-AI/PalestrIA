@@ -212,6 +212,11 @@ function applyRegistroFilters() {
 }
 
 // ── Aggiorna le card summary ───────────────────────────────────────────────
+// ⚠️ L11: `totalPaid` è il VALORE TEORICO delle prenotazioni (somma di getBookingPrice
+// sui booking_paid, cioè i prezzi correnti da `bookings`), NON l'incassato del ledger
+// `payments` usato in admin-analytics. I due totali possono divergere (prezzi cambiati,
+// pacchetti/abbonamenti, rettifiche). Rietichettiamo qui (tooltip) per non farlo passare
+// per "incassato" riconciliabile: il fatturato reale resta quello del ledger.
 function _updateRegistroSummary(filtered) {
     const totalEvents   = filtered.length;
     const totalPaid     = filtered
@@ -221,7 +226,12 @@ function _updateRegistroSummary(filtered) {
 
     const el = id => document.getElementById(id);
     if (el('registroTotalEvents'))   el('registroTotalEvents').textContent   = totalEvents;
-    if (el('registroTotalPaid'))     el('registroTotalPaid').textContent     = `€${totalPaid.toFixed(2)}`;
+    if (el('registroTotalPaid')) {
+        el('registroTotalPaid').textContent = `€${totalPaid.toFixed(2)}`;
+        // Tooltip chiarificatore: distingue il valore teorico dall'incassato del ledger.
+        el('registroTotalPaid').title =
+            'Valore teorico delle prenotazioni (prezzi correnti). Per l\'incassato reale vedi Statistiche → Fatturato (ledger pagamenti).';
+    }
     if (el('registroTotalBookings')) el('registroTotalBookings').textContent = totalBookings;
 }
 
@@ -539,8 +549,8 @@ function setRegistroRange(range, btn) {
 function applyRegistroCustomRange() {
     const from = document.getElementById('registroDateFrom')?.value;
     const to   = document.getElementById('registroDateTo')?.value;
-    if (!from || !to) { alert('Seleziona entrambe le date.'); return; }
-    if (from > to)    { alert('La data di inizio deve essere precedente alla data di fine.'); return; }
+    if (!from || !to) { showAlert('Seleziona entrambe le date.', { type:'warn' }); return; }
+    if (from > to)    { showAlert('La data di inizio deve essere precedente alla data di fine.', { type:'warn' }); return; }
     _registroState.customFrom = from;
     _registroState.customTo   = to;
     applyRegistroFilters();
@@ -658,7 +668,7 @@ function renderRegistroTab() {
 function exportRegistro() {
     const data = _registroFiltered;
     if (data.length === 0) {
-        alert('Nessun dato da esportare con i filtri correnti.');
+        showAlert('Nessun dato da esportare con i filtri correnti.', { type:'warn' });
         return;
     }
 

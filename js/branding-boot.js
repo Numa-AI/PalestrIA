@@ -15,6 +15,16 @@
 
     var root = document.documentElement;
 
+    // L1: valida l'URL maps accettando SOLO http:/https: (scarta javascript:, data:, ...).
+    // Lo snapshot può provenire da una versione precedente al fix in org-settings.js.
+    function safeHttpUrl(raw) {
+        if (!raw) return '';
+        try {
+            var u = new URL(String(raw), location.href);
+            return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '';
+        } catch (_) { return ''; }
+    }
+
     // 1) COLORI — su :root subito (in <head>, prima del paint) → niente flash viola.
     //    L'inline style su documentElement vince su qualsiasi regola :root del CSS.
     if (snap.color)     root.style.setProperty('--primary-purple', snap.color);
@@ -76,9 +86,10 @@
             var durEls = document.querySelectorAll('[data-org-duration]');
             for (var d = 0; d < durEls.length; d++) durEls[d].textContent = snap.duration;
         }
-        if (snap.maps) {
+        var safeMaps = safeHttpUrl(snap.maps);
+        if (safeMaps) {
             var mapEls = document.querySelectorAll('a[data-org-maps]');
-            for (var m = 0; m < mapEls.length; m++) mapEls[m].href = snap.maps;
+            for (var m = 0; m < mapEls.length; m++) mapEls[m].href = safeMaps;
         }
         root.setAttribute('data-branded', '1'); // rivela gli elementi nascosti in ogni caso
     }

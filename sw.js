@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v557';
+const CACHE_NAME = 'palestria-v559';
 
 const APP_SHELL = [
     './',
@@ -44,6 +44,7 @@ const APP_SHELL = [
     'js/admin-importa.js',
     'js/admin-schede.js',
     'js/allenamento-report.js',
+    'js/modals.js',
     'allenamento.html',
     'css/allenamento.css',
     'tablet.html',
@@ -53,9 +54,9 @@ const APP_SHELL = [
     'images/logo-palestria-light.png',
     'manifest.json',
     'index.html',
+    'signup-trainer.html',
     'nutrizione.html',
     'regolamento.html',
-    'viewer.html',
     'css/nutrizione.css',
     'css/regolamento.css',
     'js/supabase-client.js',

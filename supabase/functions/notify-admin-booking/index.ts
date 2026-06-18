@@ -3,10 +3,10 @@
 // Manda una push notification AGLI ADMIN DELLA ORG della prenotazione
 // (niente più ADMIN_IDS hardcoded: multi-tenant).
 //
-// Risoluzione org (in ordine):
-//   1) org_id presente nel payload
-//   2) bookings.org_id (se arriva booking_id)
-//   3) profiles.org_id (se arriva user_id del cliente)
+// SICUREZZA (anti-spoofing H1): la org NON viene MAI dal body. Risoluzione:
+//   1) bookings.org_id (server-authoritative, settato da book_slot) via booking_id;
+//   2) se booking_id manca ma c'è un Bearer utente valido (getUser), si deriva
+//      dal caller: profiles.org_id e poi org_members.
 // Dalla org si ricavano gli admin via org_members (role owner/admin, status active)
 // e da lì le loro push_subscriptions (scoping per org_id + user_id).
 
@@ -29,16 +29,13 @@ const corsHeaders = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Ricava la org_id partendo dal payload o dai record collegati (service role).
+// Ricava la org_id da fonti server-authoritative: la prenotazione (booking_id)
+// oppure, in fallback, il chiamante autenticato (callerId). MAI dal body.
 async function resolveOrgId(input: {
-    org_id?: string;
     booking_id?: string;
-    user_id?: string;
+    callerId?: string | null;
 }): Promise<string | null> {
-    // 1) org_id esplicito nel payload
-    if (input.org_id) return input.org_id;
-
-    // 2) dalla prenotazione (bookings.org_id)
+    // 1) dalla prenotazione (bookings.org_id, settato da book_slot lato server)
     if (input.booking_id) {
         const { data, error } = await supabase
             .from("bookings")
@@ -49,15 +46,22 @@ async function resolveOrgId(input: {
         if (data?.org_id) return data.org_id;
     }
 
-    // 3) dal profilo del cliente (profiles.org_id)
-    if (input.user_id) {
-        const { data, error } = await supabase
+    // 2) fallback dal chiamante: profiles (cliente) → org_members (staff/admin)
+    if (input.callerId) {
+        const { data: prof } = await supabase
             .from("profiles")
             .select("org_id")
-            .eq("id", input.user_id)
+            .eq("id", input.callerId)
             .maybeSingle();
-        if (error) throw error;
-        if (data?.org_id) return data.org_id;
+        if (prof?.org_id) return prof.org_id;
+
+        const { data: mem } = await supabase
+            .from("org_members")
+            .select("org_id")
+            .eq("user_id", input.callerId)
+            .eq("status", "active")
+            .maybeSingle();
+        if (mem?.org_id) return mem.org_id;
     }
 
     return null;
@@ -68,10 +72,18 @@ Deno.serve(async (req) => {
         return new Response(null, { status: 204, headers: corsHeaders });
     }
     try {
-        // Firma/payload in ingresso invariata; aggiunti org_id/booking_id/user_id (opzionali) per la risoluzione org.
+        // Caller opzionale: se c'è un Bearer utente valido lo usiamo come fallback
+        // per derivare la org (mai dal body). booking_id resta la fonte preferita.
+        const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+        let callerId: string | null = null;
+        if (token) {
+            const { data: userData } = await supabase.auth.getUser(token);
+            callerId = userData?.user?.id ?? null;
+        }
+
+        // Dal body usiamo SOLO i dati di presentazione + booking_id. org_id ignorato.
         const {
-            name, date_display, time, date, slot_type, max_capacity,
-            org_id: payloadOrgId, booking_id, user_id,
+            name, date_display, time, date, slot_type, max_capacity, booking_id,
         } = await req.json();
 
         if (!name || !date_display || !time) {
@@ -82,7 +94,7 @@ Deno.serve(async (req) => {
         }
 
         // Risolvi la org della prenotazione: i push andranno SOLO agli admin di questa org.
-        const orgId = await resolveOrgId({ org_id: payloadOrgId, booking_id, user_id });
+        const orgId = await resolveOrgId({ booking_id, callerId });
         if (!orgId) {
             return new Response(JSON.stringify({ ok: false, error: "Impossibile determinare la org della prenotazione" }), {
                 status: 400,

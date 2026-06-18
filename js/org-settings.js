@@ -42,7 +42,10 @@
     }
 
     function _lsKey(key) {
-        const oid = _orgId || _resolveOrgId() || 'anon';
+        // Namespacing per-tenant: per gli autenticati l'org_id; per gli anonimi lo slug
+        // della org corrente (URL/sottodominio) così due studi pubblici sullo stesso
+        // browser non condividono `org_anon_*`. Fallback 'anon' solo se lo slug è assente.
+        const oid = _orgId || _resolveOrgId() || _orgSlug() || 'anon';
         return `org_${oid}_${key}`;
     }
 
@@ -54,6 +57,16 @@
     }
     function _lsSet(key, value) {
         try { localStorage.setItem(_lsKey(key), JSON.stringify(value)); } catch (_) {}
+    }
+
+    // Valida un URL accettando SOLO schema http:/https: (scarta javascript:, data:, ...).
+    // Ritorna l'href normalizzato se valido, altrimenti '' (non settare l'href).
+    function _safeHttpUrl(raw) {
+        if (!raw) return '';
+        try {
+            const u = new URL(String(raw), location.href);
+            return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '';
+        } catch (_) { return ''; }
     }
 
     // ── coercion difensiva (le vecchie get() facevano parseFloat/=== 'true') ──
@@ -194,7 +207,9 @@
 
             // 2b) LINK GOOGLE MAPS → ogni <a data-org-maps> (es. home). Solo se
             //     valorizzato in Dati azienda; se vuoto resta il link statico dell'HTML.
-            const mapsUrl = getString('company.maps_url', '');
+            // L1: valida lo schema (solo http/https) — il trainer può salvare un URL
+            // arbitrario, esposto anche agli anonimi → niente `javascript:` in href.
+            const mapsUrl = _safeHttpUrl(getString('company.maps_url', ''));
             if (mapsUrl) {
                 document.querySelectorAll('a[data-org-maps]').forEach(a => { a.href = mapsUrl; });
             }
@@ -268,9 +283,44 @@
     function timezone() { return getString('locale.timezone', 'Europe/Rome'); }
     function currency() { return getString('locale.currency', 'EUR'); }
 
+    // ── teardown su logout ─────────────────────────────────────────────────────
+    // Azzera lo stato per-tenant: cache in memoria, chiavi localStorage namespacing
+    // della org corrente (org_<id>_*) e canale Realtime org_settings_<id>. Evita che
+    // i settings del tenant A restino visibili al tenant B su device condiviso.
+    function reset() {
+        const oid = _orgId || _resolveOrgId() || _orgSlug();
+        // 1) rimuovi le chiavi localStorage namespacing della org corrente
+        try {
+            if (oid) {
+                const prefix = `org_${oid}_`;
+                const toRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith(prefix)) toRemove.push(k);
+                }
+                toRemove.forEach(k => { try { localStorage.removeItem(k); } catch (_) {} });
+            }
+        } catch (_) {}
+        // 2) chiudi il canale Realtime
+        try {
+            if (_rtChannel) {
+                if (typeof window._unregisterRealtimeChannel === 'function') {
+                    window._unregisterRealtimeChannel(`org_settings_${_orgId}`);
+                } else if (typeof supabaseClient !== 'undefined' && supabaseClient.removeChannel) {
+                    supabaseClient.removeChannel(_rtChannel);
+                }
+            }
+        } catch (_) {}
+        _rtChannel = null;
+        // 3) svuota lo stato in memoria
+        _cache.clear();
+        _orgId = null;
+        _loaded = false;
+    }
+
     global.OrgSettings = {
         load, get, getBool, getNumber, getString, set, onChange, applyBranding,
-        timezone, currency, asBool, asNumber, asString,
+        timezone, currency, asBool, asNumber, asString, reset,
         get orgId() { return _orgId || _resolveOrgId(); },
     };
 })(window);

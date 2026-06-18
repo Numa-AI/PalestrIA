@@ -215,8 +215,8 @@ async function setAnalyticsFilter(filter, btn) {
 async function applyCustomFilter() {
     const from = document.getElementById('filterDateFrom').value;
     const to = document.getElementById('filterDateTo').value;
-    if (!from || !to) { alert('Seleziona entrambe le date.'); return; }
-    if (from > to) { alert('La data di inizio deve essere precedente alla data di fine.'); return; }
+    if (!from || !to) { showAlert('Seleziona entrambe le date.', { type:'warn' }); return; }
+    if (from > to) { showAlert('La data di inizio deve essere precedente alla data di fine.', { type:'warn' }); return; }
     customFilterFrom = from;
     customFilterTo = to;
     const applyBtn = document.querySelector('.btn-apply-filter');
@@ -286,22 +286,32 @@ async function loadDashboardData() {
         const extFromStr = _localDateStr(extFromDate);
         const extToStr   = _localDateStr(extToDate);
 
-        // 2) Cache hit: se il range richiesto è già coperto, skip fetch
-        const cacheCovers = _statsCacheRange
+        // 2) Cache hit: se il range richiesto è già coperto, skip fetch.
+        // Bookings e payments hanno copertura tracciata SEPARATAMENTE: il ledger
+        // payments può fallire mentre i bookings sono ok (M12). Rifacciamo il fetch
+        // se manca la copertura di almeno una delle due fonti.
+        const bookingsCovers = _statsCacheRange
             && extFromStr >= _statsCacheRange.from
             && extToStr   <= _statsCacheRange.to;
+        const paymentsCovers = _statsPaymentsRange
+            && extFromStr >= _statsPaymentsRange.from
+            && extToStr   <= _statsPaymentsRange.to;
 
-        if (!cacheCovers) {
+        if (!bookingsCovers || !paymentsCovers) {
             // Skeleton anti-flicker: mostra solo se il fetch dura >200ms
             let skeletonTimer = null;
             if (!hasCache) {
                 skeletonTimer = setTimeout(() => _setStatCardsLoading(true), 200);
             }
 
-            const fetchPromise = BookingStorage.fetchForAdmin(extFromStr, extToStr);
+            const fetchPromise = bookingsCovers
+                ? Promise.resolve(null)
+                : BookingStorage.fetchForAdmin(extFromStr, extToStr);
             const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 10000));
             // Fetch in parallelo del ledger pagamenti (fatturato reale)
-            const paymentsPromise = _fetchPayments(extFromStr, extToStr);
+            const paymentsPromise = paymentsCovers
+                ? Promise.resolve(_statsPayments)   // già coperto: riusa la cache valida
+                : _fetchPayments(extFromStr, extToStr);
             const [freshData, freshPayments] = await Promise.all([
                 Promise.race([fetchPromise, timeoutPromise]),
                 paymentsPromise
@@ -315,12 +325,21 @@ async function loadDashboardData() {
             if (freshData !== null) {
                 _statsBookings = _excludeAdminBookings(freshData);
                 _statsCacheRange = { from: extFromStr, to: extToStr };
-            } else if (!_statsBookings) {
+            } else if (!bookingsCovers && !_statsBookings) {
                 _statsBookings = _excludeAdminBookings(BookingStorage.getAllBookings());
             }
-            if (freshPayments !== null) {
-                _statsPayments = freshPayments;
-                _statsPaymentsRange = { from: extFromStr, to: extToStr };
+
+            if (!paymentsCovers) {
+                if (freshPayments !== null) {
+                    _statsPayments = freshPayments;
+                    _statsPaymentsRange = { from: extFromStr, to: extToStr };
+                } else {
+                    // Errore/timeout sul ledger: NON servire payments stantii come freschi
+                    // contro il nuovo range. Azzeriamo cache+copertura → il render mostra
+                    // blank/— per il fatturato reale invece di dati vecchi mal-attribuiti.
+                    _statsPayments = null;
+                    _statsPaymentsRange = null;
+                }
             }
         }
     }
@@ -413,16 +432,6 @@ function updateStatsCards(filteredBookings, allBookings) {
     const occEl = document.getElementById('occupancyChange');
     occEl.textContent = filterLabel;
     occEl.className = occupancyRate > 50 ? 'stat-change positive' : 'stat-change';
-}
-
-function calculateTotalWeeklySlots() {
-    let total = 0;
-    Object.values(WEEKLY_SCHEDULE_TEMPLATE).forEach(daySlots => {
-        daySlots.forEach(slot => {
-            total += SLOT_MAX_CAPACITY[slot.type] || 0;
-        });
-    });
-    return total;
 }
 
 function drawBookingsChart(filteredBookings) {
@@ -669,6 +678,11 @@ function renderFatturatoDetail(panel) {
     // Prenotazioni → proiezione dal valore dei booking (pagati o meno) *
     //               getBookingPrice, con stima sui giorni futuri non programmati.
     const payments = _statsPayments || [];
+    // M12: in Reale, se il ledger non è disponibile (fetch fallito/azzerato per il range
+    // corrente) NON mostriamo €0 fuorviante ma "—". `_statsPayments === null` = nessuna
+    // copertura valida; `[]` legittimo (periodo senza incassi) resta €0.
+    const paymentsUnavailable = isReale && _statsPayments === null;
+    const fmtReale = v => paymentsUnavailable ? '—' : `€${v}`;
     // Helper Reale: somma payments in un range di date (su created_at)
     const payInRange = (dateFrom, dateTo) => payments
         .filter(p => { const d = new Date(p.date); return d >= dateFrom && d <= dateTo; })
@@ -977,7 +991,7 @@ function renderFatturatoDetail(panel) {
     // KPI cards: in Reale nascondi "Pagato futuro" e "Stima futura"
     const kpiCards = `
             <div class="stat-detail-kpi stat-detail-kpi--actual">
-                <div class="stat-detail-kpi-value">€${pastRevenue}</div>
+                <div class="stat-detail-kpi-value">${fmtReale(pastRevenue)}</div>
                 <div class="stat-detail-kpi-label">${pastLabel}</div>
             </div>
             ${!isReale ? `<div class="stat-detail-kpi stat-detail-kpi--future">
@@ -988,11 +1002,11 @@ function renderFatturatoDetail(panel) {
                 <div class="stat-detail-kpi-value">€${scheduleEstimate}</div>
                 <div class="stat-detail-kpi-label">Stima futura</div>
             </div>` : `<div class="stat-detail-kpi stat-detail-kpi--actual">
-                <div class="stat-detail-kpi-value">€${payMethodStats.filter(m => ['Carta','Bonifico','Stripe','Contanti con Report'].includes(m.label)).reduce((s, m) => s + m.rev, 0)}</div>
+                <div class="stat-detail-kpi-value">${fmtReale(Math.round(payMethodStats.reduce((s, m) => s + m.rev, 0) * 100) / 100)}</div>
                 <div class="stat-detail-kpi-label">Fatturato reale</div>
             </div>`}
             <div class="stat-detail-kpi">
-                <div class="stat-detail-kpi-value">€${weeklyAvg}</div>
+                <div class="stat-detail-kpi-value">${fmtReale(weeklyAvg)}</div>
                 <div class="stat-detail-kpi-label">Media settimanale</div>
             </div>`;
 

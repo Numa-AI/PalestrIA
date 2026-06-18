@@ -738,7 +738,7 @@ function clientGoToEditScheda(planId) {
 }
 
 async function clientSaveAsTemplate(planId, planName) {
-    const tplName = prompt('Nome del template:', planName);
+    const tplName = await showPrompt('Nome del template', planName);
     if (!tplName) return;
     try {
         await WorkoutPlanStorage.duplicatePlan(planId, null, tplName);
@@ -750,7 +750,7 @@ async function clientSaveAsTemplate(planId, planName) {
 }
 
 async function clientDeleteScheda(planId, planName) {
-    if (!confirm(`Eliminare la scheda "${planName}" e tutti gli esercizi associati?`)) return;
+    if (!await showConfirm(`Eliminare la scheda "${planName}" e tutti gli esercizi associati?`)) return;
     try {
         await WorkoutPlanStorage.deletePlan(planId);
         if (typeof showToast === 'function') showToast('Scheda eliminata', 'success');
@@ -955,7 +955,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
     const newCap      = (document.getElementById(`cedit-cap-${index}`)?.value || '').trim();
     const newDocFirmato = document.getElementById(`cedit-docfirmato-${index}`)?.checked || false;
     const newStripeEn   = document.getElementById(`cedit-stripe-${index}`)?.checked || false;
-    if (!newName) { alert('Il nome è obbligatorio.'); return; }
+    if (!newName) { showAlert('Il nome è obbligatorio.', { type:'warn' }); return; }
 
     const normOld      = normalizePhone(oldWhatsapp);
     const normNewPhone = normalizePhone(newWhatsapp) || newWhatsapp;
@@ -971,7 +971,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
         const _max = Entitlements.maxClients();
         const _msg = `Hai raggiunto il limite di clienti del tuo piano (${_cur}/${_max}). Passa a un piano superiore dalle Impostazioni → Billing SaaS.`;
         if (typeof showToast === 'function') showToast('⚠️ ' + _msg, 'error', 6000);
-        else alert(_msg);
+        else showAlert(_msg, { type:'error' });
         return;
     }
 
@@ -998,9 +998,9 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
                 if (error.message && error.message.includes('client_limit_reached')) {
                     const _limMsg = 'Hai raggiunto il limite di clienti del tuo piano. Passa a un piano superiore dalle Impostazioni → Billing SaaS.';
                     if (typeof showToast === 'function') showToast('⚠️ ' + _limMsg, 'error', 6000);
-                    else alert(_limMsg);
+                    else showAlert(_limMsg, { type:'error' });
                 } else {
-                    alert('⚠️ Errore durante l\'aggiornamento: ' + error.message);
+                    showAlert('Errore durante l\'aggiornamento: ' + error.message, { type:'error' });
                 }
                 return;
             }
@@ -1009,9 +1009,9 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
         } catch (e) {
             console.error('[saveClientEdit] RPC exception:', e);
             const isTimeout = e && e.message === 'rpc_timeout';
-            alert(isTimeout
-                ? '⚠️ Timeout durante l\'aggiornamento. Verifica la connessione e riprova.'
-                : '⚠️ Errore di rete. Riprova.');
+            showAlert(isTimeout
+                ? 'Timeout durante l\'aggiornamento. Verifica la connessione e riprova.'
+                : 'Errore di rete. Riprova.', { type:'error' });
             return;
         } finally {
             if (!renameOk && saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salva'; }
@@ -1050,12 +1050,6 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
 }
 
 async function deleteClientData(index, whatsapp, email) {
-    const pwd = prompt('Inserisci la password per eliminare tutti i dati del cliente:');
-    if (pwd !== 'Palestra123') {
-        if (pwd !== null) alert('Password errata.');
-        return;
-    }
-
     const clients = getAllClients();
     const client = clients.find(c =>
         (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
@@ -1066,7 +1060,24 @@ async function deleteClientData(index, whatsapp, email) {
     const clientPhone = normalizePhone(client.whatsapp || whatsapp || '');
     const clientName = client.name || '';
 
-    if (!confirm(`Confermi l'eliminazione di TUTTI i dati di ${clientName}?\n\nPrenotazioni e dati associati verranno eliminati permanentemente.`)) return;
+    // Conferma esplicita digitata (niente password hardcoded nel bundle).
+    // L'utente deve ridigitare il nome del cliente — o ELIMINA — per procedere.
+    // Se la conferma non è superata, NESSUNA cancellazione parte (nemmeno quella locale).
+    const atteso = (clientName || '').trim();
+    const richiesta = atteso
+        ? `Per eliminare TUTTI i dati di "${atteso}", digita il nome del cliente (o ELIMINA):`
+        : 'Per eliminare TUTTI i dati del cliente, digita ELIMINA:';
+    const _confermaRaw = await showPrompt(richiesta, '', { confirmText:'Elimina' });
+    if (_confermaRaw === null) return;
+    const conferma = (_confermaRaw || '').trim();
+    const ok = conferma.toUpperCase() === 'ELIMINA' ||
+               (atteso && conferma.toLowerCase() === atteso.toLowerCase());
+    if (!ok) {
+        if (conferma !== '') showAlert('Conferma non valida. Eliminazione annullata.', { type:'warn' });
+        return;
+    }
+
+    if (!await showConfirm(`Confermi l'eliminazione di TUTTI i dati di ${clientName}?\n\nPrenotazioni e dati associati verranno eliminati permanentemente.`)) return;
 
     // 1. Elimina prenotazioni
     const allBookings = BookingStorage.getAllBookings();
@@ -1192,7 +1203,7 @@ async function saveBookingRowEdit(bookingId, clientIndex) {
                     }));
                     if (error) {
                         console.error('[Supabase] admin_pay_bookings error:', error.message);
-                        alert('⚠️ Errore: ' + error.message);
+                        showAlert('Errore: ' + error.message, { type:'error' });
                         return;
                     }
                 } else {
@@ -1206,7 +1217,7 @@ async function saveBookingRowEdit(bookingId, clientIndex) {
                     }));
                     if (error || (data && data.success === false)) {
                         console.error('[Supabase] admin_update_booking error:', error?.message || data?.error);
-                        alert('⚠️ Errore: ' + (error?.message || data?.error || 'aggiornamento non riuscito'));
+                        showAlert('Errore: ' + (error?.message || data?.error || 'aggiornamento non riuscito'), { type:'error' });
                         return;
                     }
                 }
@@ -1216,7 +1227,7 @@ async function saveBookingRowEdit(bookingId, clientIndex) {
                 renderClientsTab();
             } catch (ex) {
                 console.error('[saveBookingRowEdit] unexpected error:', ex);
-                alert('⚠️ Errore imprevisto. Riprova.');
+                showAlert('Errore imprevisto. Riprova.', { type:'error' });
             } finally {
                 if (_saveBtn) _saveBtn.disabled = false;
             }
@@ -1240,7 +1251,7 @@ async function saveBookingRowEdit(bookingId, clientIndex) {
 }
 
 async function deleteBookingFromClients(bookingId, bookingName) {
-    if (!confirm(`Eliminare la prenotazione di ${bookingName}?\n\nQuesta operazione non può essere annullata.`)) return;
+    if (!await showConfirm(`Eliminare la prenotazione di ${bookingName}?\n\nQuesta operazione non può essere annullata.`)) return;
 
     const bookings = BookingStorage.getAllBookings();
     const idx = bookings.findIndex(b => b.id === bookingId);

@@ -16,11 +16,16 @@ alter table login_events
     add column if not exists language    text,
     add column if not exists is_pwa      boolean;
 
--- ogni utente autenticato registra i PROPRI eventi di login (org_id può essere null pre-onboarding)
+-- ogni utente autenticato registra i PROPRI eventi di login, scoping per org.
+-- org_id deve combaciare con la org del chiamante (o essere null pre-onboarding,
+-- quando current_org_id() è ancora null) → niente insert forgiati in org altrui.
 drop policy if exists login_events_insert on login_events;
 create policy login_events_insert on login_events
     for insert to authenticated
-    with check (user_id = auth.uid());
+    with check (
+        user_id = auth.uid()
+        and org_id is not distinct from current_org_id()
+    );
 
 -- ── Push: salva subscription + elenco utenti con push attivo ──────────────────
 create or replace function save_push_subscription(

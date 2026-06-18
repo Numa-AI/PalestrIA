@@ -416,27 +416,6 @@ function getTimeSlots() {
     return (_ORG_TIME_SLOTS && _ORG_TIME_SLOTS.length) ? _ORG_TIME_SLOTS.slice() : TIME_SLOTS.slice();
 }
 
-// Elenco tipi slot per la org (oggetti config). Preferisce _ORG_SLOT_TYPES (dal
-// DB, ordinati per sortOrder); fallback derivato dalle costanti legacy.
-function getSlotTypes() {
-    _hydrateOrgScheduleFromCache();
-    if (_hasOrgScheduleConfig()) {
-        return Object.values(_ORG_SLOT_TYPES).sort((a, b) => a.sortOrder - b.sortOrder);
-    }
-    // Fallback: ricostruisci dai listini hardcoded single-tenant
-    return Object.values(SLOT_TYPES).map((key, i) => ({
-        id:              null,
-        key,
-        label:           SLOT_NAMES[key] || key,
-        color:           '#8B5CF6',
-        defaultCapacity: SLOT_MAX_CAPACITY[key] || 0,
-        defaultPrice:    SLOT_PRICES[key] || 0,
-        bookable:        (SLOT_MAX_CAPACITY[key] || 0) > 0,
-        isActive:        true,
-        sortOrder:       i,
-    }));
-}
-
 // Bump this whenever DEFAULT_WEEKLY_SCHEDULE changes — forces a reset for all clients
 const SCHEDULE_VERSION = 'v9';
 
@@ -636,7 +615,6 @@ let WEEKLY_SCHEDULE_TEMPLATE = getWeeklySchedule();
 
 // Storage functions
 class BookingStorage {
-    static BOOKINGS_KEY = 'gym_bookings';
     static STATS_KEY = 'gym_stats';
     static _cache = [];
     static _syncInFlightByKey = {};
@@ -1527,6 +1505,18 @@ class BookingStorage {
         };
     }
 
+    // Teardown logout (H2): rimuove gym_stats da localStorage. Nessuna cache stats in
+    // memoria separata da azzerare (getStats legge sempre da localStorage).
+    static clearStats() {
+        try { localStorage.removeItem(this.STATS_KEY); } catch (_) {}
+    }
+
+    // Teardown logout (H2): azzera la cache availability server-authoritative
+    // (capienze/posti residui) per evitare valori stantii cross-org.
+    static clearAvailability() {
+        this._availabilityByKey = {};
+    }
+
     // ── Seeded PRNG (Mulberry32) ─────────────────────────────────────────────
     // Returns a deterministic pseudo-random function seeded by a string.
     // Same seed → always the same sequence of numbers → stable demo data.
@@ -2390,9 +2380,6 @@ async function syncPushEnabledUsers() {
         console.warn('[Push] syncPushEnabledUsers exception:', e);
     }
 }
-function hasPushEnabled(userId) {
-    return _pushEnabledUsers.has(userId);
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // WorkoutPlanStorage — Schede palestra
@@ -2418,6 +2405,15 @@ class WorkoutPlanStorage {
     }
     static _saveToLocalStorage(adminMode) {
         try { localStorage.setItem(this._lsKey(adminMode), JSON.stringify({ ts: Date.now(), data: this._cache })); } catch { /* quota: ignora */ }
+    }
+
+    // Teardown logout (H2): svuota la cache in memoria + le chiavi localStorage TTL
+    // (admin e client) → piani/log dei clienti dell'org A non più visibili all'org B.
+    static clearCache() {
+        this._cache = [];
+        this._syncInFlightByMode = {};
+        try { localStorage.removeItem(this._lsKey(true)); } catch (_) {}
+        try { localStorage.removeItem(this._lsKey(false)); } catch (_) {}
     }
 
     static getAllPlans() { return this._cache; }
@@ -2691,6 +2687,9 @@ class WorkoutPlanStorage {
 // ═══════════════════════════════════════════════════════════════════════════════
 class WorkoutLogStorage {
     static _cache = [];
+
+    // Teardown logout (H2): svuota la cache log in memoria (nessuna persistenza LS).
+    static clearCache() { this._cache = []; }
 
     static getAll() { return this._cache; }
 

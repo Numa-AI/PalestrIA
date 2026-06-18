@@ -138,42 +138,6 @@ document.addEventListener('click', (e) => {
 // ── Exercise picker (replaces old select dropdowns) ──────────────────────────
 // Opens a search-panel inline within the exercise row
 
-function _buildExercisePicker(currentValue, exId, muscleGroup, exerciseSlug = null) {
-    let ex = null;
-    if (exerciseSlug) ex = EXERCISES_DB.find(e => e.slug === exerciseSlug) || _findExercise(currentValue);
-    else ex = _findExercise(currentValue);
-    const isCustom = currentValue && currentValue !== 'Nuovo esercizio' && !ex;
-    const thumbUrl = ex ? ex.immagine_url_small : '';
-    const displayName = isCustom ? currentValue : (ex ? ex.nome_it : '');
-
-    let html = '<div class="schede-ex-picker-wrap">';
-
-    // Thumbnail + selected name + buttons
-    html += `<div class="schede-ex-selected" data-ex-id="${exId}">`;
-    if (thumbUrl) {
-        html += `<img src="${thumbUrl}" class="schede-ex-thumb" alt="" loading="lazy" onclick="_schedeShowExDetail('${_escHtml(ex.slug)}')">`;
-    } else if (!isCustom) {
-        html += `<div class="schede-ex-thumb schede-ex-thumb--empty" onclick="_schedeOpenPicker('${exId}')"></div>`;
-    }
-    html += `<span class="schede-ex-chosen-name" onclick="_schedeOpenPicker('${exId}')">${displayName ? _escHtml(displayName) : '<em>Seleziona esercizio...</em>'}</span>`;
-    if (ex) {
-        html += `<button type="button" class="schede-ex-info-btn" onclick="_schedeShowExDetail('${_escHtml(ex.slug)}')" title="Dettaglio esercizio">&#9432;</button>`;
-    }
-    html += `<button type="button" class="schede-ex-change-btn" onclick="_schedeOpenPicker('${exId}')" title="Cambia esercizio">&#9998;</button>`;
-    html += '</div>';
-
-    // Custom input (hidden unless custom)
-    if (isCustom) {
-        html += `<input type="text" class="schede-ex-custom-name" value="${_escHtml(currentValue)}" placeholder="Nome personalizzato"
-                        onchange="_schedeUpdateExField('${exId}','exercise_name',this.value)">`;
-    }
-
-    // Picker dropdown (hidden by default)
-    html += `<div class="schede-ex-picker-dropdown" id="picker-${exId}" style="display:none;"></div>`;
-    html += '</div>';
-    return html;
-}
-
 function _schedeOpenPicker(exId) {
     // Close any other open picker
     document.querySelectorAll('.schede-ex-picker-dropdown').forEach(d => { if (d.id !== 'picker-' + exId) d.style.display = 'none'; });
@@ -304,7 +268,7 @@ function _schedeRenderExercises(exId, cat, search) {
     const shown = exercises.slice(0, 50);
     listEl.innerHTML = shown.map(ex => `
         <div class="schede-picker-item">
-            <img src="${ex.immagine_url_small}" class="schede-picker-item-img" alt="" loading="lazy">
+            <img src="${_escHtml(ex.immagine_url_small)}" class="schede-picker-item-img" alt="" loading="lazy">
             <div class="schede-picker-item-info" onclick="_schedePickExercise('${exId}', '${_escHtml(ex.nome_it).replace(/'/g, "\\'")}')">
                 <span class="schede-picker-item-name">${_escHtml(ex.nome_it)}</span>
                 <span class="schede-picker-item-cat">${_escHtml(ex.categoria)}</span>
@@ -351,7 +315,7 @@ async function _schedePickExercise(exId, exerciseName) {
 async function _schedePickCustom(exId) {
     // Mobile picker-first: nome via prompt, poi delega a _admMobCreateExFromPicker
     if (typeof exId === 'string' && exId.startsWith('__new_')) {
-        const name = prompt('Nome esercizio personalizzato:');
+        const name = await showPrompt('Nome esercizio personalizzato:', '', { confirmText: 'Aggiungi' });
         const trimmed = (name || '').trim();
         const host = document.getElementById('admMobNewExPickerHost');
         if (host) host.remove();
@@ -1104,7 +1068,7 @@ function _schedeActualRenderSlot(position, slotIdx, ctx) {
                 ? 'title="Cliente senza profilo registrato"'
                 : (noPlan ? 'title="Nessuna scheda attiva assegnata"' : '');
             const onClickAttr = hasUid
-                ? `onclick="_schedeActualOpenClientPopup('${_escJs(uid)}','${_escJs(name)}')"`
+                ? `onclick="_schedeActualOpenClientPopup('${_escAttr(uid)}','${_escAttr(name)}')"`
                 : 'disabled';
 
             peopleHtml += `<button class="${personClasses.join(' ')}" ${onClickAttr} ${titleAttr}>
@@ -1204,7 +1168,7 @@ function _schedeActualOpenClientPopup(userId, name) {
                     </div>
                     ${schedaDisabled ? '' : '<div class="schede-actual-popup-btn-chev">›</div>'}
                 </button>
-                ${schedaDisabled ? `<button class="schede-actual-popup-add" onclick="_schedeActualAddPlan('${_escJs(userId)}','${_escJs(name)}')" title="Crea nuova scheda per ${_escHtml(name)}">
+                ${schedaDisabled ? `<button class="schede-actual-popup-add" onclick="_schedeActualAddPlan('${_escAttr(userId)}','${_escAttr(name)}')" title="Crea nuova scheda per ${_escAttr(name)}">
                     <span class="schede-actual-popup-add-plus">+</span>
                     <span class="schede-actual-popup-add-label">Aggiungi</span>
                 </button>` : ''}
@@ -1256,8 +1220,8 @@ function _schedeActualPickScheda(userId) {
 // _renderPlanEditor subito dopo aver scritto il DOM.
 let _schedePendingNewPlanPrefill = null;
 
-function _schedeActualAddPlan(userId, clientName) {
-    const planName = prompt(`Nome della nuova scheda per ${clientName}:`, '');
+async function _schedeActualAddPlan(userId, clientName) {
+    const planName = await showPrompt(`Nome della nuova scheda per ${clientName}:`, '', { confirmText: 'Crea' });
     if (planName === null) return; // annullato
     const trimmed = (planName || '').trim();
     if (!trimmed) {
@@ -2407,7 +2371,7 @@ function _renderExercisesForDay() {
                 <details class="schede-exercise-row" data-ex-id="${ssEx.id}">
                     <summary class="schede-ex-summary">
                         <span class="schede-ex-drag-handle" aria-hidden="true">${_DRAG_SVG}</span>
-                        ${thumbUrlSs ? `<img class="schede-ex-icon" src="${thumbUrlSs}" alt="" loading="lazy">` : `<span class="schede-ex-icon schede-ex-icon--ph" aria-hidden="true">${_DUMB_SVG}</span>`}
+                        ${thumbUrlSs ? `<img class="schede-ex-icon" src="${_escHtml(thumbUrlSs)}" alt="" loading="lazy">` : `<span class="schede-ex-icon schede-ex-icon--ph" aria-hidden="true">${_DUMB_SVG}</span>`}
                         <div class="schede-ex-info">
                             <div class="schede-ex-preview-name">${_escHtml(ssEx.exercise_name || 'Senza nome')}</div>
                             <div class="schede-ex-preview-meta">
@@ -2480,7 +2444,7 @@ function _renderExercisesForDay() {
                 <details class="schede-exercise-row schede-cc-member" data-ex-id="${ccEx.id}">
                     <summary class="schede-ex-summary">
                         <span class="schede-ex-drag-handle" aria-hidden="true">${_DRAG_SVG}</span>
-                        ${thumbUrlCc ? `<img class="schede-ex-icon" src="${thumbUrlCc}" alt="" loading="lazy">` : `<span class="schede-ex-icon schede-ex-icon--ph" aria-hidden="true">${_DUMB_SVG}</span>`}
+                        ${thumbUrlCc ? `<img class="schede-ex-icon" src="${_escHtml(thumbUrlCc)}" alt="" loading="lazy">` : `<span class="schede-ex-icon schede-ex-icon--ph" aria-hidden="true">${_DUMB_SVG}</span>`}
                         <div class="schede-ex-info">
                             <div class="schede-ex-preview-name">${_escHtml(ccEx.exercise_name || 'Senza nome')}</div>
                             <div class="schede-ex-preview-meta">
@@ -2535,7 +2499,7 @@ function _renderExercisesForDay() {
         <details class="schede-exercise-row" data-ex-id="${ex.id}">
             <summary class="schede-ex-summary">
                 <span class="schede-ex-drag-handle" aria-hidden="true">${_DRAG_SVG}</span>
-                ${thumbUrlN ? `<img class="schede-ex-icon" src="${thumbUrlN}" alt="" loading="lazy">` : `<span class="schede-ex-icon schede-ex-icon--ph" aria-hidden="true">${_DUMB_SVG}</span>`}
+                ${thumbUrlN ? `<img class="schede-ex-icon" src="${_escHtml(thumbUrlN)}" alt="" loading="lazy">` : `<span class="schede-ex-icon schede-ex-icon--ph" aria-hidden="true">${_DUMB_SVG}</span>`}
                 <div class="schede-ex-info">
                     <div class="schede-ex-preview-name">${_escHtml(ex.exercise_name || 'Senza nome')}</div>
                     <div class="schede-ex-preview-meta">
@@ -2753,6 +2717,13 @@ async function _schedeAddExerciseRow() {
 }
 
 async function _schedeUpdateExField(exId, field, value) {
+    // M17: per le Serie, un campo vuoto/invalido non deve collassare a 0.
+    // (+'' === 0, +'abc' === NaN) → in quel caso ignora l'update e mantieni il valore precedente.
+    if (field === 'sets') {
+        const n = (typeof value === 'number') ? value : parseInt(value, 10);
+        if (Number.isNaN(n) || n < 1) return;
+        value = n;
+    }
     try {
         await WorkoutPlanStorage.updateExercise(exId, { [field]: value });
     } catch (e) {
@@ -2890,7 +2861,7 @@ async function _schedeAddCircuitRow() {
 async function _schedeDeleteCircuit(groupId) {
     _schedeSyncEditingPlan();
     if (!_editingPlan) return;
-    if (!confirm('Eliminare questo circuito?')) return;
+    if (!await showConfirm('Eliminare questo circuito?')) return;
     const toDelete = (_editingPlan.workout_exercises || []).filter(e => e.circuit_group === groupId);
     try {
         for (const ex of toDelete) {
@@ -2991,7 +2962,7 @@ async function _schedeRemoveFromCircuit(exId) {
         if (typeof showToast === 'function') showToast('Un circuito deve avere almeno 2 esercizi', 'error');
         return;
     }
-    if (!confirm('Rimuovere questo esercizio dal circuito?')) return;
+    if (!await showConfirm('Rimuovere questo esercizio dal circuito?')) return;
     const wasLast = members[members.length - 1].id === exId;
     try {
         await WorkoutPlanStorage.deleteExercise(exId);
@@ -3082,7 +3053,7 @@ async function _schedeAssignTemplate(userId) {
 }
 
 async function _schedeDeletePlan(planId) {
-    if (!confirm('Eliminare questa scheda e tutti gli esercizi associati?')) return;
+    if (!await showConfirm('Eliminare questa scheda e tutti gli esercizi associati?')) return;
     try {
         await WorkoutPlanStorage.deletePlan(planId);
         if (typeof showToast === 'function') showToast('Scheda eliminata', 'success');
@@ -3093,7 +3064,7 @@ async function _schedeDeletePlan(planId) {
 }
 
 async function _schedeSaveAsTemplate(planId, planName) {
-    const tplName = prompt('Nome del template:', planName);
+    const tplName = await showPrompt('Nome del template:', planName, { confirmText: 'Salva template' });
     if (!tplName) return;
     try {
         await WorkoutPlanStorage.duplicatePlan(planId, null, tplName);
@@ -3105,7 +3076,7 @@ async function _schedeSaveAsTemplate(planId, planName) {
 }
 
 async function _schedeDeletePlanFromDetail(planId) {
-    if (!confirm('Eliminare questa scheda e tutti gli esercizi associati?')) return;
+    if (!await showConfirm('Eliminare questa scheda e tutti gli esercizi associati?')) return;
     try {
         await WorkoutPlanStorage.deletePlan(planId);
         if (typeof showToast === 'function') showToast('Scheda eliminata', 'success');
@@ -3125,7 +3096,7 @@ async function _schedeDuplicatePlan(planId) {
     const nameMap = {};
     for (const u of allUsers) nameMap[u.userId] = u.name || u.email;
 
-    const targetName = prompt('Duplicare per quale cliente? (nome)', nameMap[plan.user_id] || '');
+    const targetName = await showPrompt('Duplicare per quale cliente? (nome)', nameMap[plan.user_id] || '', { confirmText: 'Duplica' });
     if (!targetName) return;
 
     const targetUser = allUsers.find(u =>
@@ -3369,8 +3340,8 @@ function _renderMobileCardsForDay() {
                     <div class="all-ss-header" onclick="_admMobOpenSsEdit('${ssId}')">
                         <div class="all-ss-thumbs">
                             <span class="all-ss-badge">SS</span>
-                            ${thumb1 ? `<img src="${thumb1}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
-                            ${thumb2 ? `<img src="${thumb2}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
+                            ${thumb1 ? `<img src="${_escHtml(thumb1)}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
+                            ${thumb2 ? `<img src="${_escHtml(thumb2)}" class="all-ss-thumb" alt="" loading="lazy">` : ''}
                         </div>
                         <div class="all-ss-info">
                             <ul class="all-ss-names">
@@ -3395,7 +3366,7 @@ function _renderMobileCardsForDay() {
             const restSec = last.rest_seconds || 0;
             const thumbsHtml = items.slice(0, 4).map(it => {
                 const db = _findExerciseForCard(it);
-                return db && db.immagine_url_small ? `<img src="${db.immagine_url_small}" class="all-cc-thumb" alt="" loading="lazy">` : '';
+                return db && db.immagine_url_small ? `<img src="${_escHtml(db.immagine_url_small)}" class="all-cc-thumb" alt="" loading="lazy">` : '';
             }).join('');
             const extra = items.length > 4 ? `<span class="all-cc-thumb-more">+${items.length - 4}</span>` : '';
             const namesHtml = items.map(it => {
@@ -3431,7 +3402,7 @@ function _renderMobileCardsForDay() {
         html += `<div class="all-ex-card" id="adm-ex-${ex.id}" data-ex-id="${ex.id}">
             <div class="all-ex-swipe-content">
                 <div class="all-ex-header" onclick="_admMobOpenExEdit('${ex.id}')">
-                    ${thumbSrc ? `<img src="${thumbSrc}" class="all-ex-thumb" alt="" loading="lazy">` : ''}
+                    ${thumbSrc ? `<img src="${_escHtml(thumbSrc)}" class="all-ex-thumb" alt="" loading="lazy">` : ''}
                     <div class="all-ex-info">
                         <div class="all-ex-name">${_escHtml(dbEx ? dbEx.nome_it : (ex.exercise_name || 'Senza nome'))}</div>
                         <div class="all-ex-target">${target}</div>
@@ -3655,7 +3626,7 @@ function _admMobOpenExEdit(exId, isReopen) {
 }
 
 async function _admMobDeleteSingle(exId) {
-    if (!confirm('Eliminare questo esercizio?')) return;
+    if (!await showConfirm('Eliminare questo esercizio?')) return;
     _admMobActiveEdit = null;
     await _schedeDeleteExercise(exId);
     const ov = document.getElementById('admMobEditOverlay');
@@ -3704,7 +3675,7 @@ function _admMobOpenSsEdit(groupId, isReopen) {
 }
 
 async function _admMobDeleteSs(groupId) {
-    if (!confirm('Eliminare questa super serie?')) return;
+    if (!await showConfirm('Eliminare questa super serie?')) return;
     _admMobActiveEdit = null;
     await _schedeDeleteSuperset(groupId);
     const ov = document.getElementById('admMobEditOverlay');

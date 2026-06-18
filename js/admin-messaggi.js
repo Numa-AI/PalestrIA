@@ -10,7 +10,7 @@ function showMsgResultPopup(recipients, failed) {
     if (oldOverlay) oldOverlay.remove();
 
     const getInitials = (name) => {
-        const parts = name.trim().split(/\s+/);
+        const parts = String(name || '').trim().split(/\s+/);
         return (parts[0]?.[0] || '') + (parts[1]?.[0] || '');
     };
 
@@ -20,7 +20,7 @@ function showMsgResultPopup(recipients, failed) {
         html += `<div class="msg-popup-section-title msg-popup-section-title--ok">✅ Inviate con successo (${recipients.length})</div>`;
         html += '<ul class="msg-popup-list msg-popup-list--ok">';
         recipients.forEach(name => {
-            html += `<li><span class="msg-popup-avatar">${getInitials(name)}</span> ${name}</li>`;
+            html += `<li><span class="msg-popup-avatar">${_escHtml(getInitials(name))}</span> ${_escHtml(name)}</li>`;
         });
         html += '</ul></div>';
     }
@@ -29,7 +29,7 @@ function showMsgResultPopup(recipients, failed) {
         html += `<div class="msg-popup-section-title msg-popup-section-title--fail">❌ Non recapitate (${failed.length})</div>`;
         html += '<ul class="msg-popup-list msg-popup-list--fail">';
         failed.forEach(name => {
-            html += `<li><span class="msg-popup-avatar">${getInitials(name)}</span> ${name}</li>`;
+            html += `<li><span class="msg-popup-avatar">${_escHtml(getInitials(name))}</span> ${_escHtml(name)}</li>`;
         });
         html += '</ul></div>';
     }
@@ -128,7 +128,7 @@ async function sendAdminMessage() {
     }
 
     const modeLabel = mode === 'tutti' ? 'tutti gli utenti' : mode === 'giorno' ? `iscritti del ${date}` : `iscritti ${date} alle ${time}`;
-    if (!confirm(`Inviare la notifica a ${modeLabel}?`)) return;
+    if (!await showConfirm(`Inviare la notifica a ${modeLabel}?`)) return;
 
     status.textContent = '⏳ Invio in corso...';
     status.style.color = '#6b7280';

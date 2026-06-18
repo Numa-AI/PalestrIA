@@ -169,13 +169,14 @@ window._manualTokenRefresh = function () { return supabaseAuth.auth.refreshSessi
 // attesa del lock. Logged out → null → supabase-js usa la anon key (identico a prima). Il
 // refresh proattivo (auth.js) tiene il token in storage praticamente sempre fresco.
 let _lastKnownAccessToken = null;
+// Ref del progetto ricavato da SUPABASE_URL (sottodominio prima di .supabase.co):
+// usiamo la chiave esatta sb-<ref>-auth-token, mai una wildcard (su origin condivisa
+// la wildcard può pescare il token di un altro progetto Supabase).
+const _SB_PROJECT_REF = (SUPABASE_URL.match(/^https?:\/\/([^.]+)\.supabase\.co/) || [])[1] || '';
+const _SB_AUTH_TOKEN_KEY = `sb-${_SB_PROJECT_REF}-auth-token`;
 function _readAccessTokenDirect() {
     try {
-        let raw = null;
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && /^sb-.*-auth-token$/.test(k)) { raw = localStorage.getItem(k); break; }
-        }
+        let raw = _SB_PROJECT_REF ? localStorage.getItem(_SB_AUTH_TOKEN_KEY) : null;
         if (!raw) return null; // logged out → anon key
         if (raw.slice(0, 7) === 'base64-') {
             const b64 = raw.slice(7).replace(/-/g, '+').replace(/_/g, '/');
@@ -198,16 +199,3 @@ function _readAccessTokenDirect() {
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     accessToken: async () => _readAccessTokenDirect()
 });
-
-// Log click on "Andrea Pompili" credit link
-function logCreditClick() {
-    // Don't preventDefault — let the <a> open normally (critical for iOS PWA)
-    const user = window._currentUser;
-    supabaseClient.from('click_andrea_pompili').insert({
-        user_name:  user?.name  || null,
-        user_email: user?.email || null,
-        page:       window.location.pathname
-    }).then(({ error }) => {
-        if (error) console.error('credit-click log failed:', error.message);
-    }).catch(err => console.error('credit-click exception:', err));
-}

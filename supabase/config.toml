@@ -408,11 +408,6 @@ verify_jwt = false
 [functions.image-proxy]
 verify_jwt = false
 
-# Checkout pagamenti-cliente legacy (top-up): valida il Bearer internamente.
-[functions.create-checkout]
-verify_jwt = true
-
-
 # Report mensile AI (admin/owner): valida il Bearer internamente.
 [functions.generate-monthly-report]
 verify_jwt = true

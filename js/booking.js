@@ -106,7 +106,7 @@ function _loadSlotAttendees(attendeesList, slotDate, slotTime, isRetry) {
 function openBookingModal(dateInfo, timeSlot, slotType, remainingSpots) {
     // Populate slot info
     const badge = document.getElementById('modalSlotTypeBadge');
-    badge.textContent = SLOT_NAMES[slotType];
+    badge.textContent = getSlotName(slotType);
     badge.className = `modal-slot-badge ${slotType}`;
 
     document.getElementById('modalSlotDay').textContent = `${dateInfo.dayName} ${dateInfo.displayDate}`;
@@ -257,11 +257,14 @@ async function handleBookingSubmit(e) {
         return;
     }
 
-    // Reject if more than 30 minutes have passed since lesson start
+    // Reject if more than 30 minutes have passed since lesson start.
+    // La data va costruita in orario LOCALE: new Date("YYYY-MM-DD") la
+    // interpreterebbe come mezzanotte UTC, sfasando il cutoff di 1-2h
+    // (rotto vicino a mezzanotte/DST). Parse esplicito y/mo/dy + ora locale.
     const _slotTp = _parseSlotTime(selectedSlot.time);
     const [_sh, _sm] = _slotTp ? [_slotTp.startH, _slotTp.startM] : [0, 0];
-    const _lessonStart = new Date(selectedSlot.date);
-    _lessonStart.setHours(_sh, _sm, 0, 0);
+    const [_yr, _mo, _dy] = String(selectedSlot.date).split('-').map(Number);
+    const _lessonStart = new Date(_yr, _mo - 1, _dy, _sh, _sm, 0, 0);
     if ((new Date() - _lessonStart) > 30 * 60 * 1000) {
         showToast('Non è possibile prenotare: sono passati più di 30 minuti dall\'inizio della lezione.', 'error');
         closeBookingModal();
@@ -296,18 +299,10 @@ async function handleBookingSubmit(e) {
         return;
     }
 
-    // Check if slot is still available
-    const remainingSpots = BookingStorage.getRemainingSpots(
-        selectedSlot.date,
-        selectedSlot.time,
-        selectedSlot.slotType
-    );
-
-    if (remainingSpots <= 0) {
-        showToast('Slot completo. Seleziona un altro orario.', 'error');
-        renderCalendar();
-        return;
-    }
+    // NB: nessun pre-check capienza lato client. L'autorità è `book_slot`
+    // (server, advisory lock anti-overbooking): la cache localStorage può essere
+    // stantia e negare a torto uno slot che il server concederebbe. Il caso
+    // "slot pieno" è gestito più sotto via result.error === 'slot_full'.
 
     // Check duplicate booking (same user, same date+time, not cancelled)
     // Query Supabase direttamente per evitare dati stale in localStorage
@@ -466,7 +461,7 @@ function buildCalendarDates(dateStr, timeStr) {
 
 function googleCalendarUrl(booking) {
     const { start, end } = buildCalendarDates(booking.date, booking.time);
-    const title = encodeURIComponent(`Allenamento – ${SLOT_NAMES[booking.slotType]}`);
+    const title = encodeURIComponent(`Allenamento – ${getSlotName(booking.slotType)}`);
     const details = encodeURIComponent(`Prenotato da ${booking.name}`);
     const location = encodeURIComponent('Via Demo 1, Milano BS');
     const ctz = encodeURIComponent(_orgTimezone());
@@ -506,7 +501,7 @@ function _vtimezoneLines(tzid) {
 
 function downloadIcs(booking) {
     const { start, end } = buildCalendarDates(booking.date, booking.time);
-    const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
+    const title = `Allenamento – ${getSlotName(booking.slotType)}`;
     const uid = _bookingUid(booking);
     const tz = _orgTimezone();
     const ics = [
@@ -536,7 +531,7 @@ function downloadIcs(booking) {
 
 function downloadCancelIcs(booking) {
     const { start, end } = buildCalendarDates(booking.date, booking.time);
-    const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
+    const title = `Allenamento – ${getSlotName(booking.slotType)}`;
     const uid = _bookingUid(booking);
     const tz = _orgTimezone();
     const ics = [
@@ -574,7 +569,7 @@ function showConfirmation(booking) {
     const confirmationDiv = document.getElementById('confirmationMessage');
     const creditNotice = '';
     confirmationDiv.innerHTML = `
-        <h3>✓ ${SLOT_NAMES[booking.slotType]} Confermata!</h3>
+        <h3>✓ ${getSlotName(booking.slotType)} Confermata!</h3>
         <p><strong>${_escHtml(booking.name)}</strong></p>
         <p>📅 ${booking.dateDisplay} &nbsp;·&nbsp; 🕐 ${booking.time}</p>
         ${creditNotice}
@@ -629,7 +624,7 @@ async function notificaPrenotazione(booking) {
     if (typeof registerPushSubscription === 'function') registerPushSubscription();
     const reg = await navigator.serviceWorker.ready;
     reg.showNotification('Prenotazione confermata', {
-        body: `${SLOT_NAMES[booking.slotType]} · ${booking.dateDisplay} · ${booking.time}`,
+        body: `${getSlotName(booking.slotType)} · ${booking.dateDisplay} · ${booking.time}`,
         icon: '/images/logo-palestria.png',
         badge: '/images/badge-mono-96.png',
         tag: 'prenotazione-' + booking.id,

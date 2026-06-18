@@ -2,9 +2,12 @@
 // Chiamata dal client dopo una registrazione confermata.
 // Manda una push notification AGLI ADMIN DELLA ORG del nuovo iscritto.
 //
-// Multi-tenant: niente più ADMIN_IDS hardcoded. La org si ricava dal record
-// del nuovo cliente (profiles.org_id) tramite SERVICE ROLE KEY; i destinatari
-// sono gli owner/admin attivi di QUELLA org (org_members) con una push_subscription.
+// SICUREZZA (multi-tenant): il chiamante DEVE essere autenticato (Bearer JWT
+// validato con getUser). La org si deriva dal PROFILO del chiamante
+// (profiles.org_id) — è l'utente appena registrato — MAI dal body. org_id e
+// client_id eventualmente presenti nel body sono ignorati (anti-spoofing H1).
+// I destinatari sono gli owner/admin attivi di QUELLA org (org_members) con una
+// push_subscription.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -30,9 +33,25 @@ Deno.serve(async (req) => {
         return new Response(null, { status: 204, headers: corsHeaders });
     }
     try {
-        // Firma payload invariata (name). Accettiamo opzionalmente org_id / client_id
-        // per risolvere la org senza ambiguità; altrimenti la ricaviamo dal profilo.
-        const { name, org_id: orgIdInput, client_id } = await req.json();
+        // ── 0) Autenticazione: ricava l'utente dal Bearer JWT ──────────────────
+        const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+        if (!token) {
+            return new Response(JSON.stringify({ ok: false, error: "Non autenticato" }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+        const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+        if (userErr || !userData?.user) {
+            return new Response(JSON.stringify({ ok: false, error: "Token non valido" }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+        const callerId = userData.user.id;
+
+        // Solo `name` è usato dal body; org_id/client_id eventuali sono IGNORATI.
+        const { name } = await req.json();
 
         if (!name) {
             return new Response(JSON.stringify({ ok: false, error: "name è obbligatorio" }), {
@@ -41,36 +60,18 @@ Deno.serve(async (req) => {
             });
         }
 
-        // ── 1) Risoluzione della org del nuovo cliente ─────────────────────────
-        // Priorità: org_id esplicito → profiles per client_id → profiles per name.
-        let orgId: string | null = orgIdInput ?? null;
-
-        if (!orgId && client_id) {
-            const { data: prof, error: profErr } = await supabase
-                .from("profiles")
-                .select("org_id")
-                .eq("id", client_id)
-                .maybeSingle();
-            if (profErr) throw profErr;
-            orgId = prof?.org_id ?? null;
-        }
-
-        if (!orgId) {
-            // Fallback: cerca il profilo per nome (il più recente, se più di uno).
-            const { data: prof, error: profErr } = await supabase
-                .from("profiles")
-                .select("org_id")
-                .eq("name", name)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            if (profErr) throw profErr;
-            orgId = prof?.org_id ?? null;
-        }
+        // ── 1) Org del nuovo cliente = org del PROFILO del chiamante ───────────
+        const { data: prof, error: profErr } = await supabase
+            .from("profiles")
+            .select("org_id")
+            .eq("id", callerId)
+            .maybeSingle();
+        if (profErr) throw profErr;
+        const orgId: string | null = prof?.org_id ?? null;
 
         if (!orgId) {
             // Senza org non sappiamo a quali admin notificare: usciamo senza errore.
-            console.warn(`[notify-admin-new-client] org non risolta per "${name}" — notifica saltata`);
+            console.warn(`[notify-admin-new-client] org non risolta per il chiamante ${callerId} — notifica saltata`);
             return new Response(JSON.stringify({ ok: true, sent: 0, skipped: "org_not_resolved" }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });

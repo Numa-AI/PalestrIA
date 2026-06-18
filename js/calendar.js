@@ -270,8 +270,14 @@ function renderCalendar() {
     });
 }
 
-// Slot types that are not bookable by users (no spots shown, no click)
+// Slot types that are not bookable by users (no spots shown, no click).
+// Org-aware: il flag `bookable` per-org di _ORG_SLOT_TYPES è l'autorità; ogni
+// tenant può rendere prenotabile (o no) qualunque tipo, anche custom. Fallback
+// alla mappa legacy hardcoded solo se il tipo non è presente nella config org.
 function _isNonBookable(type) {
+    if (typeof _ORG_SLOT_TYPES !== 'undefined' && _ORG_SLOT_TYPES && _ORG_SLOT_TYPES[type]) {
+        return _ORG_SLOT_TYPES[type].bookable === false;
+    }
     return type === SLOT_TYPES.GROUP_CLASS || type === SLOT_TYPES.CLEANING;
 }
 

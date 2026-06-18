@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="css/style.css?v=9">
     <link rel="stylesheet" href="css/login.css?v=4">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=2"></script>
+<script src="js/branding-boot.js?v=3"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -260,19 +260,20 @@
             <li><a href="chi-sono.html">Chi sono</a></li>
             <li><a href="dove-sono.html">Dove sono</a></li>
         </ul>
-        <p class="nav-sidebar-credit">powered by <a href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link" onclick="logCreditClick(event)">Andrea Pompili</a></p>
+        <p class="nav-sidebar-credit">powered by <a href="https://andreapompili.com/" target="_blank" rel="noopener" class="credit-link">Andrea Pompili</a></p>
     </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
-    <script src="js/supabase-client.js?v=10"></script>
-    <script src="js/org-settings.js?v=8"></script>
+    <script src="js/supabase-client.js?v=11"></script>
+    <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=3"></script>
-    <script src="js/data.js?v=88"></script>
-    <script src="js/auth.js?v=31"></script>
+    <script src="js/modals.js?v=2"></script>
+    <script src="js/data.js?v=89"></script>
+    <script src="js/auth.js?v=32"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
-    <script src="js/maintenance.js?v=2"></script>
-    <script src="js/push.js?v=23"></script>
+    <script src="js/maintenance.js?v=3"></script>
+    <script src="js/push.js?v=24"></script>
     <script>
         // Prevent iOS Safari auto-zoom on input focus.
         // touchstart fires before iOS decides to zoom, so setting
@@ -657,7 +658,7 @@
                 provider: 'google',
                 options: { redirectTo: window.location.origin + '/login.html' }
             });
-            if (error) alert('Errore durante il login con Google: ' + error.message);
+            if (error) showAlert('Errore durante il login con Google: ' + error.message, { type:'error' });
         }
 
         // ── Detect PASSWORD_RECOVERY event from Supabase ─────────────────

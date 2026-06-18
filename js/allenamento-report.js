@@ -43,11 +43,12 @@ function _unlockBodyScrollIfNoModals() {
 // ═════════════════════════════════════════════════════════════════════
 
 function _getAvailableMonthForGeneration() {
-    // ⚠️ TEMPORANEAMENTE: restituisce il mese CORRENTE per permettere test su Aprile.
-    // RIATTIVARE comportamento "mese precedente" prima del rilascio in produzione,
-    // e riattivare anche il controllo corrispondente nell'Edge Function.
+    // Il report mensile riguarda il MESE PRECEDENTE (quello appena concluso):
+    // a inizio mese si genera il riepilogo del mese passato. Deve coincidere con
+    // il controllo corrispondente nell'Edge Function.
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
 }
 
 // Limite massimo di rigenerazioni per (utente, mese). Deve coincidere con il
@@ -166,29 +167,9 @@ async function renderReport() {
         return;
     }
 
-    // ⚠️ TEMPORANEO: la feature Report è disponibile solo agli admin durante
-    // la fase di test/refinement. Ai clienti non-admin mostriamo un placeholder
-    // "Work in progress". Rimuovere questo blocco quando la feature è pronta.
-    const isAdmin = (user.app_metadata)?.role === 'admin';
-    if (!isAdmin) {
-        container.innerHTML = `
-            <div class="all-report-section">
-                <div class="all-report-header">
-                    <h2 class="all-report-title">📊 Report Mensili</h2>
-                </div>
-                <div class="all-report-wip">
-                    <div class="all-report-wip-icon">🚧</div>
-                    <div class="all-report-wip-title">Work in progress</div>
-                    <div class="all-report-wip-desc">
-                        Stiamo ultimando la feature Report AI. Sarà disponibile prossimamente
-                        per tutti gli utenti.
-                    </div>
-                </div>
-            </div>
-        `;
-        return;
-    }
-
+    // La feature Report è self-service: disponibile a tutti gli utenti previsti
+    // (sia admin/owner che clienti finali della org). Il gating fine resta lato
+    // server (RLS + Edge Function); qui non limitiamo più l'accesso agli admin.
     const reports = await _fetchReports();
     const availableMonth = _getAvailableMonthForGeneration();
     const availableMonthLabel = _formatYearMonth(availableMonth);
@@ -344,14 +325,14 @@ function closeReportModal() {
 async function _generateTone(yearMonth, tone) {
     const { data: authRes } = await supabaseAuth.auth.getUser();
     const user = authRes?.user;
-    if (!user) { alert('Non sei loggato'); return; }
+    if (!user) { showAlert('Non sei loggato', { type:'warn' }); return; }
 
     const { data: profile } = await supabaseClient.from('profiles')
         .select('report_ai_consent')
         .eq('id', user.id)
         .maybeSingle();
 
-    if (!profile) { alert('Profilo non trovato'); return; }
+    if (!profile) { showAlert('Profilo non trovato', { type:'error' }); return; }
 
     if (!profile.report_ai_consent) {
         _showConsentModal(yearMonth, tone);
@@ -412,13 +393,13 @@ function closeConsentModal() {
 async function _acceptConsentAndContinue(yearMonth, tone) {
     const checkbox = document.getElementById('consentCheckbox');
     if (!checkbox?.checked) {
-        alert('Devi spuntare la casella per procedere.');
+        showAlert('Devi spuntare la casella per procedere.', { type:'warn' });
         return;
     }
 
     const { error } = await supabaseClient.rpc('set_report_ai_consent', { p_consent: true });
     if (error) {
-        alert('Errore nel salvare il consenso: ' + error.message);
+        showAlert('Errore nel salvare il consenso: ' + error.message, { type:'error' });
         return;
     }
 
@@ -469,10 +450,10 @@ async function _startGenerationInternal(yearMonth, tone, force) {
 
         if (!res.ok || !data.success) {
             if (data.code === 'REGEN_LIMIT_REACHED') {
-                alert(`Hai raggiunto il limite di ${data.limit} generazioni per questo mese. Non puoi rigenerare ulteriormente.`);
+                showAlert(`Hai raggiunto il limite di ${data.limit} generazioni per questo mese. Non puoi rigenerare ulteriormente.`, { type:'warn' });
             } else {
                 const msg = data.error || `Errore HTTP ${res.status}`;
-                alert('Errore nella generazione:\n' + msg);
+                showAlert('Errore nella generazione:\n' + msg, { type:'error' });
             }
             return;
         }
@@ -486,6 +467,6 @@ async function _startGenerationInternal(yearMonth, tone, force) {
     } catch (e) {
         document.getElementById('generatingOverlay')?.remove();
         _unlockBodyScrollIfNoModals();
-        alert('Errore: ' + (e.message || 'richiesta fallita'));
+        showAlert('Errore: ' + (e.message || 'richiesta fallita'), { type:'error' });
     }
 }

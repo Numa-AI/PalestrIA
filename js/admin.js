@@ -87,15 +87,31 @@ function setupAdminStickyOffsets() {
     window.addEventListener('scroll', _adminScrollHandler, { passive: true });
 }
 
+// Ruoli con accesso alla UI admin: owner/admin/staff (verificati server-side via
+// org_members / claim JWT). Le scritture restano protette da RLS/RPC: lo staff
+// vede la dashboard ma non può fare ciò che il server gli nega.
+const ADMIN_UI_ROLES = ['owner', 'admin', 'staff'];
+
+// True se l'utente ha accesso alla UI admin in base al RUOLO verificato
+// (window._orgRole), NON al flag sessionStorage (manipolabile da console).
+function hasAdminUiAccess() {
+    return ADMIN_UI_ROLES.includes(window._orgRole);
+}
+
+// True solo per owner/admin: per azioni/UI che lo staff non deve vedere.
+function isOrgAdminRole() {
+    return window._orgRole === 'owner' || window._orgRole === 'admin';
+}
+
 // Garantisce window._orgId/_orgRole leggendo da org_members quando il claim JWT
 // è assente (auth hook disabilitato): l'owner/staff non ha il claim, ma MOLTE
 // feature admin (orari, impostazioni) inseriscono org_id = window._orgId.
 async function _ensureAdminOrgContext() {
-    if (window._orgId) return window._orgId;
-    if (typeof supabaseClient === 'undefined') return null;
+    if (window._orgId && window._orgRole) return window._orgId;
+    if (typeof supabaseClient === 'undefined') return window._orgId || null;
     try {
         const { data: { session } } = await supabaseAuth.auth.getSession();
-        if (!session) return null;
+        if (!session) return window._orgId || null;
         const { data: m } = await supabaseClient
             .from('org_members')
             .select('org_id, role')
@@ -105,9 +121,12 @@ async function _ensureAdminOrgContext() {
             .limit(1)
             .maybeSingle();
         if (m) {
-            window._orgId   = m.org_id;
+            window._orgId   = window._orgId   || m.org_id;
             window._orgRole = window._orgRole || m.role;
-            if (m.role === 'owner' || m.role === 'admin') sessionStorage.setItem('adminAuth', 'true');
+            // Propaga il flag legacy a sessionStorage per i ruoli con accesso UI
+            // (incluso staff): alcuni boot path / moduli fuori scope lo leggono.
+            // L'autorità resta il RUOLO verificato + RLS/RPC lato server.
+            if (ADMIN_UI_ROLES.includes(window._orgRole)) sessionStorage.setItem('adminAuth', 'true');
         }
     } catch (_) { /* offline / nessuna membership */ }
     return window._orgId || null;
@@ -124,6 +143,12 @@ async function initAdmin() {
 
     // 1) Contesto org PRIMA di tutto (serve a orari/impostazioni per gli insert org_id).
     await _ensureAdminOrgContext();
+
+    // 1b) Gate basato sul RUOLO verificato server-side (owner/admin/staff), non sul
+    //     flag sessionStorage. È l'autorità di accesso UI dentro questo scope: se il
+    //     ruolo non è tra quelli abilitati, non renderizziamo nulla (le scritture
+    //     restano comunque protette da RLS/RPC).
+    if (!hasAdminUiAccess()) return;
     // 2) Ricarica config orari (slot_types/fasce/template attivo) e impostazioni org
     //    ora che window._orgId è disponibile → calendario e settings mostrano i dati giusti.
     if (typeof loadOrgScheduleConfig === 'function') { try { await loadOrgScheduleConfig(); } catch (_) {} }

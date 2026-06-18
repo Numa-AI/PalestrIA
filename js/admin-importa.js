@@ -376,7 +376,7 @@ async function _importaAdd(slug) {
         if (container) _renderImportaUI(container);
     } catch (e) {
         console.error('[Importa] Insert error:', e);
-        alert('Errore durante l\'importazione: ' + (e.message || e));
+        showAlert('Errore durante l\'importazione: ' + (e.message || e), { type:'error' });
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '+ Importa'; }
     }
@@ -384,7 +384,7 @@ async function _importaAdd(slug) {
 
 // ── Remove imported exercise ────────────────────────────────────────────────
 async function _importaRemove(slug) {
-    if (!confirm('Rimuovere questo esercizio dagli importati?\nNon sarà più disponibile nel picker delle schede.')) return;
+    if (!await showConfirm('Rimuovere questo esercizio dagli importati?\nNon sarà più disponibile nel picker delle schede.')) return;
 
     const card = document.querySelector(`.importa-card[data-slug="${slug}"]`);
     const btn = card?.querySelector('.importa-btn--remove');
@@ -405,7 +405,7 @@ async function _importaRemove(slug) {
         if (container) _renderImportaUI(container);
     } catch (e) {
         console.error('[Importa] Delete error:', e);
-        alert('Errore: ' + (e.message || e));
+        showAlert('Errore: ' + (e.message || e), { type:'error' });
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '✕ Rimuovi'; }
     }
@@ -416,7 +416,7 @@ async function _importaRename(slug) {
     const imp = _importaImported.find(e => e.slug === slug);
     if (!imp) return;
 
-    const newName = prompt('Nuovo nome italiano:', imp.nome_it);
+    const newName = await showPrompt('Nuovo nome italiano:', imp.nome_it);
     if (!newName || newName.trim() === imp.nome_it) return;
 
     const trimmedNew = newName.trim();
@@ -467,7 +467,7 @@ async function _importaRename(slug) {
         if (container) _renderImportaUI(container);
     } catch (e) {
         console.error('[Importa] Rename error:', e);
-        alert('Errore: ' + (e.message || e));
+        showAlert('Errore: ' + (e.message || e), { type:'error' });
     }
 }
 

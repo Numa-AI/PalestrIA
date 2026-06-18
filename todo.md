@@ -1,8 +1,39 @@
 # TODO — PalestrIA SaaS
 
-Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-17.
+Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
 
 > Stato: la piattaforma multi-tenant funziona (signup self-serve, orari flessibili, clienti, prenotazioni, billing-cliente, impostazioni 11 sotto-tab, branding). Deployata su Supabase `rwaiekhllujximrqftmp` + GitHub Pages (`renumaa.github.io/PalestrIA`). Mancano soprattutto: incassi reali (Stripe), dominio/landing, e alcune rifiniture + chiusure di sicurezza.
+
+---
+
+## 🔍 Audit completo `dasistemare.md` (2026-06-17) — FIX APPLICATI (2026-06-18)
+Tutte le voci dell'audit risolte **tranne C1** (super-admin, rinviato su richiesta utente). Branch `saas-main`.
+
+- [x] **C2** — kiosk `tablet.html` senza auth: nuovo layer RPC `kiosk_*` SECURITY DEFINER vincolato al singolo `p_uid` (migration **00000000000016_kiosk_rpcs.sql**) + client Supabase **anonimo isolato** (`storageKey:'sb-kiosk-isolated'`, `persistSession:false`) → niente più riuso della sessione admin / privilegi admin sull'org. Tutte le query/scritture del tablet passano per le RPC.
+- [x] **H1** — `notify-admin-{booking,cancellation,new-client}`: validano il Bearer con `getUser()` e derivano `org_id` da fonte server (booking_id / profilo caller), mai dal body. `push.js` aggiornato (invia `booking_id`; new-client usa il token utente).
+- [x] **H2** — `logoutUser()` teardown completo (WorkoutPlan/Log cache, gym_stats, availability, push, OrgSettings.reset+removeChannel, _brandingSnapshot) + namespacing `anon`→slug.
+- [x] **H3/L6** — import backup e `deleteClientData`: rimossa password hardcoded `Palestra123`, forzato `org_id=window._orgId`, niente id client sui ledger, rimossi i blanket-delete; conferma digitata.
+- [x] **H4** — Stored XSS: `_escAttr` sugli `onclick` (admin-schede), `_escHtml` su nomi (admin-messaggi) e su **tutti** gli `src` da `imported_exercises` (admin-schede, allenamento.html, tablet.html).
+- [x] **H5** — fatturato: KPI "Incasso del mese" via aggregazione server (no lista cappata); "Fatturato reale" somma tutti i pagamenti non-gratuito (inclusi contanti/Altro).
+- [x] **H6** — accesso admin/staff derivato da `window._orgRole` verificato server-side, non da `sessionStorage.adminAuth`.
+- [x] **M1** — stripe-webhook risolve org da `stripe_customer_id` (fonte server), hint solo alla prima sync.
+- [x] **M2/M3** — generate-monthly-report: INSERT con `org_id` (NOT NULL), idempotenza/limite `.eq('org_id')`; self-service org-scoped. (⚠️ niente colonna `month`: la migration 15 l'ha rinominata in `year_month`.)
+- [x] **M5/M6/M10/M11** — booking/calendar: `getSlotName()` org-aware, bookability da `_ORG_SLOT_TYPES`, rimosso re-check capienza client, cutoff data in orario locale.
+- [x] **M7/M17** — admin-schedule: reset capienza al cambio tipo cella; parse con `Number.isNaN` (0 valido).
+- [x] **M9/M19/L10** — admin-calendar: niente `addExtraSpot` automatico, `getAllBookings()` hoisted, resize listener senza leak.
+- [x] **M12/M13/M14/M15/M16/M18** — analytics payments range-coverage; entitlements fail-closed in caricamento; report claim `org_role` + mese precedente + self-service; chart denom≥1; normalizePhone E.164.
+- [x] **L1/L2/L4/L5/L7/L8/L11** — maps_url `new URL()` http(s); `login_events` RLS `org_id=current_org_id()`; token `sb-<ref>-auth-token` pinnato; maintenance da `_orgRole`; image-proxy hostname esatto + `redirect:'manual'`; rimossa telemetria `logCreditClick` (+UUID hardcoded) ovunque; registro rietichettato vs ledger.
+- [x] **DC1-DC7** — rimossi `viewer.html`, `create-checkout` (+config.toml), funzioni morte (`getSlotTypes`/`hasPushEnabled`/`calculateTotalWeeklySlots`/`onAmountInput`/`_adminScrollIfFirstOpen`/`_buildExercisePicker`), `BOOKINGS_KEY`; push dietro `PUSH_ENABLED`; rami `with_bonus/with_mora`; commenti morti report.
+- [x] **TD1/TD2/TD3** — report: ripristinati mese precedente + self-service + org-scoping.
+- [x] **Cache-busting** — `sw.js` `CACHE_NAME` → **palestria-v559**, APP_SHELL (rimosso viewer.html, aggiunto signup-trainer.html; modals.js già presente), 94 bump `?v=` sui JS modificati. `node --check` OK su 25 file JS.
+
+### ⚠️ Residui dell'audit (deliberati / da deploy)
+- [ ] **C1** — super-admin `open_access` default TRUE: **NON toccato** (rinviato su richiesta). Resta il rischio breach cross-tenant finché non si mette `open_access=false` + seed `platform_admins` reale. **Verificare in produzione** `select open_access from platform_settings;`.
+- [ ] **M8 (completo)** — override indicizzati per label: applicato parziale (cleanup orfani in UI + parse). Il fix completo richiede schema: `schedule_overrides.time_slot_id` + UNIQUE su `(org_id,date,time_slot_id)` + riscrittura `resolve_slot_config` (path booking critico) — da fare deliberatamente con migration dedicata.
+- [ ] **TD4** — prezzo "slot condiviso" (15€) ancora non applicato: richiede supporto server-side in `book_slot` (pricing condiviso). Non risolvibile lato client.
+- [ ] **L3** — `get_slot_attendees` anon enumera iscritti via slug: lasciato **intenzionalmente pubblico** (UI prenotazioni). Valutare rate-limit.
+- [ ] **L12** — refactor `_buildExerciseSpec` (renderer desktop/mobile duplicati): non fatto (H4 applicato in entrambi i punti). Qualità, non bloccante.
+- [ ] **DEPLOY richiesto**: `supabase db push` (migration **00000000000016_kiosk_rpcs.sql**, e ALTER su `login_events`/`monthly_reports` già in 0002/0015) + `supabase functions deploy notify-admin-booking notify-admin-cancellation notify-admin-new-client stripe-webhook generate-monthly-report image-proxy`. Rimuovere il deploy di `create-checkout` (dismessa). Push GitHub Pages per gli asset (cache-bust già fatto).
 
 ---
 
@@ -54,6 +85,16 @@ Diagnosi: aprendo `admin.html` da URL **senza login** (o da cliente non-admin) i
 - [x] **Verifica empirica** (server statico locale + playwright, browser pulito): `admin.html` → redirect a `login.html?redirect=admin.html`, `#monthlyRevenue` = `null`, `adminAuth` = `null`, dashboard mai renderizzata. `location.replace` → il tasto "indietro" non riporta alla dashboard.
 - Cache-bust: `admin.js` v118→v119, sw `palestria-v555`→`v556`. ⚠️ **DA DEPLOYARE** (`git push origin saas-main:main`). HTML è network-first → arriva al prossimo caricamento online.
 - Note: `super-admin.html` ha già il suo gate (session + `is_platform_admin()`). `tablet.html` è un kiosk condiviso (link/UUID), **non** una pagina admin → fuori scope. `staff` non ha `adminAuth='true'` per design esistente → finirebbe su `index.html` (coerente con `bookForClient` ecc.).
+
+---
+
+## 🎨 Popup nativi → modal grafici (2026-06-18) — FIX APPLICATO
+Sostituiti **tutti** i popup nativi del browser (`alert`/`confirm`/`prompt`, quelli con header "…dice" e sfondo di sistema) con dialog grafici coerenti col brand viola PalestrIA.
+- [x] **Nuovo `js/modals.js`** autosufficiente (CSS iniettato una volta, testo via `textContent` → XSS-safe): `showConfirm()`→Promise<boolean>, `showPrompt()`→Promise<string|null>, `showAlert()`→Promise<void>. Accento `#8B5CF6`/`#7C3AED` (= `--primary-purple`), rosso `#dc3545` per azioni distruttive (auto su messaggi "elimin"/"rimuov"). Prefisso classi `pim-`.
+- [x] **Wiring**: `modals.js` incluso dopo `ui.js` in `admin.html`, `allenamento.html`, `login.html`, `prenotazioni.html`; dopo `supabase-client.js` in `tablet.html`. (Pagine senza popup né script che li usano non lo caricano. `viewer.html` rimosso dal repo nel frattempo → fuori scope.)
+- [x] **Sostituite tutte le chiamate native** in `allenamento.html` (super-serie/circuiti, prompt numerici), `tablet.html`, `login.html`, `prenotazioni.html` + 11 file `js/admin-*.js` e `allenamento-report.js`. Emoji `⚠️`/`✅` rimosse (le sostituisce l'icona del modal); validazioni→`type:'warn'`, errori→`type:'error'`, successi→`type:'success'`; prompt numerici→`{numeric:true}`, password→`{type:'password'}`. Funzioni rese `async` dove serviva (es. `_supersetPickExercise`/`_circuitPickExercise` in allenamento, `resetDemoData`/`pruneOldData` in admin-backup) con i chiamanti aggiornati.
+- [x] **Verifica**: sweep `rg "(alert|confirm|prompt)\("` = 0 residui; `node --check` OK su tutti i JS; syntax-check OK sugli inline script HTML.
+- [x] Cache-bust: `sw.js` `palestria-v557`→`v558` + `js/modals.js` in `APP_SHELL`; `?v=` bumpati in `admin.html` (admin-analytics/backup/calendar/schedule/settings/clients/registro/messaggi/schede/importa) e `allenamento-report.js` v3→v4. ⚠️ **DA DEPLOYARE**.
 
 ---
 

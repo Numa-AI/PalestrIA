@@ -18,25 +18,31 @@
 
     // Cache in memoria delle entitlements caricate (null finché load() non è andata a buon fine).
     let _ent = null;
+    // True solo dopo che load() ha completato con esito noto (anche null = nessuna subscription).
+    // Distingue "non ancora caricato" (blip/in corso) da "caricato senza la feature":
+    // finché è false NON sblocchiamo feature premium (fail-closed prudente lato UI).
+    let _loaded = false;
 
     // Stati di abbonamento considerati "attivi" (accesso pieno alle feature del piano).
     const ACTIVE_STATUSES = ['trialing', 'active'];
 
     // Carica le entitlements dal server e le mette in cache (memoria + window._entitlements).
     // Idempotente: se già caricate, ritorna la cache senza richiamare la RPC.
-    // In caso di errore lascia _ent a null → has() torna true di default (non blocca l'UI).
+    // In caso di errore NON marca _loaded → has() resta in stato "in caricamento"
+    // (feature premium ancora bloccate lato UI). L'autorità resta comunque server-side.
     async function load(opts) {
         const force = opts && opts.force;
-        if (_ent && !force) return _ent;
+        if (_loaded && !force) return _ent;
         if (typeof supabaseClient === 'undefined') return _ent;
         try {
             const { data, error } = await supabaseClient.rpc('get_tenant_entitlements');
             if (error) {
                 console.warn('[Entitlements] RPC get_tenant_entitlements error:', error.message);
-                return _ent;
+                return _ent; // _loaded resta false → non sblocchiamo nulla su un blip RPC
             }
             // La RPC ritorna jsonb (oggetto) oppure null se non c'è subscription per la org.
             _ent = data || null;
+            _loaded = true; // esito noto: da ora has() riflette il piano reale
             window._entitlements = _ent;
         } catch (e) {
             console.warn('[Entitlements] load() fallita:', e && e.message);
@@ -50,10 +56,15 @@
     }
 
     // true se la feature è inclusa nel piano.
-    // Default: true quando le entitlements non sono caricate (_ent null) per non bloccare
-    // l'UI in caso di errore di rete/RPC. Una feature è "off" solo se esplicitamente false.
+    //
+    // ⚠️ L'autorità sull'accesso resta SEMPRE server-side (RLS + RPC): questo è solo gating UX.
+    // Default sicuro (fail-closed) quando l'esito del load NON è ancora noto (_loaded false:
+    // prima del load o dopo un blip RPC) → le feature premium restano bloccate, così un errore
+    // di rete non sblocca nulla client-side. A esito noto (_loaded true) riflette il piano reale:
+    // _ent null = nessuna subscription → nessuna feature; altrimenti "off" solo se esplicitamente false.
     function has(flag) {
-        if (!_ent) return true;
+        if (!_loaded) return false;   // in caricamento / blip RPC → non sbloccare premium
+        if (!_ent) return false;      // esito noto: nessuna subscription → nessuna feature premium
         const f = _features();
         return f[flag] !== false;
     }

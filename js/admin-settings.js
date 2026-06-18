@@ -615,7 +615,7 @@ async function connectStripeAccount() {
 
 async function disconnectStripeAccount() {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
-    if (!confirm('Scollegare il tuo account Stripe? I clienti non potranno più pagarti online finché non lo ricolleghi.')) return;
+    if (!await showConfirm('Scollegare il tuo account Stripe? I clienti non potranno più pagarti online finché non lo ricolleghi.')) return;
     try {
         const { error } = await supabaseClient.functions.invoke('stripe-connect', { body: { action: 'disconnect' } });
         if (error) throw error;
@@ -1180,7 +1180,7 @@ async function changeStaffRole(memberId, newRole) {
 
 async function revokeStaffMember(memberId) {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
-    if (!confirm('Revocare l\'accesso a questo membro?')) return;
+    if (!await showConfirm('Revocare l\'accesso a questo membro?')) return;
     try {
         const { error } = await _queryWithTimeout(
             supabaseClient.from('org_members').update({ status: 'revoked' })
@@ -1515,8 +1515,8 @@ function _settRenderSecurity(body) {
 
 async function clearAllOrgData() {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
-    if (!confirm('⚠️ Cancellare TUTTI i dati operativi della tua organizzazione?\n\nVerranno eliminati: prenotazioni, schede, pagamenti, override calendario, notifiche e report.\nAccount, membri e abbonamento NON saranno toccati.\n\nL\'operazione è IRREVERSIBILE.')) return;
-    const confirmText = prompt('Per confermare, scrivi ELIMINA in maiuscolo:');
+    if (!await showConfirm('Cancellare TUTTI i dati operativi della tua organizzazione?\n\nVerranno eliminati: prenotazioni, schede, pagamenti, override calendario, notifiche e report.\nAccount, membri e abbonamento NON saranno toccati.\n\nL\'operazione è IRREVERSIBILE.')) return;
+    const confirmText = await showPrompt('Per confermare, scrivi ELIMINA in maiuscolo:', '', { confirmText: 'Conferma' });
     if (confirmText !== 'ELIMINA') { showToast('Operazione annullata', 'error'); return; }
 
     try {
@@ -1777,7 +1777,7 @@ async function runHealthCheck() {
 }
 
 async function runHealthFix() {
-    if (!confirm('Correggi tutte le anomalie?\n\nNessun dato verrà cancellato.\n• Utenti fantasma → crea profilo\n• Booking orfane → scollega user_id\n• Email mismatch → ricollega user_id al profilo corretto')) return;
+    if (!await showConfirm('Correggi tutte le anomalie?\n\nNessun dato verrà cancellato.\n• Utenti fantasma → crea profilo\n• Booking orfane → scollega user_id\n• Email mismatch → ricollega user_id al profilo corretto')) return;
 
     const btn = document.getElementById('healthFixBtn');
     const resultEl = document.getElementById('healthCheckResult');

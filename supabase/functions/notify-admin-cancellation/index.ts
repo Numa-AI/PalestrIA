@@ -3,8 +3,10 @@
 // Manda una push notification AGLI ADMIN DELLA ORG della prenotazione cancellata
 // (owner/admin attivi), con nome cliente e occupazione slot aggiornata.
 //
-// Multi-tenant: niente più ADMIN_IDS hardcoded. La org si ricava dal payload
-// (org_id) oppure, se assente, dalla prenotazione collegata via service role.
+// SICUREZZA (anti-spoofing H1): la org NON viene MAI dal body. Risoluzione:
+//   1) bookings.org_id (server-authoritative) via booking_id;
+//   2) se booking_id manca ma c'è un Bearer utente valido (getUser), si deriva
+//      dal caller: profiles.org_id e poi org_members.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -31,10 +33,19 @@ Deno.serve(async (req) => {
         return new Response(null, { status: 204, headers: corsHeaders });
     }
     try {
+        // Caller opzionale: se c'è un Bearer utente valido lo usiamo come fallback
+        // per derivare la org (mai dal body). booking_id resta la fonte preferita.
+        const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+        let callerId: string | null = null;
+        if (token) {
+            const { data: userData } = await supabase.auth.getUser(token);
+            callerId = userData?.user?.id ?? null;
+        }
+
+        // Dal body usiamo SOLO i dati di presentazione + booking_id. org_id ignorato.
         const {
-            org_id: orgIdIn,   // opzionale: se il client lo passa lo usiamo direttamente
-            booking_id,        // opzionale: per risolvere la org in modo deterministico
-            name, date_display, time, date, slot_type, max_capacity, with_bonus, with_mora,
+            booking_id,
+            name, date_display, time, date, slot_type, max_capacity,
         } = await req.json();
 
         if (!name || !date_display || !time) {
@@ -44,13 +55,12 @@ Deno.serve(async (req) => {
             });
         }
 
-        // ── Risoluzione della org dell'evento ────────────────────────────────
-        // 1) se il payload porta org_id, lo usiamo;
-        // 2) altrimenti lo ricaviamo dalla prenotazione cancellata (per id, oppure
-        //    cercando un booking che combaci con lo slot via service role).
-        let orgId: string | null = orgIdIn ?? null;
+        // ── Risoluzione della org dell'evento (mai dal body) ─────────────────
+        // 1) dalla prenotazione cancellata (bookings.org_id, server-authoritative);
+        // 2) fallback dal chiamante: profiles → org_members.
+        let orgId: string | null = null;
 
-        if (!orgId && booking_id) {
+        if (booking_id) {
             const { data: bk, error: bkErr } = await supabase
                 .from("bookings")
                 .select("org_id")
@@ -60,20 +70,22 @@ Deno.serve(async (req) => {
             orgId = bk?.org_id ?? null;
         }
 
-        if (!orgId) {
-            // Fallback: derivo la org da una prenotazione dello stesso slot.
-            // Prendo la più recente che combaci (incluse quelle cancellate).
-            const { data: bk, error: bkErr } = await supabase
-                .from("bookings")
+        if (!orgId && callerId) {
+            const { data: prof } = await supabase
+                .from("profiles")
                 .select("org_id")
-                .eq("date", date)
-                .eq("time", time)
-                .eq("slot_type", slot_type)
-                .order("created_at", { ascending: false })
-                .limit(1)
+                .eq("id", callerId)
                 .maybeSingle();
-            if (bkErr) throw bkErr;
-            orgId = bk?.org_id ?? null;
+            orgId = prof?.org_id ?? null;
+            if (!orgId) {
+                const { data: mem } = await supabase
+                    .from("org_members")
+                    .select("org_id")
+                    .eq("user_id", callerId)
+                    .eq("status", "active")
+                    .maybeSingle();
+                orgId = mem?.org_id ?? null;
+            }
         }
 
         if (!orgId) {
@@ -99,11 +111,7 @@ Deno.serve(async (req) => {
         const capacity = max_capacity ?? occupancy;
         const startTime = time.split(" - ")[0]?.trim() ?? time;
 
-        // Titolo con suffisso bonus/mora
-        let title = "❌ " + name;
-        if (with_bonus) title += " con bonus";
-        else if (with_mora) title += " con mora";
-
+        const title = "❌ " + name;
         const body = `${date_display} alle ${startTime} (${occupancy}/${capacity})`;
         const payload = JSON.stringify({
             title,
