@@ -18,14 +18,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Stato modulo
 // ─────────────────────────────────────────────────────────────────────────────
-let _schedActiveSection = 'types';   // 'types' | 'slots' | 'template' | 'overrides'
+let _schedActiveSection = 'types';   // 'types' | 'slots' | 'template' | 'activation' | 'overrides'
 let _schedData = {
     slotTypes:  [],   // righe slot_types
     timeSlots:  [],   // righe time_slots_config
     templates:  [],   // righe weekly_schedule_templates
     tplSlots:   [],   // righe weekly_template_slots (del template selezionato)
+    activated:  [],   // righe activated_weeks (settimane attivate della org)
     overrides:  []    // righe schedule_overrides (della data selezionata)
 };
+// Quante settimane future mostrare nell'editor di attivazione (oltre alla corrente).
+const _SCHED_ACTIVATION_WEEKS = 12;
 let _schedSelectedTemplateId = null;
 let _schedOverrideDate = null;       // 'YYYY-MM-DD' per l'editor override
 
@@ -83,14 +86,16 @@ async function _schedLoadAll() {
         return;
     }
     try {
-        const [stRes, tsRes, tplRes] = await Promise.all([
+        const [stRes, tsRes, tplRes, awRes] = await Promise.all([
             supabaseClient.from('slot_types').select('*').eq('org_id', org).order('sort_order', { ascending: true }),
             supabaseClient.from('time_slots_config').select('*').eq('org_id', org).order('sort_order', { ascending: true }).order('start_time', { ascending: true }),
-            supabaseClient.from('weekly_schedule_templates').select('*').eq('org_id', org).order('created_at', { ascending: true })
+            supabaseClient.from('weekly_schedule_templates').select('*').eq('org_id', org).order('created_at', { ascending: true }),
+            supabaseClient.from('activated_weeks').select('*').eq('org_id', org).order('week_start', { ascending: true })
         ]);
         _schedData.slotTypes = stRes.data || [];
         _schedData.timeSlots = tsRes.data || [];
         _schedData.templates = tplRes.data || [];
+        _schedData.activated = awRes.data || [];
 
         // Template selezionato: l'attivo, altrimenti il primo
         if (!_schedSelectedTemplateId || !_schedData.templates.find(t => t.id === _schedSelectedTemplateId)) {
@@ -162,10 +167,11 @@ async function renderScheduleManager() {
 
 function _schedNavHtml() {
     const tabs = [
-        { id: 'types',     icon: '🏷️', label: 'Tipi slot' },
-        { id: 'slots',     icon: '🕐', label: 'Fasce orarie' },
-        { id: 'template',  icon: '🗓️', label: 'Settimana tipo' },
-        { id: 'overrides', icon: '📌', label: 'Override per data' }
+        { id: 'types',      icon: '🏷️', label: 'Tipi slot' },
+        { id: 'slots',      icon: '🕐', label: 'Fasce orarie' },
+        { id: 'template',   icon: '🗓️', label: 'Settimana tipo' },
+        { id: 'activation', icon: '✅', label: 'Attiva settimane' },
+        { id: 'overrides',  icon: '📌', label: 'Override per data' }
     ];
     return tabs.map(t => `
         <button class="sched-nav-btn ${_schedActiveSection === t.id ? 'active' : ''}"
@@ -185,10 +191,11 @@ function _schedRenderActiveSection() {
     const body = document.getElementById('schedBody');
     if (!body) return;
     switch (_schedActiveSection) {
-        case 'types':     body.innerHTML = _schedRenderTypes();     break;
-        case 'slots':     body.innerHTML = _schedRenderSlots();     break;
-        case 'template':  body.innerHTML = _schedRenderTemplate();  break;
-        case 'overrides': body.innerHTML = _schedRenderOverrides(); break;
+        case 'types':      body.innerHTML = _schedRenderTypes();      break;
+        case 'slots':      body.innerHTML = _schedRenderSlots();      break;
+        case 'template':   body.innerHTML = _schedRenderTemplate();   break;
+        case 'activation': body.innerHTML = _schedRenderActivation(); break;
+        case 'overrides':  body.innerHTML = _schedRenderOverrides();  break;
     }
 }
 
@@ -513,7 +520,7 @@ function _schedRenderTemplate() {
 
     // Selettore template + azioni
     const tplOptions = templates.map(t =>
-        `<option value="${t.id}" ${t.id === _schedSelectedTemplateId ? 'selected' : ''}>${_escHtml(t.name)}${t.is_active ? ' (attiva)' : ''}</option>`
+        `<option value="${t.id}" ${t.id === _schedSelectedTemplateId ? 'selected' : ''}>${_escHtml(t.name)}</option>`
     ).join('');
 
     const current = templates.find(t => t.id === _schedSelectedTemplateId);
@@ -522,7 +529,7 @@ function _schedRenderTemplate() {
         <div class="sched-section-head">
             <div>
                 <h3 class="sched-section-title">Settimana tipo</h3>
-                <p class="sched-section-desc">Configura per ogni giorno e fascia il tipo di lezione e la capienza. La settimana <strong>attiva</strong> alimenta la disponibilità di default.</p>
+                <p class="sched-section-desc">Configura per ogni giorno e fascia il tipo di lezione e la capienza. I template sono <strong>modelli riutilizzabili</strong>: per metterli in calendario attiva le singole settimane in <strong>“Attiva settimane”</strong>.</p>
             </div>
             <button class="sched-btn-primary" onclick="schedNewTemplate()">+ Nuova settimana</button>
         </div>`;
@@ -539,9 +546,6 @@ function _schedRenderTemplate() {
                 <select id="schedTplSelect" onchange="schedSelectTemplate(this.value)">${tplOptions}</select>
             </label>
             <div class="sched-tpl-actions">
-                <button class="sched-btn-ghost ${current?.is_active ? 'is-on' : ''}" onclick="schedActivateTemplate('${_schedSelectedTemplateId}')" ${current?.is_active ? 'disabled' : ''}>
-                    ${current?.is_active ? '✅ Attiva' : 'Attiva questa'}
-                </button>
                 <button class="sched-btn-icon" title="Rinomina" onclick="schedRenameTemplate('${_schedSelectedTemplateId}')">✏️</button>
                 <button class="sched-btn-icon sched-btn-icon--danger" title="Elimina settimana" onclick="schedDeleteTemplate('${_schedSelectedTemplateId}')">🗑️</button>
             </div>
@@ -640,23 +644,6 @@ async function schedRenameTemplate(id) {
     }
 }
 
-// Attiva una settimana (disattiva le altre della org → resta una sola attiva)
-async function schedActivateTemplate(id) {
-    const org = _schedRequireOrg();
-    if (!org) return;
-    try {
-        await supabaseClient.from('weekly_schedule_templates').update({ is_active: false }).eq('org_id', org).neq('id', id);
-        const { error } = await supabaseClient.from('weekly_schedule_templates').update({ is_active: true }).eq('id', id).eq('org_id', org);
-        if (error) throw error;
-        _schedToast('✅ Settimana attivata.');
-        await _schedLoadAll();
-        _schedRenderActiveSection();
-    } catch (e) {
-        console.error('[Schedule] activateTemplate:', e);
-        _schedToast('⚠️ Errore attivazione.', 'error');
-    }
-}
-
 async function schedDeleteTemplate(id) {
     const org = _schedRequireOrg();
     if (!org) return;
@@ -732,6 +719,164 @@ async function schedSetCellCapacity(weekday, timeSlotId, rawValue) {
     } catch (e) {
         console.error('[Schedule] setCellCapacity:', e);
         _schedToast('⚠️ Errore capienza cella.', 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EDITOR 3.5 — ATTIVA SETTIMANE (activated_weeks)
+// Il calendario si attiva UNA SETTIMANA ALLA VOLTA, manualmente: ogni settimana
+// concreta punta a un template scelto. Le settimane non attivate non hanno slot;
+// quelle già attivate restano invariate quando se ne attiva un'altra.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Lunedì (Date) della settimana che contiene `d`. Allineato a date_trunc('week')
+// di Postgres (settimana ISO lunedì→domenica) e a _mondayYMD() in data.js.
+function _schedMondayOf(d) {
+    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const day = dt.getDay();                 // 0=Dom .. 6=Sab
+    const diff = day === 0 ? -6 : 1 - day;   // → lunedì
+    dt.setDate(dt.getDate() + diff);
+    return dt;
+}
+
+function _schedYMD(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// "23/06" per le etichette del range settimana.
+function _schedDM(d) {
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function _schedTemplateName(id) {
+    const t = _schedData.templates.find(x => x.id === id);
+    return t ? t.name : '—';
+}
+
+function _schedRenderActivation() {
+    const templates = _schedData.templates;
+
+    let head = `
+        <div class="sched-section-head">
+            <div>
+                <h3 class="sched-section-title">Attiva settimane</h3>
+                <p class="sched-section-desc">Attiva il calendario <strong>una settimana alla volta</strong>, scegliendo quale template applicare. Le settimane non attivate non mostrano slot; quelle già attivate restano invariate.</p>
+            </div>
+        </div>`;
+
+    if (templates.length === 0) {
+        return `<div class="sched-section">${head}
+            <div class="sched-empty">Crea prima almeno una <strong>settimana tipo</strong> (tab “Settimana tipo”) da applicare alle settimane.</div></div>`;
+    }
+
+    // Mappa weekStart(YMD) → riga activated_weeks
+    const activeMap = {};
+    _schedData.activated.forEach(a => { activeMap[String(a.week_start).slice(0, 10)] = a; });
+
+    // Default del select per riga: template già attivato per quella settimana,
+    // altrimenti il template attualmente selezionato nell'editor (o il primo).
+    const fallbackTpl = (_schedSelectedTemplateId && templates.find(t => t.id === _schedSelectedTemplateId))
+        ? _schedSelectedTemplateId : templates[0].id;
+
+    const startMon = _schedMondayOf(new Date());
+
+    // Finestra: settimana corrente + N successive.
+    const windowKeys = new Set();
+    let rows = '';
+    for (let i = 0; i <= _SCHED_ACTIVATION_WEEKS; i++) {
+        const mon = new Date(startMon); mon.setDate(startMon.getDate() + i * 7);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        const ymd = _schedYMD(mon);
+        windowKeys.add(ymd);
+        rows += _schedActivationRow(ymd, mon, sun, activeMap[ymd], templates, fallbackTpl, i === 0);
+    }
+
+    // Settimane attivate FUORI dalla finestra (passate o oltre l'orizzonte): mostrate
+    // a parte per poterle disattivare/cambiare senza perderle di vista.
+    const outside = _schedData.activated
+        .map(a => String(a.week_start).slice(0, 10))
+        .filter(k => !windowKeys.has(k))
+        .sort();
+    let outsideBlock = '';
+    if (outside.length) {
+        const orows = outside.map(ymd => {
+            const [y, m, d] = ymd.split('-').map(Number);
+            const mon = new Date(y, m - 1, d);
+            const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+            return _schedActivationRow(ymd, mon, sun, activeMap[ymd], templates, fallbackTpl, false);
+        }).join('');
+        outsideBlock = `
+            <div class="sched-ovr-orphans">
+                <p class="sched-section-desc">Altre settimane attivate (fuori dalle prossime ${_SCHED_ACTIVATION_WEEKS} settimane).</p>
+                <div class="sched-list">${orows}</div>
+            </div>`;
+    }
+
+    return `<div class="sched-section">${head}
+        <div class="sched-list">${rows}</div>
+        ${outsideBlock}</div>`;
+}
+
+// Una riga settimana: range + select template + attiva/aggiorna/disattiva.
+function _schedActivationRow(ymd, mon, sun, activeRow, templates, fallbackTpl, isCurrent) {
+    const isActive = !!activeRow;
+    const selectedTpl = isActive ? activeRow.template_id : fallbackTpl;
+    const tplOpts = templates.map(t =>
+        `<option value="${t.id}" ${t.id === selectedTpl ? 'selected' : ''}>${_escHtml(t.name)}</option>`).join('');
+    const range = `${_schedDM(mon)} – ${_schedDM(sun)}/${sun.getFullYear()}`;
+    const badge = isActive
+        ? `<span class="sched-badge">✅ attiva · ${_escHtml(_schedTemplateName(activeRow.template_id))}</span>`
+        : `<span class="sched-badge sched-badge--off">non attiva</span>`;
+
+    return `
+        <div class="sched-row sched-ovr-row ${isActive ? 'has-ovr' : ''}">
+            <span class="sched-time-chip">🗓️ ${range}${isCurrent ? ' · <strong>questa settimana</strong>' : ''}</span>
+            <div class="sched-ovr-controls">
+                <select id="awTpl-${ymd}" class="sched-ovr-type">${tplOpts}</select>
+                <button class="sched-btn-primary sched-btn-sm" onclick="schedActivateWeek('${ymd}')">${isActive ? 'Aggiorna' : 'Attiva'}</button>
+                ${isActive ? `<button class="sched-btn-icon sched-btn-icon--danger" title="Disattiva settimana" onclick="schedDeactivateWeek('${ymd}')">🗑️</button>` : ''}
+            </div>
+            ${badge}
+        </div>`;
+}
+
+// Attiva (o aggiorna il template di) una settimana concreta.
+async function schedActivateWeek(weekStart) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    const tplId = document.getElementById(`awTpl-${weekStart}`)?.value || '';
+    if (!tplId) { _schedToast('⚠️ Seleziona un template per la settimana.', 'error'); return; }
+    try {
+        const { error } = await supabaseClient
+            .from('activated_weeks')
+            .upsert({ org_id: org, week_start: weekStart, template_id: tplId }, { onConflict: 'org_id,week_start' });
+        if (error) throw error;
+        _schedToast('✅ Settimana attivata.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] activateWeek:', e);
+        _schedToast('⚠️ Errore attivazione settimana.', 'error');
+    }
+}
+
+async function schedDeactivateWeek(weekStart) {
+    const org = _schedRequireOrg();
+    if (!org) return;
+    if (!await showConfirm('Disattivare questa settimana? Gli slot non saranno più disponibili (le prenotazioni esistenti restano nel registro).')) return;
+    try {
+        const { error } = await supabaseClient
+            .from('activated_weeks')
+            .delete()
+            .eq('org_id', org)
+            .eq('week_start', weekStart);
+        if (error) throw error;
+        _schedToast('🗑️ Settimana disattivata.');
+        await _schedLoadAll();
+        _schedRenderActiveSection();
+    } catch (e) {
+        console.error('[Schedule] deactivateWeek:', e);
+        _schedToast('⚠️ Errore disattivazione.', 'error');
     }
 }
 
@@ -908,10 +1053,10 @@ function getScheduleForDate(dateFormatted, dayName) {
         const overrides = BookingStorage.getScheduleOverrides();
         // 1) override puntuale per questa data (eccezione) → ha la precedenza
         if (overrides[dateFormatted] && overrides[dateFormatted].length) return overrides[dateFormatted];
-        // 2) altrimenti applica il TEMPLATE SETTIMANALE ATTIVO per quel giorno
-        //    (prima veniva ignorato: il calendario mostrava slot solo dove c'erano override).
+        // 2) altrimenti applica il template della SETTIMANA ATTIVATA che contiene la
+        //    data (date-aware: vuoto se la settimana non è stata attivata a mano).
         if (typeof getWeeklySchedule === 'function') {
-            const weekly = getWeeklySchedule();
+            const weekly = getWeeklySchedule(dateFormatted);
             if (weekly) {
                 // nome giorno italiano derivato dalla data (robusto a mismatch di formato di dayName)
                 let key = dayName;

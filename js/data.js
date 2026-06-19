@@ -209,11 +209,43 @@ const TIME_SLOTS = [
 // deprecato single-tenant). Caricate da loadOrgScheduleConfig() su pageload.
 //   _ORG_SLOT_TYPES : { [key]: { id, key, label, color, defaultCapacity, defaultPrice, bookable, isActive, sortOrder } }
 //   _ORG_TIME_SLOTS : [ 'HH:MM - HH:MM', ... ]  (ordinati per sort_order)
-//   _ORG_WEEKLY     : { [weekday 0..6]: { [time]: { slotTypeId, slotTypeKey, capacity } } }
+//   _ORG_TPL_WEEKLY : { [templateId]: { [weekday 0..6]: { [time]: { slotTypeId, slotTypeKey, capacity } } } }
 //                     weekday: 0=Domenica .. 6=Sabato (come extract(dow))
+//   _ORG_ACTIVE_WEEKS : { [mondayYMD 'YYYY-MM-DD']: templateId }  ← attivazione per-settimana
+// Attivazione PER-SETTIMANA: ogni settimana concreta del calendario va attivata
+// manualmente e punta a un template (vedi tabella activated_weeks + resolve_slot_config).
+// La risoluzione "weekly" è quindi DATE-AWARE: dipende dalla settimana che contiene
+// la data. Le settimane non attivate non hanno slot. (Prima: un solo template
+// is_active replicato su tutte le settimane — _ORG_WEEKLY senza dimensione data.)
 let _ORG_SLOT_TYPES = null;
 let _ORG_TIME_SLOTS = null;
-let _ORG_WEEKLY = null;
+let _ORG_TPL_WEEKLY = null;
+let _ORG_ACTIVE_WEEKS = null;
+
+// Lunedì (YMD) della settimana che contiene la data 'YYYY-MM-DD' (fuso locale).
+// Allineato a date_trunc('week') di Postgres (settimana ISO: lunedì→domenica).
+function _mondayYMD(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if ([y, m, d].some(Number.isNaN)) return null;
+    const dt = new Date(y, m - 1, d);
+    const day = dt.getDay();                 // 0=Dom .. 6=Sab
+    const diff = day === 0 ? -6 : 1 - day;   // → lunedì
+    dt.setDate(dt.getDate() + diff);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+// Mappa weekly { [weekday]: { [time]: {...} } } del template attivato per la
+// settimana che contiene dateStr; null se la settimana non è attivata.
+function _orgWeeklyForDate(dateStr) {
+    _hydrateOrgScheduleFromCache();
+    if (!_ORG_ACTIVE_WEEKS || !_ORG_TPL_WEEKLY) return null;
+    const mon = _mondayYMD(dateStr);
+    if (!mon) return null;
+    const tid = _ORG_ACTIVE_WEEKS[mon];
+    if (!tid) return null;
+    return _ORG_TPL_WEEKLY[tid] || null;
+}
 
 // true se la config orari org è stata caricata dal DB (almeno gli slot_types).
 function _hasOrgScheduleConfig() {
@@ -244,17 +276,19 @@ function _hydrateOrgScheduleFromCache() {
         if (!snap || typeof snap !== 'object') return;
         if (!_ORG_SLOT_TYPES && snap.slotTypes && Object.keys(snap.slotTypes).length) _ORG_SLOT_TYPES = snap.slotTypes;
         if (!_ORG_TIME_SLOTS && Array.isArray(snap.timeSlots) && snap.timeSlots.length) _ORG_TIME_SLOTS = snap.timeSlots;
-        if (!_ORG_WEEKLY && snap.weekly && Object.keys(snap.weekly).length) _ORG_WEEKLY = snap.weekly;
+        if (!_ORG_TPL_WEEKLY && snap.tplWeekly && Object.keys(snap.tplWeekly).length) _ORG_TPL_WEEKLY = snap.tplWeekly;
+        if (!_ORG_ACTIVE_WEEKS && snap.activeWeeks && Object.keys(snap.activeWeeks).length) _ORG_ACTIVE_WEEKS = snap.activeWeeks;
     } catch (_) {}
 }
 
 // Salva lo snapshot della config orari per-org (chiamato dopo loadOrgScheduleConfig).
 function _persistOrgScheduleSnapshot(orgId) {
     if (!orgId) return;
-    if (!_ORG_SLOT_TYPES && !_ORG_TIME_SLOTS && !_ORG_WEEKLY) return;
+    if (!_ORG_SLOT_TYPES && !_ORG_TIME_SLOTS && !_ORG_TPL_WEEKLY && !_ORG_ACTIVE_WEEKS) return;
     try {
         localStorage.setItem('_orgSchedSnap_' + orgId, JSON.stringify({
-            slotTypes: _ORG_SLOT_TYPES, timeSlots: _ORG_TIME_SLOTS, weekly: _ORG_WEEKLY,
+            slotTypes: _ORG_SLOT_TYPES, timeSlots: _ORG_TIME_SLOTS,
+            tplWeekly: _ORG_TPL_WEEKLY, activeWeeks: _ORG_ACTIVE_WEEKS,
         }));
         localStorage.setItem('_lastOrgId', orgId); // puntatore stabile per l'idratazione sincrona al refresh
     } catch (_) {}
@@ -311,10 +345,12 @@ async function loadOrgScheduleConfig() {
                 ).order('sort_order')
             ),
             _queryWithTimeout(
-                (orgId
-                    ? supabaseClient.from('weekly_schedule_templates').select('id').eq('org_id', orgId).eq('is_active', true)
-                    : supabaseClient.from('weekly_schedule_templates').select('id').eq('is_active', true)
-                ).order('created_at', { ascending: false }).limit(1)
+                // Settimane ATTIVATE della org (mappa mondayYMD → templateId). Solo
+                // per gli autenticati: gli anonimi non hanno policy di lettura e
+                // ricevono la disponibilità dalle RPC pubbliche.
+                orgId
+                    ? supabaseClient.from('activated_weeks').select('week_start, template_id').eq('org_id', orgId)
+                    : supabaseClient.from('activated_weeks').select('week_start, template_id').limit(0)
             ),
         ]);
 
@@ -349,38 +385,49 @@ async function loadOrgScheduleConfig() {
             if (labels.length > 0) _ORG_TIME_SLOTS = labels;
         }
 
-        // 3) template settimanale attivo + slot → _ORG_WEEKLY[weekday][time] = {slotTypeId, slotTypeKey, capacity}
-        let activeTplId = null;
-        if (tplRes.status === 'fulfilled' && !tplRes.value.error && Array.isArray(tplRes.value.data) && tplRes.value.data.length) {
-            activeTplId = tplRes.value.data[0].id;
+        // 3) attivazione per-settimana → _ORG_ACTIVE_WEEKS[mondayYMD] = templateId
+        if (tplRes.status === 'fulfilled' && !tplRes.value.error && Array.isArray(tplRes.value.data)) {
+            const aw = {};
+            for (const r of tplRes.value.data) {
+                if (!r.week_start || !r.template_id) continue;
+                // week_start arriva come 'YYYY-MM-DD' (tipo date) → usalo come chiave.
+                aw[String(r.week_start).slice(0, 10)] = r.template_id;
+            }
+            _ORG_ACTIVE_WEEKS = aw;
         }
-        if (activeTplId) {
+
+        // 4) slot di TUTTI i template della org → _ORG_TPL_WEEKLY[templateId][weekday][time]
+        //    (servono i template referenziati dalle settimane attivate; carichiamo
+        //     tutto in una query org-scoped, è poca roba per studio).
+        if (orgId) {
             const { data: slotsData, error: slotsErr } = await _queryWithTimeout(
                 supabaseClient.from('weekly_template_slots')
-                    .select('weekday, capacity, slot_type_id, time_slots_config(start_time, end_time), slot_types(key, default_capacity)')
-                    .eq('template_id', activeTplId)
+                    .select('template_id, weekday, capacity, slot_type_id, time_slots_config(start_time, end_time), slot_types(key, default_capacity)')
+                    .eq('org_id', orgId)
             );
             if (!slotsErr && Array.isArray(slotsData)) {
-                const weekly = {};
+                const tplWeekly = {};
                 for (const r of slotsData) {
                     const tsc = r.time_slots_config;
                     const stp = r.slot_types;
                     if (!tsc || !stp) continue;
                     const time = _formatTimeSlotLabel(tsc.start_time, tsc.end_time);
                     if (!time) continue;
+                    const tid = r.template_id;
                     const wd = Number(r.weekday);
-                    if (!weekly[wd]) weekly[wd] = {};
-                    weekly[wd][time] = {
+                    if (!tplWeekly[tid]) tplWeekly[tid] = {};
+                    if (!tplWeekly[tid][wd]) tplWeekly[tid][wd] = {};
+                    tplWeekly[tid][wd][time] = {
                         slotTypeId:  r.slot_type_id,
                         slotTypeKey: stp.key,
                         capacity:    r.capacity != null ? r.capacity : (stp.default_capacity ?? 0),
                     };
                 }
-                if (Object.keys(weekly).length > 0) _ORG_WEEKLY = weekly;
+                _ORG_TPL_WEEKLY = tplWeekly;
             }
         }
 
-        console.log(`[Supabase] loadOrgScheduleConfig: ${_ORG_SLOT_TYPES ? Object.keys(_ORG_SLOT_TYPES).length : 0} slot_types, ${_ORG_TIME_SLOTS ? _ORG_TIME_SLOTS.length : 0} fasce, weekly=${_ORG_WEEKLY ? 'attivo' : 'no'}`);
+        console.log(`[Supabase] loadOrgScheduleConfig: ${_ORG_SLOT_TYPES ? Object.keys(_ORG_SLOT_TYPES).length : 0} slot_types, ${_ORG_TIME_SLOTS ? _ORG_TIME_SLOTS.length : 0} fasce, settimane attivate=${_ORG_ACTIVE_WEEKS ? Object.keys(_ORG_ACTIVE_WEEKS).length : 0}`);
         _persistOrgScheduleSnapshot(orgId); // aggiorna la cache per il prossimo refresh (no flash)
     } catch (e) {
         console.warn('[Supabase] loadOrgScheduleConfig exception (uso fallback hardcoded):', e);
@@ -540,14 +587,16 @@ const DEFAULT_WEEKLY_SCHEDULE = {
 };
 
 // Costruisce DEFAULT_WEEKLY_SCHEDULE-like ({ 'Lunedì': [{time,type}], ... })
-// dal template org caricato in _ORG_WEEKLY. Ritorna null se non disponibile.
-function _weeklyScheduleFromOrg() {
-    _hydrateOrgScheduleFromCache();
-    if (!_ORG_WEEKLY || Object.keys(_ORG_WEEKLY).length === 0) return null;
+// dal template ATTIVATO per la settimana che contiene dateStr. DATE-AWARE: senza
+// data (o se la settimana non è attivata) ritorna null.
+function _weeklyScheduleFromOrg(dateStr) {
+    if (!dateStr) return null;            // l'attivazione è per-settimana: serve la data
+    const weekly = _orgWeeklyForDate(dateStr);
+    if (!weekly || Object.keys(weekly).length === 0) return null;
     const result = {};
     for (let wd = 0; wd < 7; wd++) {
         const dayName = _WEEKDAY_NAMES_IT[wd];
-        const slotsByTime = _ORG_WEEKLY[wd] || {};
+        const slotsByTime = weekly[wd] || {};
         const slots = Object.keys(slotsByTime).map(time => ({
             time,
             type: slotsByTime[time].slotTypeKey,
@@ -559,11 +608,18 @@ function _weeklyScheduleFromOrg() {
     return result;
 }
 
-// Function to get the current weekly schedule (from active template or default)
-function getWeeklySchedule() {
-    // Config org dal DB (template attivo): ha la precedenza sui template localStorage.
-    const orgWeekly = _weeklyScheduleFromOrg();
+// Schedule settimanale ({ 'Lunedì': [{time,type}], ... }) per la settimana che
+// contiene `dateStr`. DATE-AWARE per via dell'attivazione per-settimana: passa
+// SEMPRE la data (es. getWeeklySchedule('2026-06-23')). Senza data si ricade sui
+// template localStorage/default (solo legacy/anonimo): in contesto org una data
+// è obbligatoria per sapere quale settimana (e se è attivata) sto guardando.
+function getWeeklySchedule(dateStr) {
+    // Config org dal DB (settimana attivata): ha la precedenza sui template localStorage.
+    const orgWeekly = _weeklyScheduleFromOrg(dateStr);
     if (orgWeekly) return orgWeekly;
+    // Contesto org ma settimana non attivata (o config non pronta) → griglia vuota:
+    // niente fallback al DEFAULT legacy, che mostrerebbe slot di "un altro studio".
+    if (_hasOrgContext()) return {};
 
     // Try to load from WeekTemplateStorage (active template)
     const templatesRaw = localStorage.getItem('gym_week_templates');
@@ -1176,7 +1232,7 @@ class BookingStorage {
     // risolto con precedenza override → template attivo → default dello slot_type.
     //   1) schedule_overrides.capacity per quella data/ora (se il tipo coincide
     //      col tipo dell'override; altrimenti 0 per quel tipo);
-    //   2) template settimanale attivo (_ORG_WEEKLY) quando il tipo coincide;
+    //   2) template della settimana attivata per quella data quando il tipo coincide;
     //   3) default_capacity dello slot_type (_ORG_SLOT_TYPES, fallback SLOT_MAX_CAPACITY).
     // Per i tipi diversi dal tipo principale dello slot (slot "misto"/diviso) la
     // capienza resta 0 finché non viene impostata esplicitamente via override.
@@ -1205,10 +1261,11 @@ class BookingStorage {
             return 0;
         }
 
-        // 2) Template settimanale attivo (org)
-        if (_ORG_WEEKLY) {
+        // 2) Template della settimana ATTIVATA che contiene `date` (org, per-settimana)
+        const orgWeekly = _orgWeeklyForDate(date);
+        if (orgWeekly) {
             const wd = this._weekdayFromDateStr(date);
-            const tplSlot = wd != null ? (_ORG_WEEKLY[wd] || {})[time] : null;
+            const tplSlot = wd != null ? (orgWeekly[wd] || {})[time] : null;
             if (tplSlot && tplSlot.slotTypeKey === slotType) {
                 if (tplSlot.capacity != null) return Math.max(0, Number(tplSlot.capacity));
                 return this._defaultCapacityFor(slotType);
@@ -1882,9 +1939,9 @@ class BookingStorage {
     //        + app_settings solo per il segnale data_cleared_at.
     static async syncAppSettingsFromSupabase() {
         if (typeof supabaseClient === 'undefined') return;
-        // Carica la config orari per-org (slot_types/time_slots_config/template attivo)
+        // Carica la config orari per-org (slot_types/time_slots_config/settimane attivate)
         // PRIMA di processare gli override: getEffectiveCapacity/getWeeklySchedule e i
-        // booking sintetici dipendono da _ORG_SLOT_TYPES/_ORG_WEEKLY.
+        // booking sintetici dipendono da _ORG_SLOT_TYPES/_ORG_TPL_WEEKLY/_ORG_ACTIVE_WEEKS.
         await loadOrgScheduleConfig();
         try {
             // Promise.allSettled: ogni query è indipendente — se una fallisce le altre vanno avanti

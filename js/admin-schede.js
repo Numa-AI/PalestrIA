@@ -843,7 +843,7 @@ function _schedeActualSlotTypeForDate(dateFormatted, slotTime) {
         const d = new Date(dateFormatted + 'T00:00:00');
         const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
         const dayName = dayNames[d.getDay()];
-        const week = (typeof getWeeklySchedule === 'function') ? getWeeklySchedule() : null;
+        const week = (typeof getWeeklySchedule === 'function') ? getWeeklySchedule(dateFormatted) : null;
         const daySlots = week ? week[dayName] : null;
         if (daySlots) {
             const hit = daySlots.find(s => s.time === slotTime);

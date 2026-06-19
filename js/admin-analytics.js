@@ -490,11 +490,12 @@ function countGroupClassSlots(from, to) {
     const end = new Date(to);   end.setHours(23, 59, 59, 999);
     while (cur <= end) {
         const dateStr = formatAdminDate(cur);
-        // Use override if explicitly configured, otherwise fall back to the default template
-        // (mirrors how initializeDemoData generates bookings)
+        // Override puntuale se configurato, altrimenti il template della settimana
+        // ATTIVATA per quella data (date-aware: vuoto se la settimana non è attivata).
+        const weekly = (typeof getWeeklySchedule === 'function') ? getWeeklySchedule(dateStr) : null;
         const slots = overrides[dateStr] !== undefined
             ? overrides[dateStr]
-            : (WEEKLY_SCHEDULE_TEMPLATE[dayNames[cur.getDay()]] || []);
+            : ((weekly && weekly[dayNames[cur.getDay()]]) || []);
         count += slots.filter(s => s.type === SLOT_TYPES.GROUP_CLASS).length;
         cur.setDate(cur.getDate() + 1);
     }

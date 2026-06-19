@@ -16,14 +16,14 @@ function _hexToRgba(hex, alpha) {
 }
 
 // Slot effettivi per una data: override puntuale se presente, altrimenti il
-// template settimanale ATTIVO per quel giorno. (Prima il template veniva ignorato:
-// il calendario mostrava slot solo sulle date con override espliciti.)
+// template della SETTIMANA ATTIVATA che contiene quella data. Se la settimana non
+// è stata attivata manualmente → nessuno slot (getWeeklySchedule date-aware).
 function _daySlots(dateFormatted) {
     try {
         const overrides = BookingStorage.getScheduleOverrides();
         if (overrides[dateFormatted] && overrides[dateFormatted].length) return overrides[dateFormatted];
         if (typeof getWeeklySchedule === 'function') {
-            const weekly = getWeeklySchedule();
+            const weekly = getWeeklySchedule(dateFormatted);   // date-aware: solo se la settimana è attivata
             const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateFormatted || '');
             if (weekly && m) {
                 const wd = new Date(+m[1], (+m[2]) - 1, +m[3]).getDay();

@@ -108,6 +108,18 @@ begin
         end loop;
     end if;
 
+    -- ── ATTIVAZIONE SETTIMANE (per-settimana, manuale) ────────────────────────
+    -- Attiviamo la settimana corrente e le 3 successive sul template demo, così
+    -- il calendario non è vuoto appena seedato. Le altre settimane restano da
+    -- attivare a mano dall'editor orari.
+    if v_tpl is not null then
+        for v_wd in 0..3 loop
+            insert into activated_weeks (org_id, week_start, template_id)
+            values (v_org, (date_trunc('week', now())::date + (v_wd * 7)), v_tpl)
+            on conflict (org_id, week_start) do nothing;
+        end loop;
+    end if;
+
     -- ── ORG SETTINGS di base per la demo ──────────────────────────────────────
     insert into org_settings (org_id, key, value) values
         (v_org, 'branding.studio_name',     to_jsonb('Demo Studio'::text)),
