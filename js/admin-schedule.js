@@ -840,12 +840,55 @@ function _schedActivationRow(ymd, mon, sun, activeRow, templates, fallbackTpl, i
         </div>`;
 }
 
+// Domenica (YMD) della settimana il cui lunedì è weekStartYMD.
+function _schedWeekEnd(weekStartYMD) {
+    const [y, m, d] = String(weekStartYMD).slice(0, 10).split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + 6);
+    return _schedYMD(dt);
+}
+
+// True se nella settimana [lunedì..domenica] esiste almeno una prenotazione attiva
+// (status != cancelled). Usato per impedire di cambiare/disattivare una settimana
+// su cui qualcuno è già prenotato. In caso di errore di rete restituisce true
+// (fail-safe: meglio bloccare che lasciar modificare una settimana con iscritti).
+async function _schedWeekHasBookings(org, weekStart) {
+    const weekEnd = _schedWeekEnd(weekStart);
+    try {
+        const { count, error } = await supabaseClient
+            .from('bookings')
+            .select('id', { count: 'exact', head: true })
+            .eq('org_id', org)
+            .neq('status', 'cancelled')
+            .gte('date', weekStart)
+            .lte('date', weekEnd);
+        if (error) throw error;
+        return (count || 0) > 0;
+    } catch (e) {
+        console.error('[Schedule] weekHasBookings:', e);
+        return true;   // fail-safe: non sappiamo → blocca
+    }
+}
+
 // Attiva (o aggiorna il template di) una settimana concreta.
 async function schedActivateWeek(weekStart) {
     const org = _schedRequireOrg();
     if (!org) return;
     const tplId = document.getElementById(`awTpl-${weekStart}`)?.value || '';
     if (!tplId) { _schedToast('⚠️ Seleziona un template per la settimana.', 'error'); return; }
+
+    // Guard: cambiare il TEMPLATE di una settimana già attiva ne ridefinisce
+    // tipi/capienze degli slot → vietato se qualcuno è già prenotato in quella
+    // settimana. La prima attivazione (additiva) e il "ri-applica stesso template"
+    // (no-op) restano sempre consentiti.
+    const existing = _schedData.activated.find(a => String(a.week_start).slice(0, 10) === weekStart);
+    if (existing && existing.template_id !== tplId) {
+        if (await _schedWeekHasBookings(org, weekStart)) {
+            _schedToast('⚠️ Settimana con prenotazioni attive: non puoi cambiarne il template. Disdici/sposta prima le prenotazioni.', 'error');
+            return;
+        }
+    }
+
     try {
         const { error } = await supabaseClient
             .from('activated_weeks')
@@ -863,6 +906,14 @@ async function schedActivateWeek(weekStart) {
 async function schedDeactivateWeek(weekStart) {
     const org = _schedRequireOrg();
     if (!org) return;
+
+    // Guard: non disattivare una settimana con prenotazioni attive (gli slot
+    // sparirebbero da sotto i clienti già iscritti).
+    if (await _schedWeekHasBookings(org, weekStart)) {
+        _schedToast('⚠️ Settimana con prenotazioni attive: non puoi disattivarla. Disdici/sposta prima le prenotazioni.', 'error');
+        return;
+    }
+
     if (!await showConfirm('Disattivare questa settimana? Gli slot non saranno più disponibili (le prenotazioni esistenti restano nel registro).')) return;
     try {
         const { error } = await supabaseClient
