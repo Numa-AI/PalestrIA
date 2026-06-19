@@ -71,11 +71,14 @@ async function _loadImportaImported() {
         }
     } catch (e) { /* cache corrotta: ignora e rifetcha */ }
 
-    const { data, error } = await _queryWithTimeout(supabaseClient
+    // Paginato: con "Importa tutti" la tabella può superare il limite di ~1000
+    // righe di PostgREST, quindi va scaricata a batch (altrimenti il picker e i
+    // contatori mostrerebbero solo i primi 1000).
+    const { data, error } = await fetchAllPaginated(() => supabaseClient
         .from('imported_exercises')
         .select('slug, nome_it, nome_original, nome_en, categoria, immagine, immagine_thumbnail, video, popolarita')
         .order('categoria', { ascending: true })
-        .order('nome_it', { ascending: true }), 30000);
+        .order('nome_it', { ascending: true }), { timeoutMs: 30000 });
     if (error) throw error;
     _importaImported = data || [];
     _importaImportedSlugs = new Set(_importaImported.map(e => e.slug));
@@ -176,6 +179,21 @@ function _renderImportaUI(container) {
         </div>
         <select class="importa-cat-select" onchange="_importaPickCat(this.value)">${catOptions.join('')}</select>
     </div>`;
+
+    // ── Bulk import bar (solo vista catalogo, quando c'è qualcosa da importare) ─
+    if (_importaView === 'catalogo') {
+        const pending = _importaPendingCatalog().length;
+        if (pending > 0) {
+            const scope = _importaActiveCat || _importaSearch ? 'filtrati' : '';
+            html += `
+    <div class="importa-bulk-bar">
+        <button class="importa-bulk-btn" onclick="_importaAddAll()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            Importa tutti ${scope} <span class="importa-bulk-count">${pending.toLocaleString('it')}</span>
+        </button>
+    </div>`;
+        }
+    }
 
     // ── Exercise grid ───────────────────────────────────────────────────────
     html += '<div class="importa-grid" id="importaGrid"></div>';
@@ -379,6 +397,122 @@ async function _importaAdd(slug) {
         showAlert('Errore durante l\'importazione: ' + (e.message || e), { type:'error' });
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '+ Importa'; }
+    }
+}
+
+// ── Filtered catalog helpers (rispecchiano la logica della griglia) ──────────
+function _importaFilteredCatalog() {
+    let exercises = _importaCatalog;
+    if (_importaActiveCat) {
+        exercises = exercises.filter(e => e.categoria === _importaActiveCat);
+    }
+    if (_importaSearch) {
+        const s = _importaSearch.toLowerCase();
+        exercises = exercises.filter(e =>
+            (e.nome || '').toLowerCase().includes(s) ||
+            (e.nome_en || '').toLowerCase().includes(s)
+        );
+    }
+    return exercises;
+}
+
+// Esercizi del catalogo (filtrato) non ancora importati.
+function _importaPendingCatalog() {
+    return _importaFilteredCatalog().filter(e => !_importaImportedSlugs.has(e.slug));
+}
+
+// ── Import massivo (Importa tutti) ──────────────────────────────────────────
+let _importaBulkRunning = false;
+async function _importaAddAll() {
+    if (_importaBulkRunning) return;
+
+    const pending = _importaPendingCatalog();
+    if (pending.length === 0) return;
+
+    const scoped = !!(_importaActiveCat || _importaSearch);
+    const msg = scoped
+        ? `Importare i ${pending.length} esercizi filtrati nel tuo catalogo?`
+        : `Importare TUTTI i ${pending.length.toLocaleString('it')} esercizi del catalogo?\n\nSaranno tutti disponibili nel picker delle schede. Potrai rimuovere quelli che non ti servono in seguito.`;
+    if (!await showConfirm(msg)) return;
+
+    _importaBulkRunning = true;
+
+    // Overlay di progresso (bloccante).
+    const overlay = document.createElement('div');
+    overlay.className = 'importa-detail-overlay importa-bulk-overlay';
+    overlay.innerHTML = `
+        <div class="importa-bulk-modal">
+            <div class="importa-bulk-modal-title">Importazione in corso…</div>
+            <div class="importa-bulk-modal-sub" id="importaBulkStatus">0 / ${pending.length.toLocaleString('it')}</div>
+            <div class="importa-bulk-progress"><span id="importaBulkProgressBar" style="width:0%"></span></div>
+        </div>`;
+    document.body.appendChild(overlay);
+    const statusEl = overlay.querySelector('#importaBulkStatus');
+    const barEl = overlay.querySelector('#importaBulkProgressBar');
+
+    const rows = pending.map(ex => ({
+        slug: ex.slug,
+        nome_it: ex.nome,
+        nome_original: ex.nome,
+        nome_en: ex.nome_en || null,
+        categoria: ex.categoria,
+        immagine: ex.immagine || null,
+        immagine_thumbnail: ex.immagine_thumbnail || null,
+        video: ex.video || null,
+        popolarita: ex.popolarita || 0
+    }));
+
+    const BATCH = 500;
+    let done = 0;
+    let failed = 0;
+    try {
+        for (let i = 0; i < rows.length; i += BATCH) {
+            const batch = rows.slice(i, i + BATCH);
+            const { error } = await _queryWithTimeout(
+                supabaseClient.from('imported_exercises').insert(batch), 60000
+            );
+            if (error) {
+                console.error('[Importa] Bulk insert batch error:', error);
+                failed += batch.length;
+            } else {
+                done += batch.length;
+            }
+            const pct = Math.round(((i + batch.length) / rows.length) * 100);
+            if (statusEl) statusEl.textContent = `${(done + failed).toLocaleString('it')} / ${rows.length.toLocaleString('it')}`;
+            if (barEl) barEl.style.width = pct + '%';
+        }
+
+        // Invalida cache e ricarica.
+        _importaImportedLoaded = false;
+        try { localStorage.removeItem('schede_exercises_db_v1'); } catch (e) { /* noop */ }
+        await _loadImportaImported();
+        if (typeof _refreshSchedeFromImported === 'function') await _refreshSchedeFromImported();
+
+        overlay.remove();
+
+        if (failed > 0) {
+            showAlert(`Importati ${done.toLocaleString('it')} esercizi. ${failed.toLocaleString('it')} non importati (errore). Riprova per i restanti.`, { type:'error' });
+        } else {
+            showAlert(`Importati ${done.toLocaleString('it')} esercizi.`, { type:'success' });
+        }
+
+        const container = document.getElementById('importaContainer');
+        if (container) _renderImportaUI(container);
+    } catch (e) {
+        console.error('[Importa] Bulk import error:', e);
+        overlay.remove();
+        // Ricarica comunque per riflettere ciò che è andato a buon fine.
+        try {
+            _importaImportedLoaded = false;
+            try { localStorage.removeItem('schede_exercises_db_v1'); } catch (e2) { /* noop */ }
+            await _loadImportaImported();
+            if (typeof _refreshSchedeFromImported === 'function') await _refreshSchedeFromImported();
+            const container = document.getElementById('importaContainer');
+            if (container) _renderImportaUI(container);
+        } catch (e2) { /* noop */ }
+        showAlert('Errore durante l\'importazione massiva: ' + (e.message || e), { type:'error' });
+    } finally {
+        _importaBulkRunning = false;
     }
 }
 

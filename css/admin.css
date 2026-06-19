@@ -9813,6 +9813,42 @@ img.schede-ex-icon { background: #fff; padding: 0; }
     box-shadow: 0 0 0 3px rgba(139,92,246,0.12);
 }
 
+/* ── Bulk import (Importa tutti) ─────────────────────────────────────────── */
+.importa-bulk-bar { margin-bottom: 14px; }
+.importa-bulk-btn {
+    width: 100%; padding: 11px 14px; border: none; border-radius: 11px;
+    background: linear-gradient(135deg, #8B5CF6, #7C3AED); color: #fff;
+    font-family: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    box-shadow: 0 3px 10px rgba(139,92,246,0.28);
+    transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+}
+.importa-bulk-btn:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 5px 14px rgba(139,92,246,0.36); }
+.importa-bulk-btn svg { width: 17px; height: 17px; }
+.importa-bulk-count {
+    font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+    background: rgba(255,255,255,0.22); padding: 2px 9px; border-radius: 999px;
+}
+.importa-bulk-modal {
+    background: #fff; border-radius: 16px; padding: 26px 28px;
+    width: min(360px, 88vw); text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.importa-bulk-modal-title { font-size: 16px; font-weight: 800; color: #1e293b; }
+.importa-bulk-modal-sub {
+    margin-top: 6px; font-size: 13px; font-weight: 700; color: #64748b;
+    font-variant-numeric: tabular-nums;
+}
+.importa-bulk-progress {
+    margin-top: 16px; height: 8px; background: #e2e8f0;
+    border-radius: 999px; overflow: hidden;
+}
+.importa-bulk-progress > span {
+    display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, #8B5CF6, #10b981);
+    border-radius: 999px; transition: width 0.2s ease;
+}
+
 /* ── Exercise grid ──────────────────────────────────────────────────────── */
 .importa-grid {
     display: grid;

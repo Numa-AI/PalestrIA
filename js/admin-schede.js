@@ -61,13 +61,14 @@ async function _loadExercisesDB() {
                     }
                 } catch (e) { /* cache corrotta: ignora */ }
             }
-            // 3. Infine fetch da Supabase
+            // 3. Infine fetch da Supabase (paginato: con "Importa tutti" la tabella
+            //    può superare il limite di ~1000 righe di PostgREST)
             if (!rawData) {
-                const { data, error } = await _queryWithTimeout(supabaseClient
+                const { data, error } = await fetchAllPaginated(() => supabaseClient
                     .from('imported_exercises')
                     .select('slug, nome_it, nome_original, nome_en, categoria, immagine, immagine_thumbnail, video, popolarita')
                     .order('categoria')
-                    .order('nome_it'), 30000);
+                    .order('nome_it'), { timeoutMs: 30000 });
                 if (error) throw error;
                 rawData = data || [];
                 try { localStorage.setItem(_EXDB_LS_KEY, JSON.stringify({ ts: Date.now(), data: rawData })); } catch (e) { /* quota: ignora */ }
