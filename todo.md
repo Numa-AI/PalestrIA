@@ -38,13 +38,22 @@ Tutte le voci dell'audit risolte **tranne C1** (super-admin, rinviato su richies
 
 ---
 
+## 🟢 CI rosso dal 2026-06-19 — FIXATO (2026-06-22)
+Il job **"Validate baseline migration"** falliva dal commit `b5bbe6a` allo step `supabase db start`: il `seed.sql` veniva applicato sopra la **sola baseline** (le altre migration sono spostate in `/tmp` per validare la baseline in isolamento) e faceva `INSERT in activated_weeks`, tabella creata dalla migration **post-baseline 00000000000020** → assente a quel punto.
+
+- [x] **`seed.sql`**: guard `to_regclass('public.activated_weeks') is not null` sul blocco attivazione settimane → in CI (baseline-only) si salta, in reset locale completo popola come prima.
+- [x] **`tests/rls/cross_tenant.sql`**: attiva la settimana del 2099-01-15 per org A/B (guarded) → modello per-settimana esercitato, capienza attesa 12 ancora vera dopo la migration 20.
+- [x] **Verificato**: run CI `27944392177` (commit `be65946`) **verde** su tutti e 3 i job (step 1-9 della baseline tutti success).
+
+---
+
 ## 📱 Port dal gemello Thomas — fix dock PWA iOS sui fling forti (2026-06-22) — APPLICATO
 Portato il fix registrato in `Aggiornamenti Thomas.md.lnk` (changelog del progetto Thomas Bresciani), adattato a PalestrIA. Bug: in PWA standalone iOS il dock `fixed; bottom:0` (+ FAB) talvolta restava sospeso a metà schermo dopo i **fling forti**.
 
 - [x] **`measure()` — rimosso il cap del 35%** in `allenamento.html` (`#allBottomStack`) e `admin.html` (`#admBottomStack`): ora compensa i distacchi reali verso l'alto a qualsiasi ampiezza fino a `vv.height`, scartando solo le anomalie (`delta>2 && delta<=vv.height`; micro-overshoot `delta<-2 && delta>-40`). Invariata la guard tastiera/viewport stantio.
 - [x] **`settle()` — aggiunto `nudgeRepaint()`**: toggle `will-change auto→transform` + reflow sincrono per ri-ancorare il layer composito, chiamato subito e a 80/200/400ms con `clearCorrection()`. Adattamento al progetto: qui il dock **non** ha `will-change:transform` nel CSS (a differenza del gemello) → lo imposta inline il `nudgeRepaint`; commento corretto di conseguenza.
 - [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v568**. Modifiche inline negli HTML (network-first) → nessun `?v=` da toccare.
-- [ ] **DEPLOY asset GitHub Pages**: push del branch per pubblicare `allenamento.html`/`admin.html`/`sw.js`.
+- [x] **DEPLOY asset GitHub Pages**: pushato su `origin/main` (commit `aaaf8a9`) → Pages ridispiega `allenamento.html`/`admin.html`/`sw.js`.
 - ℹ️ Le altre voci del changelog di Thomas (CLAUDE.md arricchito; file `Aggiornamenti.md` di tracciamento) sono **già coperte in forma equivalente** in PalestrIA (CLAUDE.md ricco; tracciamento via `todo.md` + memoria `stato-progetto`) → non duplicate. Workflow documentato in `CLAUDE.md` §0.1.
 
 ---
