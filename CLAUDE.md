@@ -10,6 +10,17 @@ Guida per agenti AI (e umani) che lavorano su questo repository. Leggila prima d
 - **Cose da fare**: **`todo.md`** (root del repo) è la **fonte di verità** delle attività residue, organizzata per priorità (Sicurezza, Stripe, Dominio/PWA, Rifiniture, Go-to-market, QA).
 - **⚠️ Regola operativa**: ogni volta che **concludi un task**, **controlla e aggiorna `todo.md`** — spunta/rimuovi ciò che è fatto e aggiungi le nuove cose future emerse. Aggiorna anche il file di memoria `stato-progetto` con il punto a cui sei arrivato. (E ricordati il cache-busting del §6 ad ogni deploy di asset.)
 
+### 0.1 — "Procedi con `@Aggiornamenti Thomas.md.lnk`" (port dal progetto gemello)
+
+Il file `Aggiornamenti Thomas.md.lnk` (root del repo) è un **collegamento Windows** che punta al changelog di un **altro progetto** (Thomas Bresciani: `…/Thomas Bresciani/Aggiornamenti.md`), un gestionale palestra **simile ma NON identico** a PalestrIA. Quando l'utente dice **"procedi con `@Aggiornamenti Thomas.md.lnk`"** intende: *porta qui i miglioramenti registrati lì che qui mancano*. Procedura obbligatoria:
+
+1. **Risolvi il `.lnk`** per leggere il file vero (è un collegamento, non un `.md`):
+   `powershell -c "(New-Object -ComObject WScript.Shell).CreateShortcut('<path .lnk>').TargetPath"`.
+2. **Per ogni voce** del changelog di Thomas, **verifica nel codice di PalestrIA se è già fatta** (cerca gli identificatori/funzioni citati). **Se è già presente → NON rifarla.** Spiega solo che è già coperta.
+3. **Se manca → implementala adattandola**: PalestrIA è multi-tenant SaaS (org_id/RLS, naming/CSS/file diversi). **Non copiare alla cieca**: mappa gli identificatori (es. `palestra-vNNN` ≠ `palestria-vNNN`; classi/ID `.adm-*`/`.all-*` possono differire), rispetta le convenzioni e l'architettura di QUESTO progetto (§2-§12), e correggi i commenti se un'assunzione del gemello qui non vale.
+4. Voci **già coperte in forma diversa/migliore** in PalestrIA (es. `CLAUDE.md` ricco, tracciamento via `todo.md`+memoria invece di `Aggiornamenti.md`) **contano come fatte**: non duplicare meccanismi equivalenti.
+5. A fine porting applica il **cache-busting §6** e aggiorna `todo.md` + memoria `stato-progetto` come da §0.
+
 ---
 
 ## 1. Cos'è PalestrIA e visione SaaS

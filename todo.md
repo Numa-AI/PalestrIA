@@ -38,6 +38,17 @@ Tutte le voci dell'audit risolte **tranne C1** (super-admin, rinviato su richies
 
 ---
 
+## 📱 Port dal gemello Thomas — fix dock PWA iOS sui fling forti (2026-06-22) — APPLICATO
+Portato il fix registrato in `Aggiornamenti Thomas.md.lnk` (changelog del progetto Thomas Bresciani), adattato a PalestrIA. Bug: in PWA standalone iOS il dock `fixed; bottom:0` (+ FAB) talvolta restava sospeso a metà schermo dopo i **fling forti**.
+
+- [x] **`measure()` — rimosso il cap del 35%** in `allenamento.html` (`#allBottomStack`) e `admin.html` (`#admBottomStack`): ora compensa i distacchi reali verso l'alto a qualsiasi ampiezza fino a `vv.height`, scartando solo le anomalie (`delta>2 && delta<=vv.height`; micro-overshoot `delta<-2 && delta>-40`). Invariata la guard tastiera/viewport stantio.
+- [x] **`settle()` — aggiunto `nudgeRepaint()`**: toggle `will-change auto→transform` + reflow sincrono per ri-ancorare il layer composito, chiamato subito e a 80/200/400ms con `clearCorrection()`. Adattamento al progetto: qui il dock **non** ha `will-change:transform` nel CSS (a differenza del gemello) → lo imposta inline il `nudgeRepaint`; commento corretto di conseguenza.
+- [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v568**. Modifiche inline negli HTML (network-first) → nessun `?v=` da toccare.
+- [ ] **DEPLOY asset GitHub Pages**: push del branch per pubblicare `allenamento.html`/`admin.html`/`sw.js`.
+- ℹ️ Le altre voci del changelog di Thomas (CLAUDE.md arricchito; file `Aggiornamenti.md` di tracciamento) sono **già coperte in forma equivalente** in PalestrIA (CLAUDE.md ricco; tracciamento via `todo.md` + memoria `stato-progetto`) → non duplicate. Workflow documentato in `CLAUDE.md` §0.1.
+
+---
+
 ## 🛡️ Audit codice multi-agente (2026-06-09) — FIX APPLICATI
 Diagnosi: workflow dynamic 8 aree + verifica avversariale a 2 lenti (11 bug gravi confermati, 0 confutati). Fix applicati in questa sessione (branch `saas-main`):
 - [x] **CRITICAL — `send-admin-message` broadcast cross-tenant**: qualunque utente loggato poteva inviare push arbitrarie a TUTTI i tenant (no auth ruolo, no scoping org). Ora valida il Bearer, deriva la org da `org_members` (owner/admin attivo), filtra `org_id` su ogni query, e logga in `client_notifications` con lo schema reale.

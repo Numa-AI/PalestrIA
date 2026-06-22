@@ -197,8 +197,12 @@
                 var rect = dock.getBoundingClientRect();
                 var targetBottom = vv.height + (vv.offsetTop || 0);
                 var delta = targetBottom - rect.bottom;
-                var limit = Math.max(120, targetBottom * 0.35);
-                var next = (Math.abs(delta) < 2 || Math.abs(delta) > limit) ? 0 : delta;
+                // Compensa i distacchi reali verso l'alto a QUALSIASI ampiezza (fino a
+                // vv.height): col vecchio cap al 35% i fling forti — che generano i
+                // distacchi più grandi — restavano non corretti. Scarta solo le anomalie.
+                var next = 0;
+                if (delta > 2 && delta <= vv.height) next = delta;      // distacco reale verso l'alto
+                else if (delta < -2 && delta > -40) next = delta;       // micro overshoot in basso
                 if (next !== 0) root.style.setProperty(PROP, next.toFixed(2) + 'px');
             }
 
@@ -210,13 +214,29 @@
                 settleTimer = setTimeout(settle, 180);
             }
 
+            // Forza il re-anchor del layer composito del dock: WebKit in standalone
+            // talvolta lo lascia agganciato a una posizione stantia anche dopo aver
+            // azzerato la correzione. Il toggle di will-change non tocca la transform
+            // (CSS-var) → nessun offset stantio. La FAB, che condivide la stessa custom
+            // property, si riallinea col dock.
+            function nudgeRepaint() {
+                var dock = document.getElementById('allBottomStack');
+                if (!dock) return;
+                dock.style.willChange = 'auto';
+                void dock.offsetHeight;      // reflow sincrono
+                dock.style.willChange = 'transform';
+            }
+
             // Riposo / resume / rotazione / chiusura tastiera: forza 0 senza misurare
-            // (i valori iOS qui sono stantii). Ripetuto per coprire il settling del
-            // viewport dopo pageshow/orientationchange.
+            // (i valori iOS qui sono stantii) e ri-ancora il layer. Ripetuto per coprire
+            // il settling del viewport dopo pageshow/orientationchange.
             function settle() {
                 if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
                 clearCorrection();
-                [80, 200, 400].forEach(function (ms) { setTimeout(clearCorrection, ms); });
+                nudgeRepaint();
+                [80, 200, 400].forEach(function (ms) {
+                    setTimeout(function () { clearCorrection(); nudgeRepaint(); }, ms);
+                });
             }
 
             window.addEventListener('scroll', onScroll, { passive: true });
