@@ -2235,6 +2235,16 @@ async function downloadWeeklyReport() {
 // ── Fiscal Report (all card/bank-transfer payments) ─────────────────────────
 
 async function downloadFiscalReport() {
+    // Gate di conferma: scarica TUTTO il ledger pagamenti dello studio (egress pesante).
+    // Evita che un tap accidentale faccia partire la generazione.
+    if (typeof showConfirm === 'function') {
+        const ok = await showConfirm({
+            title: 'Scarica report fiscale completo',
+            message: "Verrà generato un report con l'intero archivio dei pagamenti tracciati fiscalmente. L'operazione può richiedere tempo e traffico dati. Procedere?",
+            confirmText: 'Scarica',
+        });
+        if (!ok) return;
+    }
     const btn = document.getElementById('fiscalReportBtn');
     const origLabel = btn?.innerHTML;
     if (btn) { btn.innerHTML = '⏳ Generazione...'; btn.disabled = true; }

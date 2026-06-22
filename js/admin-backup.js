@@ -131,6 +131,16 @@ function _convertCronToAdminFormat(cron) {
 }
 
 async function exportBackup(format = 'json') {
+    // Gate di conferma: l'export è un download COMPLETO dell'archivio (tutte le tabelle dello
+    // studio → egress pesante). Evita che un tap accidentale faccia partire lo scarico.
+    if (typeof showConfirm === 'function') {
+        const ok = await showConfirm({
+            title: 'Esporta backup completo',
+            message: `Verrà scaricato l'intero archivio in formato ${format.toUpperCase()} (tutte le tabelle dello studio). L'operazione può richiedere tempo e traffico dati. Procedere?`,
+            confirmText: 'Esporta',
+        });
+        if (!ok) return;
+    }
     const s = document.getElementById('backupStatus');
     if (s) s.textContent = '⏳ Esportazione in corso...';
 
