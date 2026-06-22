@@ -10,9 +10,13 @@ Guida per agenti AI (e umani) che lavorano su questo repository. Leggila prima d
 - **Cose da fare**: **`todo.md`** (root del repo) è la **fonte di verità** delle attività residue, organizzata per priorità (Sicurezza, Stripe, Dominio/PWA, Rifiniture, Go-to-market, QA).
 - **⚠️ Regola operativa**: ogni volta che **concludi un task**, **controlla e aggiorna `todo.md`** — spunta/rimuovi ciò che è fatto e aggiungi le nuove cose future emerse. Aggiorna anche il file di memoria `stato-progetto` con il punto a cui sei arrivato. (E ricordati il cache-busting del §6 ad ogni deploy di asset.)
 
-### 0.1 — "Procedi con `@Aggiornamenti Thomas.md.lnk`" (port dal progetto gemello)
+### 0.1 — Sincronizzazione col gemello via `Aggiornamenti Thomas.md.lnk`
 
-Il file `Aggiornamenti Thomas.md.lnk` (root del repo) è un **collegamento Windows** che punta al changelog di un **altro progetto** (Thomas Bresciani: `…/Thomas Bresciani/Aggiornamenti.md`), un gestionale palestra **simile ma NON identico** a PalestrIA. Quando l'utente dice **"procedi con `@Aggiornamenti Thomas.md.lnk`"** intende: *porta qui i miglioramenti registrati lì che qui mancano*. Procedura obbligatoria:
+Il file `Aggiornamenti Thomas.md.lnk` (root del repo) è un **collegamento Windows** che punta al changelog di un **altro progetto** (Thomas Bresciani: `…/Thomas Bresciani/Aggiornamenti.md`), un gestionale palestra **simile ma NON identico** a PalestrIA.
+
+- **⚠️ REGOLA PERMANENTE (ogni inizio sessione)**: **controlla SEMPRE** `Aggiornamenti Thomas.md.lnk` (risolvi il `.lnk` e leggi il file vero) e **CHIEDI SEMPRE all'utente se c'è qualcosa da aggiornare/portare** da lì. Non aspettare che te lo chieda: è un check di routine a inizio sessione.
+
+Quando l'utente dice **"procedi con `@Aggiornamenti Thomas.md.lnk`"** (o tu trovi voci nuove e lui conferma) intende: *porta qui i miglioramenti registrati lì che qui mancano*. Procedura obbligatoria:
 
 1. **Risolvi il `.lnk`** per leggere il file vero (è un collegamento, non un `.md`):
    `powershell -c "(New-Object -ComObject WScript.Shell).CreateShortcut('<path .lnk>').TargetPath"`.
@@ -20,6 +24,14 @@ Il file `Aggiornamenti Thomas.md.lnk` (root del repo) è un **collegamento Windo
 3. **Se manca → implementala adattandola**: PalestrIA è multi-tenant SaaS (org_id/RLS, naming/CSS/file diversi). **Non copiare alla cieca**: mappa gli identificatori (es. `palestra-vNNN` ≠ `palestria-vNNN`; classi/ID `.adm-*`/`.all-*` possono differire), rispetta le convenzioni e l'architettura di QUESTO progetto (§2-§12), e correggi i commenti se un'assunzione del gemello qui non vale.
 4. Voci **già coperte in forma diversa/migliore** in PalestrIA (es. `CLAUDE.md` ricco, tracciamento via `todo.md`+memoria invece di `Aggiornamenti.md`) **contano come fatte**: non duplicare meccanismi equivalenti.
 5. A fine porting applica il **cache-busting §6** e aggiorna `todo.md` + memoria `stato-progetto` come da §0.
+
+### 0.2 — `Aggiornamento.md`: changelog delle modifiche NATE qui (da duplicare altrove)
+
+Speculare a §0.1 ma in **uscita**. Quando l'utente fa modifiche/aggiornamenti **che NON erano presenti** nel changelog di Thomas (cioè **nati in PalestrIA**), **registrali in `Aggiornamento.md`** (root del repo; crealo se non esiste). Serve perché l'utente dovrà **duplicarli su un altro progetto simile**, quindi:
+
+- **Voci nuove IN CIMA** (più recente per prima), con: **data**, **descrizione** del problema/feature, e una **"Parte tecnica"** dettagliata — file toccati, nomi di funzioni/identificatori, prima/dopo del codice quando utile, migration/DDL, step di deploy/cache-bust. Scrivi la parte tecnica in modo **autosufficiente e portabile**: chi duplica deve poter rifare la modifica senza vedere questo repo.
+- Cosa NON va in `Aggiornamento.md`: ciò che hai **portato da** Thomas (è già nel suo `Aggiornamenti.md`); le modifiche puramente di tracciamento/meta (todo, memoria).
+- `Aggiornamento.md` è un changelog di porting-in-uscita: non sostituisce `todo.md` (attività residue) né la memoria `stato-progetto` (stato), che vanno comunque aggiornati come da §0.
 
 ---
 
@@ -199,3 +211,4 @@ Il **fatturato** in `admin-analytics.js` (prima con 37 dipendenze da `credit_his
 - **`navigator.locks`** può bloccarsi su PWA mobile: `supabase-client.js` ha un fallback mutex JS + rilevazione lock bloccati.
 - **Prezzi**: niente più hardcoded (storicamente 5/10/50 in SQL vs 30 nel JS — incoerenza sanata). I prezzi vengono da `slot_types`/`billing_settings` per-org.
 - **Capienza**: server-authoritative. Non fidarsi mai del valore di capienza inviato dal client.
+- **`seed.sql` vs migration post-baseline**: il CI (`ci.yml`, job *Validate baseline migration*) valida la baseline **in isolamento** — sposta tutte le migration tranne `00000000000000_baseline.sql` in `/tmp` e applica **baseline + seed PRIMA** delle altre migration. Quindi `seed.sql` (eseguito da `supabase db start`/`db reset`) **non può riferire una tabella creata da una migration post-baseline** senza guard: andrebbe in errore in CI (es. bug del 2026-06-19 con `activated_weeks` della migration `00000000000020`). **Regola**: se il seed scrive su una tabella non presente nella baseline, **proteggi il blocco** con `if to_regclass('public.<tabella>') is not null then …` (vale anche per `tests/rls/cross_tenant.sql`). In un `supabase db reset` locale completo la tabella esiste e il blocco gira; in CI baseline-only viene saltato pulito.
