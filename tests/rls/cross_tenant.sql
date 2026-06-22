@@ -199,8 +199,11 @@ begin
     select id into v_gc_a from slot_types where org_id = v_org_a and key = 'group-class';
     select id into v_gc_b from slot_types where org_id = v_org_b and key = 'group-class';
 
-    -- configurazione slot 09:00-10:00 + template attivo + mapping al group-class,
-    -- per ENTRAMBE le org → resolve_slot_config ritorna capacity>0/bookable=true.
+    -- configurazione slot 09:00-10:00 + template + mapping al group-class +
+    -- ATTIVAZIONE della settimana che contiene il 2099-01-15, per ENTRAMBE le org
+    -- → resolve_slot_config ritorna capacity=12/bookable=true. Dalla migration
+    -- 00000000000020 la risoluzione passa da activated_weeks (non più dal solo
+    -- is_active del template), quindi senza attivare la settimana la capienza sarebbe 0.
     insert into time_slots_config (org_id, start_time, end_time, label)
         values (v_org_a, time '09:00', time '10:00', 'Mattina') returning id into v_ts_a;
     insert into time_slots_config (org_id, start_time, end_time, label)
@@ -215,6 +218,19 @@ begin
         values (v_tpl_a, v_org_a, v_weekday, v_ts_a, v_gc_a, 12);
     insert into weekly_template_slots (template_id, org_id, weekday, time_slot_id, slot_type_id, capacity)
         values (v_tpl_b, v_org_b, v_weekday, v_ts_b, v_gc_b, 12);
+
+    -- Attiva la settimana del 2099-01-15 sul template di ciascuna org. Guard
+    -- `to_regclass`: se gira solo la baseline (senza la migration 20) la tabella
+    -- non esiste → si salta (il blocco RPC più sotto ha già la sua SKIP-guard).
+    -- week_start calcolato con la STESSA espressione di resolve_slot_config (lunedì).
+    if to_regclass('public.activated_weeks') is not null then
+        insert into activated_weeks (org_id, week_start, template_id)
+            values (v_org_a, date_trunc('week', date '2099-01-15'::timestamp)::date, v_tpl_a)
+            on conflict (org_id, week_start) do nothing;
+        insert into activated_weeks (org_id, week_start, template_id)
+            values (v_org_b, date_trunc('week', date '2099-01-15'::timestamp)::date, v_tpl_b)
+            on conflict (org_id, week_start) do nothing;
+    end if;
 
     -- booking confermata sullo STESSO slot/data in ENTRAMBE le org. Serve a provare
     -- che le RPC pubbliche scoped-per-slug contino SOLO la org dello slug richiesto

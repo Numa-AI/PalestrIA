@@ -112,7 +112,13 @@ begin
     -- Attiviamo la settimana corrente e le 3 successive sul template demo, così
     -- il calendario non è vuoto appena seedato. Le altre settimane restano da
     -- attivare a mano dall'editor orari.
-    if v_tpl is not null then
+    --
+    -- Guard `to_regclass`: activated_weeks nasce dalla migration 00000000000020
+    -- (POST-baseline). In CI la baseline è validata in ISOLAMENTO (le altre
+    -- migration sono applicate DOPO il seed), quindi qui la tabella può non
+    -- esistere ancora → in quel caso saltiamo senza rompere il reset. In un reset
+    -- locale completo (tutte le migration applicate prima del seed) la tabella c'è.
+    if v_tpl is not null and to_regclass('public.activated_weeks') is not null then
         for v_wd in 0..3 loop
             insert into activated_weeks (org_id, week_start, template_id)
             values (v_org, (date_trunc('week', now())::date + (v_wd * 7)), v_tpl)
