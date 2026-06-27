@@ -58,6 +58,39 @@ Portato il fix registrato in `Aggiornamenti Thomas.md.lnk` (changelog del proget
 
 ---
 
+## 📦 Port dal gemello Thomas — egress + security + doc (2026-06-27) — APPLICATO
+Confrontate tutte le voci nuove del changelog di Thomas (dal 2026-06-22 in poi) col codice di PalestrIA.
+
+### Già coperto in PalestrIA → NON portato
+- **Security review (2026-06-27)**: tutti e 4 i punti **già risolti**. `send-admin-message` ha Bearer+`getUser()`+ruolo `org_members(owner/admin)` (`verify_jwt=true`); XSS admin coperto da `_escHtml()` (admin-messaggi.js); `notify-*` autenticate (audit 2026-06-18) + `notifyAdminNewClient` usa `access_token`; **~50 funzioni `SECURITY DEFINER` hanno tutte `set search_path = public`**.
+- **`overview.md` (2026-06-27)**: coperto in forma migliore da `CLAUDE.md` (§1-§12) + memoria + `todo.md` → non duplicato (§0.1 punto 4).
+- **`credit_history` cross-pagina (egress batch 2)**: **N/A**, crediti rimossi (§11).
+
+### Portato (blocco egress 2026-06-26) — solo client + 1 migration
+- [x] **A — persistenza cache `bookings` cross-pagina** (`data.js` `BookingStorage`): nuovi `_persistCache`/`_hydrateCache`/`_clearPersistedCache` + chiave `gym_bookings_cache_v1:<all|own>:<admin|userId>`, idratazione **prima** della decisione fingerprint (restore `_bkFingerprint`+`_bkLastFullFetch`) → su pagina nuova fa skip/delta invece di full. Identity-scoped, TTL idratazione 15 min, cap 8000 righe, guard `dataLastCleared`. Teardown (`_clearPersistedCache`) su logout (auth.js), `clearAllData`/`resetDemoData`/`pruneOldData` (admin-backup.js), branch `data_cleared_at` (data.js) e `invalidateDelta()`.
+- [x] **C — dedup `get_availability_range`** (`data.js`): `_fetchAvailabilityCached`/`_invalidateAvailabilityCache`, cache in-memory 60s **chiave per org slug** (firma multi-tenant `get_availability_range(p_org_slug,p_from,p_to)`). Invalidata su `saveBooking`/`saveBookingForClient`, `replaceAllBookings` (solo su cambio stato), handler realtime `index.html`/`prenotazioni.html`, branch clear.
+- [x] **D — TTL di rete schede** (`data.js` `WorkoutPlanStorage`): `_NET_TTL_MS=5min` + `_lastSyncAtByMode` → salta il re-fetch del join `workout_exercises` se cache popolata e fetch recente; param `force` per bypass; reset in `clearCache`. Unico chiamante = background admin, nessun canale realtime schede → sicuro.
+- [x] **E — tool diagnostico** `js/egress-debug.js` (opt-in `localStorage.egressDebug='1'`, `_egressReport()`/`_egressReset()`): caricato prima di `supabase-client.js` su index/prenotazioni/admin + in `APP_SHELL`.
+- [x] **F — `get_all_profiles_basic`**: nuova migration **`00000000000021_get_all_profiles_basic.sql`** (RPC identica a `get_all_profiles` SENZA le 2 history JSONB, `SECURITY DEFINER`+`search_path`+gate `is_org_admin`+filtro `org_id`). `UserStorage.syncUsersFromSupabase` prova la basic e **fa fallback** alla full → deploy sicuro in qualsiasi ordine. Verificato: backup usa la full diretta, admin non mostra/scrive le history (solo lo scalare), merge fa fallback a `existing` → nessuna perdita dati.
+- [x] **Doc — commenti-intestazione** su tutti i file scoperti: 15 HTML, `css/style.css`, `data.js` + 12 JS (admin-analytics/backup/calendar/clients/registro, admin, booking, calendar, chart-mini, push, supabase-client, ui). Solo commenti.
+- [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v570** (+`egress-debug.js` in APP_SHELL); `data.js` ?v=91→92, `auth.js` ?v=32→33, `admin-backup.js` ?v=8→9, `egress-debug.js` ?v=1. `node --check` OK su tutti i JS.
+
+### ⚠️ DA FARE (deploy)
+- [ ] **DEPLOY Supabase migration F**: `supabase db push` per **`00000000000021_get_all_profiles_basic.sql`** (NON si auto-deploya col push git). Finché non applicata, il frontend usa il fallback `get_all_profiles` (full) → egress profili invariato ma funzionante.
+- [ ] **DEPLOY asset GitHub Pages**: push del branch → Pages ridispiega HTML/JS/CSS (cache-bust già applicato).
+
+---
+
+## 📱 Port dal gemello Thomas — gate di conferma sugli export full-DB (2026-06-22) — APPLICATO
+Dalle voci egress di Thomas (2026-06-22) l'unica parte portabile qui è il **Fix C** (gate di conferma sugli export pesanti): il resto (Fix A `credit_history` incrementale, Fix B TTL `syncAppSettingsFromSupabase`, follow-up TTL history) **non si applica** — il sistema crediti è stato rimosso (§11) e `data.js` ha già delta-fetch + fingerprint + TTL (`_ADMIN_FETCH_CACHE_TTL_MS`, `admin DELTA`, `_LS_TTL_MS`), copertura equivalente o migliore.
+
+- [x] **`exportBackup()`** (`js/admin-backup.js`): `showConfirm` (formato JSON/CSV nel messaggio) prima di scaricare l'intero archivio → blocca i tap accidentali; annullando non parte nessun download. Gate dentro la funzione → copre entrambi i bottoni (`exportBackup('json')`/`('csv')` in admin-settings).
+- [x] **`downloadFiscalReport()`** (`js/admin-analytics.js`): `showConfirm` prima di generare il report con TUTTO il ledger pagamenti → copre sia il bottone Impostazioni sia quello della sidebar desktop.
+- [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v569**; `admin-analytics.js?v=8→9`, `admin-backup.js?v=7→8` in `admin.html`. `node --check` OK su entrambi.
+- [x] **DEPLOY asset GitHub Pages**: pushato su `origin/main` (commit `4284a20`) → Pages ridispiega `admin-backup.js`/`admin-analytics.js`/`admin.html`/`sw.js`.
+
+---
+
 ## 🛡️ Audit codice multi-agente (2026-06-09) — FIX APPLICATI
 Diagnosi: workflow dynamic 8 aree + verifica avversariale a 2 lenti (11 bug gravi confermati, 0 confutati). Fix applicati in questa sessione (branch `saas-main`):
 - [x] **CRITICAL — `send-admin-message` broadcast cross-tenant**: qualunque utente loggato poteva inviare push arbitrarie a TUTTI i tenant (no auth ruolo, no scoping org). Ora valida il Bearer, deriva la org da `org_members` (owner/admin attivo), filtra `org_id` su ogni query, e logga in `client_notifications` con lo schema reale.
@@ -188,7 +221,9 @@ Sintomi: PWA va spesso chiusa/riaperta o refreshata; freeze "alla 2ª prenotazio
 - [ ] **Storage buckets**: creare `tenant-assets` (logo/branding) + `documenti` se si vuole l'upload del logo dalle Impostazioni (oggi è un campo URL).
 
 ## 📣 Go-to-market
-- [ ] **Landing SaaS** su `palestria.it`: trasformare `PalestrIA WebSite/` in una landing multi-tenant con CTA "Crea il tuo studio gratis" (→ `signup-trainer.html`) + sezione prezzi (39,99/79,99/149,99 + trial 30gg).
+- [x] **Landing — animazioni allo scroll + SEO (2026-06-22)**: `PalestrIA WebSite/index.html` arricchita con reveal allo scroll (IntersectionObserver, stagger), micro-interazioni (hover/glow/scia bottoni, conteggio animato numeri, barra avanzamento, nav scrolled, scrollspy, torna-su) e SEO completa (meta + Open Graph + Twitter + JSON-LD `@graph` con `FAQPage`). Tutto `prefers-reduced-motion`-safe e no-FOUC (gate `.js`); degrada senza JS. Sito statico senza SW → nessun cache-bust. Verificato con Playwright (0 errori console, JSON-LD valido, demo interattiva intatta). Dettaglio in `Aggiornamento.md`.
+- [ ] **Landing — follow-up SEO/asset**: (1) dominio canonico/OG reale (ora placeholder `https://palestria.app/`, allineare a `palestria.it` quando deciso il routing); (2) cover social dedicata **1200×630** (ora `og:image` punta al logo come fallback); (3) creare `sitemap.xml` + `robots.txt`.
+- [ ] **Landing SaaS** su `palestria.it`: collegare le CTA della landing a `signup-trainer.html` (oggi puntano a `#pricing`/`#`) — "Crea il tuo studio gratis" + sezione prezzi (39,99/79,99/149,99 + trial 30gg) già presente in forma 39/79/149.
 - [ ] Testi/asset marketing (vedi `PalestrIA WebSite/instagram-briefs.md`).
 - [ ] **Ads Instagram** → solo DOPO che il funnel è monetizzabile (Stripe live) e i flussi core sono solidi.
 

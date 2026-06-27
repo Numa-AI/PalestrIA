@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<!--
+  privacy.html — Pagina legale "Privacy Policy" (informativa GDPR).
+  Cosa fa: pagina di testo pubblica con l'informativa sul trattamento dei dati
+  personali, linkata da footer e dai form di registrazione/consenso. Statica nei
+  contenuti, con navbar comune.
+  Come funziona: set di script ridotto rispetto alle pagine app — branding-boot.js
+  (branding), supabase-client.js (client), auth.js (navbar Accedi/utente), ui.js,
+  silent-refresh.js, app-watchdog.js, maintenance.js. Moduli PWA: sw-update.js,
+  pull-to-refresh.js, pwa-install.js. CSS: style.css + login.css.
+  Connesso a: termini.html, index.html e ai punti dell'app che richiedono il consenso.
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -184,7 +195,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
 <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=3"></script>
-<script src="js/auth.js?v=32"></script>
+<script src="js/auth.js?v=33"></script>
 <script src="js/silent-refresh.js?v=5"></script>
 <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=3"></script>

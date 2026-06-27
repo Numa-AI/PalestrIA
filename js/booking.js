@@ -1,3 +1,31 @@
+/**
+ * booking.js — Form/modal di prenotazione del cliente (lato pubblico, pagina prenotazioni).
+ *
+ * COSA FA
+ * Gestisce il modal con cui il cliente prenota uno slot: mostra info slot e iscritti visibili,
+ * applica i gating (certificato medico / assicurazione), invia la prenotazione, mostra la
+ * conferma e genera gli inviti calendario (ICS / Google Calendar).
+ *
+ * COME FUNZIONA
+ * - Setup: initBookingForm() collega il submit (#bookingForm → handleBookingSubmit), la chiusura
+ *   con Escape/overlay/swipe-down (.modal-box) del #bookingModal.
+ * - Iscritti slot: _loadSlotAttendees() chiama la RPC pubblica supabaseClient.rpc('get_slot_attendees',
+ *   { p_org_slug, p_date, p_time }) con anti-race (_attendeesLoadSeq), timeout 8s (AbortController),
+ *   retry singolo con ensureValidSession() e link "Riprova".
+ * - Apertura: openBookingModal(dateInfo, timeSlot, slotType, remainingSpots) popola badge/info
+ *   (#modalSlotTypeBadge, #modalSlotDay, #modalSlotTime, #modalSlotSpots) e resetta il form.
+ * - Submit: handleBookingSubmit() applica i gating cert/assicurazione (CertBookingStorage/
+ *   AssicBookingStorage) e invia con BookingStorage.saveBooking({..., orgSlug: window._orgSlug}).
+ *   NESSUN pre-check capienza lato client: l'autorità è la RPC server-side `book_slot` (data.js).
+ * - Conferma e calendario: showConfirmation() (usa _confirmedBooking), downloadIcs()/
+ *   downloadCancelIcs() (ICS con VTIMEZONE), googleCalendarUrl(); il fuso è per-org via
+ *   _orgTimezone() (OrgSettings 'locale.timezone'). notificaPrenotazione() invia la notifica.
+ *
+ * CONNESSIONI
+ * - Persistenza/RPC via BookingStorage (js/data.js → RPC `book_slot`, tabella bookings, org-scoped).
+ * - Org pubblica risolta dallo slug in window._orgSlug (client anonimo, niente JWT).
+ * - Impostazioni per-org via OrgSettings; helper condivisi _escHtml, getSlotName, spotsColorClass.
+ */
 // Booking form / modal functionality
 let _confirmedBooking = null; // used by downloadIcs button in showConfirmation
 

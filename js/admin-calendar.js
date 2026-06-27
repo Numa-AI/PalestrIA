@@ -1,3 +1,30 @@
+/**
+ * admin-calendar.js — Vista calendario settimanale del pannello admin (tab "Prenotazioni").
+ *
+ * COSA FA
+ * Renderizza il calendario admin: navigazione per settimana, selettore giorni e vista
+ * giornaliera con gli slot e i relativi iscritti. Da qui l'admin gestisce le prenotazioni
+ * del giorno selezionato.
+ *
+ * COME FUNZIONA
+ * - Setup: setupAdminCalendar() collega i pulsanti #adminPrevWeek/#adminNextWeek (modificano
+ *   adminWeekOffset, condiviso con admin-analytics.js) e registra il resize handler
+ *   _adminCalResizeHandler (rimosso prima di ri-aggiungerlo per evitare accumulo di listener).
+ * - Sticky offsets: _updateStickyOffsets() calcola navbar/.admin-tabs e imposta le CSS var
+ *   --admin-tabs-top / --bookings-bar-top per l'header appiccicato senza gap.
+ * - Date: getAdminWeekDates(offset) genera i 7 giorni (lun→dom) della settimana; formatAdminDate()
+ *   produce 'YYYY-MM-DD'.
+ * - Render: renderAdminCalendar() seleziona oggi di default (selectedAdminDay), aggiorna
+ *   #adminCurrentWeek/#adminCurrentMonth e invoca renderAdminDaySelector() (3 settimane di
+ *   day-card in #adminDaySelector) e renderAdminDayView() (slot + capienza del giorno via
+ *   _adminDayCapacity).
+ *
+ * CONNESSIONI
+ * - Legge le prenotazioni da BookingStorage.getAllBookings() (js/data.js), org-scoped da RLS;
+ *   filtra i booking sintetici (_avail_*) e quelli cancellati.
+ * - Condivide stato con admin-analytics.js (adminWeekOffset, selectedAdminDay) e con admin.js
+ *   (gestione sticky/scroll).
+ */
 // Admin Calendar Functions
 // L10: riferimento al handler resize per poterlo rimuovere prima di ri-aggiungerlo.
 let _adminCalResizeHandler = null;

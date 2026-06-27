@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v569';
+const CACHE_NAME = 'palestria-v570';
 
 const APP_SHELL = [
     './',
@@ -18,6 +18,7 @@ const APP_SHELL = [
     'css/chi-sono.css',
     'css/dove-sono.css',
     'js/ui.js',
+    'js/egress-debug.js',
     'js/data.js',
     'js/calendar.js',
     'js/booking.js',

@@ -1,3 +1,29 @@
+/**
+ * admin-clients.js — Tab "Clienti" del pannello admin: anagrafica e gestione clienti del tenant.
+ *
+ * COSA FA
+ * Mostra l'elenco dei clienti della org (derivato dalle prenotazioni), con ricerca, filtri
+ * per problemi (certificato medico, assicurazione, anagrafica incompleta, privacy, push) e
+ * dettaglio espandibile per cliente.
+ *
+ * COME FUNZIONA
+ * - Stato tab: openClientIndex (card aperta), clientsSearchQuery e i flag filtro
+ *   clientCertFilter/clientAssicFilter/clientAnagFilter/clientPrivacyFilter/clientPushFilter.
+ * - Filtri: toggle*Filter() attivano un filtro per volta (_clearOtherFilters), aggiornano i
+ *   pulsanti UI (_syncFilterButtons → #certFilterBtn/#assicFilterBtn/#anagFilterBtn/
+ *   #privacyFilterBtn/#pushFilterBtn e #clientsFilterToggle) e ri-renderizzano (renderClientsTab).
+ *   toggleClientsFiltersMenu() apre/chiude il menu chip (#clientsFilterChips).
+ * - Predicati problema: clientHasCertIssue/clientHasAssicIssue confrontano le scadenze con
+ *   _localDateStr(); clientHasAnagIssue verifica codiceFiscale/indirizzo; clientHasPrivacy /
+ *   clientHasPushDisabled leggono privacyPrenotazioni / pushEnabled.
+ * - Aggregazione: getAllClients() costruisce la lista dai booking usando indici O(1)
+ *   (phoneIndex per telefono normalizzato, emailIndex per email) per fondere i duplicati.
+ *
+ * CONNESSIONI
+ * - Legge le prenotazioni da BookingStorage.getAllBookings() (js/data.js).
+ * - I dati anagrafici per cliente arrivano da _getUserRecord(email, whatsapp) (definito in
+ *   admin-analytics.js, mappato sulla tabella profiles), org-scoped da RLS.
+ */
 // Clients Tab State
 let openClientIndex = null;
 let clientsSearchQuery = '';

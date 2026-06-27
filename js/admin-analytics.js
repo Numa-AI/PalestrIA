@@ -1,3 +1,35 @@
+/**
+ * admin-analytics.js — Dashboard analitica del pannello admin (tab "Dashboard"/Stats).
+ *
+ * COSA FA
+ * Costruisce la dashboard con statistiche, grafici e report del tenant: prenotazioni,
+ * fatturato reale, clienti, occupazione slot, tempi più richiesti. Gestisce i filtri
+ * temporali (this-month/next-month/last-month/this-year/last-year/custom) con confronto
+ * sul periodo precedente, e i drill-down per ciascuna stat card.
+ *
+ * COME FUNZIONA
+ * - Filtri: getFilterDateRange()/getPreviousFilterDateRange() calcolano i range; lo stato
+ *   vive in currentFilter/customFilterFrom/customFilterTo; setAnalyticsFilter()/applyCustomFilter()
+ *   sono i punti d'ingresso UI.
+ * - Caricamento: loadDashboardData() (anti-stale via _loadDashboardSeq) orchestra fetch e
+ *   render; _renderDashboardUI()/updateNonChartData()/_setStatCardsLoading() aggiornano la UI.
+ * - Fatturato: fonte unica = tabella `payments` (org-scoped via RLS). _fetchPayments() fa fetch
+ *   paginato (PAGE=1000) con _queryWithTimeout(), escludendo gli ADMIN_EMAILS. Cache in memoria
+ *   (_statsBookings/_statsPayments + range _statsCacheRange/_statsPaymentsRange) per bypassare il
+ *   limite ~5MB di localStorage; invalidateStatsCache() va chiamata dopo save/cancel booking.
+ * - Stat cards e grafici: updateStatsCards(), drawBookingsChart(), drawTypeChart() (via SimpleChart
+ *   di chart-mini.js), updateBookingsTable(), updatePopularTimes(), countGroupClassSlots().
+ * - Drill-down: toggleStatDetail(type) + render*Detail() (Fatturato/Prenotazioni/Clienti/Occupancy);
+ *   switchFatturatoMode() commuta vista fatturato.
+ * - Report: checkWeeklyReportBanner()/downloadWeeklyReport()/downloadFiscalReport() (PDF via jsPDF).
+ *
+ * CONNESSIONI
+ * - Legge prenotazioni da BookingStorage (js/data.js) e profili via _getUserRecord()/
+ *   _updateSupabaseProfile() (tabella profiles). Tutto org-scoped da RLS.
+ * - Variabili condivise con admin-calendar.js (adminWeekOffset, selectedAdminDay).
+ * - Disegna su canvas tramite SimpleChart (js/chart-mini.js).
+ * - Helper comuni: _queryWithTimeout, ADMIN_EMAILS, _localDateStr, getBookingPrice (definiti altrove).
+ */
 let adminWeekOffset = 0;
 let selectedAdminDay = null;
 let _adminInitialScrollDone = false;

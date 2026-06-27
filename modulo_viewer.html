@@ -1,4 +1,16 @@
 <!DOCTYPE html>
+<!--
+  modulo_viewer.html — Visualizzatore del PDF "Modulo Personal Training".
+  Cosa fa: pagina standalone con header (logo + link "← Indietro" a prenotazioni.html),
+  barra azioni (#actions) e contenitore PDF (#pdfContainer) che mostra/stampa/scarica il
+  file modulo_personal_training.pdf. Su iOS (rilevato da userAgent/maxTouchPoints) niente
+  iframe: mostra solo il bottone "Scarica PDF"; su desktop/Android embedda il PDF con
+  bottone Stampa.
+  Come funziona: stile inline nel <head> (non usa style.css). Unico script esterno:
+  branding-boot.js (branding); la logica del viewer è in uno <script> inline (IIFE) che
+  fa il branch iOS/desktop e popola #actions/#pdfContainer.
+  Connesso a: prenotazioni.html (da cui si apre il modulo).
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">

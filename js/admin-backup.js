@@ -1,3 +1,32 @@
+/**
+ * admin-backup.js — Backup ed esport/import dei dati del tenant (sezione Sicurezza/Manutenzione).
+ *
+ * COSA FA
+ * Esporta e ripristina i dati della org: produce un file di backup (chiavi localStorage +
+ * tabelle Supabase complete), importa backup precedenti e converte i backup generati dal
+ * cron/Nextcloud (tabelle Supabase raw) nel formato usato dalla dashboard admin.
+ *
+ * COME FUNZIONA
+ * - BACKUP_KEYS: elenco delle chiavi localStorage incluse nel backup (bookings, templates,
+ *   override, impostazioni certificato/assicurazione/settimane). NB: il vecchio sistema
+ *   crediti/debiti/bonus è stato rimosso → quelle chiavi non sono più incluse.
+ * - _fetchAllPaginated(table, cols, orderBy, timeout): fetch paginato (BATCH=1000, cap
+ *   MAX_PAGES=500) che supera il limite default PostgREST (~1000 righe); usa _queryWithTimeout().
+ *   Serve a scaricare per intero tabelle grandi (bookings, payments, admin_audit_log,
+ *   client_notifications, ...).
+ * - _convertCronToAdminFormat(cron): mappa il backup raw Supabase nel formato admin —
+ *   bookings (snake_case → camelCase), schedule_overrides (array → mappa per data, con
+ *   capacity assoluta del nuovo schema), settings → chiavi localStorage, profiles → gym_users,
+ *   e tabelle raw `_<table>` per il restore diretto su Supabase (push_subscriptions, payments,
+ *   client_packages, client_memberships, org_settings/settings legacy, ecc.).
+ *
+ * CONNESSIONI
+ * - Legge/scrive tabelle Supabase via supabaseClient (org-scoped da RLS): bookings, payments,
+ *   schedule_overrides, org_settings, profiles, push_subscriptions, admin_audit_log,
+ *   client_notifications, admin_messages, client_packages, client_memberships.
+ * - Helper condiviso _queryWithTimeout (definito altrove). I dati ripristinati confluiscono
+ *   nelle classi Storage di js/data.js.
+ */
 // Action buttons
 // NB: il sistema crediti/debiti/bonus è stato rimosso → le relative chiavi
 // localStorage non vengono più incluse nel backup.
@@ -733,6 +762,7 @@ async function resetDemoData() {
         confirmText: 'Continua', danger: true,
     })) {
         BookingStorage._cache = [];
+        BookingStorage._clearPersistedCache(); // snapshot pre-reset → via dalla localStorage
         localStorage.removeItem(BookingStorage.STATS_KEY);
         localStorage.removeItem('scheduleOverrides');
         localStorage.removeItem('dataClearedByUser');
@@ -816,6 +846,7 @@ async function pruneOldData() {
     );
     // Impedisci che initializeDemoData rigeneri i dati al prossimo reload
     localStorage.setItem('dataClearedByUser', 'true');
+    BookingStorage._clearPersistedCache(); // lo snapshot conteneva le righe ora prunate
 
     await showAlert('Dati storici e demo eliminati.', { type: 'success' });
     location.reload();

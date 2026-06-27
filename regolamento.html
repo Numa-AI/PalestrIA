@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<!--
+  regolamento.html — Pagina informativa "Regolamento" dello studio.
+  Cosa fa: pagina di contenuto pubblico con il regolamento/policy dello studio
+  (es. prenotazioni, cancellazioni, comportamento in sala), raggiungibile dalla
+  navbar (voce "Regolamento" attiva). Personalizzabile per-org.
+  Come funziona: branding-boot.js/ls-namespace.js per branding e localStorage per-org;
+  supabase-client.js (client), data.js (Storage layer), auth.js (navbar Accedi/utente),
+  ui.js, silent-refresh.js, app-watchdog.js, maintenance.js, push.js. Moduli PWA:
+  sw-update.js, pull-to-refresh.js, pwa-install.js. CSS: style.css + login.css +
+  regolamento.css. Connesso a: index.html e alle altre pagine info via navbar comune.
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -258,8 +269,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
 <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=3"></script>
-<script src="js/data.js?v=91"></script>
-<script src="js/auth.js?v=32"></script>
+<script src="js/data.js?v=92"></script>
+<script src="js/auth.js?v=33"></script>
 <script src="js/silent-refresh.js?v=5"></script>
 <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=3"></script>

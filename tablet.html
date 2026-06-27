@@ -1,4 +1,16 @@
 <!DOCTYPE html>
+<!--
+  tablet.html — Modalità "Tablet Allenamento": kiosk in palestra per aprire le schede via QR.
+  Cosa fa: app a schermate (<body class="tab-body">) pensata per un tablet in sala. Schermata
+  iniziale di scansione (#scanScreen) con QR reader (#qrReader, area #scanStatus) per aprire
+  la scheda di allenamento del cliente; in alternativa inserimento manuale di link/UUID via
+  modale #manualModal/#manualInput (funzioni showManualEntry()/hideManualEntry()). Ha un suo
+  manifest dedicato (manifest-tablet.json) e icona/tema separati per l'installazione PWA kiosk.
+  Come funziona: branding-boot.js/ls-namespace.js per branding e localStorage per-org;
+  supabase-client.js (client Supabase) e modals.js. Set di script volutamente ridotto
+  (no navbar/auth completi delle altre pagine). CSS dedicato: tablet.css (NON usa style.css).
+  Connesso a: allenamento.html (stessa scheda di workout, vista cliente) tramite il QR/codice.
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">

@@ -1,3 +1,34 @@
+/**
+ * calendar.js — Vista calendario pubblica (lato cliente, pagina prenotazioni).
+ *
+ * COSA FA
+ * Renderizza il calendario settimanale con cui il cliente vede gli slot disponibili e li
+ * seleziona per prenotare. Ha due layout: desktop (griglia settimana) e mobile (selettore
+ * giorni + card slot). Mostra posti residui, evidenzia gli slot già prenotati dall'utente
+ * e applica i colori di branding per-org.
+ *
+ * COME FUNZIONA
+ * - Stato: currentWeekOffset (settimana visibile), selectedSlot, selectedMobileDay.
+ * - Init: initCalendar() esegue _autoAdvanceWeek() (salta alla prossima settimana se quella
+ *   corrente non ha slot), poi renderCalendar() (desktop) + renderMobileCalendar() (mobile),
+ *   setupCalendarControls() (pulsanti #prevWeek/#nextWeek e #mobilePrevWeek/#mobileNextWeek) e
+ *   setupMobileStickyOffsets() (.navbar/.mobile-week-nav/.mobile-day-selector).
+ * - Slot del giorno: _daySlots(date) usa l'override puntuale se presente, altrimenti il template
+ *   della settimana ATTIVATA che contiene la data (getWeeklySchedule date-aware). Date helper:
+ *   getWeekDates()/getWeekDatesDesktop()/formatDate(); disponibilità: dateHasAvailableSlots(),
+ *   weekHasSlots()/weekHasSlotsDesktop().
+ * - Render slot: createSlot()/createMobileSlotCard() costruiscono le card; spotsColorClass()
+ *   colora i posti residui; _hexToRgba() deriva i gradienti dal colore di slot_types; selectSlot()/
+ *   selectMobileSlot() aprono il modal (booking.js).
+ * - Stato utente: _isLoggedIn(), _isUserEnrolled()/_isUserEnrolledOnDate() per evidenziare le
+ *   prenotazioni dell'utente; _isNonBookable() per gli slot non prenotabili (es. pulizie).
+ *
+ * CONNESSIONI
+ * - Dati slot/prenotazioni da BookingStorage (js/data.js): getScheduleOverrides(),
+ *   getBookingsForSlot(), getAllBookings(), e getWeeklySchedule() (definito altrove), org-scoped.
+ * - Selezione slot → openBookingModal() (js/booking.js). Utente corrente via getCurrentUser()
+ *   (js/auth.js). Capienza/tipo slot decisi server-side; il client mostra solo i residui.
+ */
 // Calendar functionality
 let currentWeekOffset = 0;
 let selectedSlot = null;

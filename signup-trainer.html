@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!--
+  signup-trainer.html — Registrazione self-serve di un nuovo studio/trainer (onboarding SaaS).
+  Cosa fa: pagina standalone con una card e il form #signupForm (campi #studioName,
+  #trainerName, #email, #password) per creare un nuovo tenant con trial 30 giorni.
+  Mostra in tempo reale lo slug generato (#slugPreview, via slugify) e i messaggi in
+  #msg; il pulsante #submitBtn invia la registrazione. È il punto d'ingresso del flusso
+  "Crea il tuo studio": crea l'utente, l'organizzazione e l'owner.
+  Come funziona: stile inline nel <head> (non usa style.css). Script: branding-boot.js,
+  supabase-client.js (client Supabase) e uno <script> inline (IIFE) che fa slugify del
+  nome, valida i campi e chiama Supabase Auth + l'RPC create_organization(name, slug)
+  per creare org + org_members(owner) + seed settings, poi reindirizza all'app.
+  Connesso a: login.html (link "Accedi"), admin.html (dashboard dopo l'onboarding).
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">

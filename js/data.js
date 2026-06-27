@@ -1,3 +1,28 @@
+/**
+ * data.js — Storage/data layer dell'app (pattern dual-layer: cache localStorage + sync Supabase).
+ *
+ * COSA FA: è il cuore dei dati lato client. Espone classi *Storage* statiche che leggono dalla
+ * cache in memoria/localStorage e sincronizzano con Supabase (Postgres + RLS + RPC):
+ *   - BookingStorage   — prenotazioni: cache + delta-sync con fingerprint, persistenza cross-pagina
+ *                        (gym_bookings_cache_v1), prenotazione server-authoritative via RPC book_slot,
+ *                        disponibilità via RPC get_availability_range (cache dedup 60s), capienza
+ *                        effettiva (override → template settimana attivata → default slot_type).
+ *   - UserStorage      — profili clienti dell'org (RPC get_all_profiles / get_all_profiles_basic).
+ *   - WorkoutPlanStorage / WorkoutLogStorage — schede ed esercizi/log allenamento (join + TTL cache).
+ *   - Storage di impostazioni (modalità pagamento, blocchi prenotazione, visibilità doc, template
+ *     orari) org-scoped, più gli helper schedule (weekly templates + activated_weeks).
+ *
+ * COME FUNZIONA: tutte le scritture critiche passano da RPC SECURITY DEFINER (org-scoped) — la
+ * capienza/anti-overbooking è decisa dal server, mai dal client. Le cache sono DISPLAY-ONLY e
+ * identity-scoped; i marker dataLastCleared / data_cleared_at coordinano i clear cross-device.
+ * Helper interni: _lsSet/_lsGetJSON (localStorage), _queryWithTimeout/_rpcWithTimeout (timeout),
+ * _localDateStr (date locali), _resolveOrgSlug (org dal contesto multi-tenant).
+ *
+ * CONNESSIONI: usa il client di supabase-client.js; legge sessione/ruolo da auth.js; è consumato
+ * da booking.js/calendar.js (cliente), prenotazioni.html, index.html e dai moduli admin-*.js
+ * (admin-calendar, admin-clients, admin-payments, admin-analytics, admin-schede, ...). egress-debug.js
+ * misura il peso delle query qui generate. Caricato in APP_SHELL (sw.js) con cache-busting ?v=.
+ */
 // Utility debounce: ritarda l'esecuzione finché non passa `delay` ms senza nuove chiamate.
 function _debounce(fn, delay) {
     let timer;
@@ -719,6 +744,27 @@ class BookingStorage {
     //    Il count del fingerprint regala la rilevazione degli hard-delete: se scende → FULL.
     static _DELTA_OVERLAP_MS = 5000; // overlap finestra anti clock-skew (merge idempotente per _sbId)
 
+    // ── Persistenza cache su localStorage (cross-pagina) ───────────────────────────
+    // L'app è multi-pagina (MPA): ad OGNI navigazione la _cache in memoria riparte vuota, quindi
+    // syncFromSupabase farebbe un FULL re-fetch (admin: ~150 giorni di booking) ad ogni pagina
+    // caricata → grossa voce di egress. Persistendo la cache + i watermark del fingerprint, la
+    // navigazione successiva fa uno SKIP (fingerprint invariato) o un DELTA (solo le righe con
+    // updated_at >= cursore) invece di un full. Sicuro: la cache è DISPLAY-ONLY — capienza e
+    // prenotazioni restano server-authoritative (book_slot con advisory lock); i pagamenti
+    // vengono dal ledger `payments`. Identity-scoped per non mischiare dati di utenti diversi.
+    // Snapshot oltre il TTL → non idratato (ricade nel full da cache vuota, come oggi).
+    static _PERSIST_KEY = 'gym_bookings_cache_v1';
+    static _PERSIST_MAX_ROWS = 8000;          // oltre, salta il persist (evita quota localStorage)
+    static _PERSIST_TTL_MS = 15 * 60 * 1000;  // età max snapshot idratabile (oltre → full da vuoto)
+
+    // ── Dedup get_availability_range (utenti/anon) ─────────────────────────────────
+    // L'aggregato di disponibilità viene ri-chiesto ad ogni syncFromSupabase (load, resume,
+    // visibility, wake-from-idle): su un burst ravvicinato è lo stesso identico payload.
+    // Cache in-memory 60s → un solo fetch per finestra+org. Invalidata su ogni cambio capienza
+    // (prenotazione/annullo/conversione) così la disponibilità torna fresca subito dopo un'azione.
+    static _availCache = { ts: 0, key: '', data: null };
+    static _AVAIL_TTL_MS = 60000; // 60s
+
     // Spezza il fingerprint "<count>|<max updated_at>" nei suoi componenti.
     static _parseFingerprint(fp) {
         if (!fp || typeof fp !== 'string') return null;
@@ -734,6 +780,81 @@ class BookingStorage {
     static invalidateDelta() {
         this._bkFingerprint = null;
         this._bkLastFullFetch = 0;
+        this._clearPersistedCache(); // lo snapshot conteneva il count pre-delete → scartalo
+    }
+
+    // ── Dedup get_availability_range: una sola fetch per finestra+org entro _AVAIL_TTL_MS ──
+    // Multi-tenant: la chiave include lo slug org (firma get_availability_range(p_org_slug,...)).
+    static async _fetchAvailabilityCached(fromStr, toStr) {
+        const slug = (typeof _resolveOrgSlug === 'function') ? _resolveOrgSlug() : '';
+        const key = `${slug}|${fromStr}|${toStr}`;
+        if (this._availCache.data && this._availCache.key === key
+            && Date.now() - this._availCache.ts < this._AVAIL_TTL_MS) {
+            return { data: this._availCache.data, error: null };
+        }
+        const res = await _rpcWithTimeout(
+            supabaseClient.rpc('get_availability_range', { p_org_slug: slug, p_from: fromStr, p_to: toStr })
+        ).catch(e => ({ data: null, error: e }));
+        if (res && !res.error && res.data) {
+            this._availCache = { ts: Date.now(), key, data: res.data };
+        }
+        return res || { data: null, error: new Error('rpc annullata') };
+    }
+
+    static _invalidateAvailabilityCache() { this._availCache = { ts: 0, key: '', data: null }; }
+
+    // ── Persistenza cache bookings su localStorage (cross-pagina) ──────────────────
+    static _persistKeyFor(syncKey, identity) {
+        return `${this._PERSIST_KEY}:${syncKey}:${identity}`;
+    }
+
+    // Salva le sole righe REALI (con _sbId, non sintetiche/pending) + i watermark del fingerprint.
+    static _persistCache(syncKey, identity) {
+        if (!identity) return; // anon: nessun dato personale da persistere
+        try {
+            const rows = this._cache.filter(b => b._sbId && !b.id?.startsWith('_avail_'));
+            if (rows.length > this._PERSIST_MAX_ROWS) return;
+            // setItem diretto (NON _lsSet): su quota piena deve fallire in silenzio e ricadere
+            // sul full al prossimo load, non mostrare un toast all'utente.
+            localStorage.setItem(this._persistKeyFor(syncKey, identity), JSON.stringify({
+                savedAt:     Date.now(),
+                clearedAt:   localStorage.getItem('dataLastCleared') || '0',
+                fingerprint: this._bkFingerprint || null,
+                lastFull:    this._bkLastFullFetch || 0,
+                rows,
+            }));
+        } catch (e) { /* quota/serialize: ignora — al peggio il prossimo sync sarà full */ }
+    }
+
+    // Idrata la cache in memoria dallo snapshot localStorage, SOLO al primo sync di pagina.
+    // Ripristina anche i watermark del fingerprint: snapshot fresco → il sync sotto diventa
+    // skip/delta (cross-pagina); snapshot vecchio (>TTL) → ignorato (full da cache vuota).
+    static _hydrateCache(syncKey, identity) {
+        if (!identity) return false;
+        if (this._cache.some(b => b._sbId)) return false; // cache già popolata di righe reali
+        try {
+            const snap = _lsGetJSON(this._persistKeyFor(syncKey, identity), null);
+            if (!snap || !Array.isArray(snap.rows) || snap.rows.length === 0) return false;
+            // Scartato se predate un clear globale (dati pre-cancellazione) o se troppo vecchio.
+            if ((localStorage.getItem('dataLastCleared') || '0') !== (snap.clearedAt || '0')) return false;
+            if (!snap.savedAt || (Date.now() - snap.savedAt) > this._PERSIST_TTL_MS) return false;
+            const others = this._cache.filter(b => b.id?.startsWith('_avail_') || !b._sbId);
+            this._cache = [...snap.rows, ...others];
+            this._bkFingerprint   = snap.fingerprint || null;
+            this._bkLastFullFetch = snap.lastFull || 0;
+            console.log(`[Supabase] bookings cache idratata da localStorage: ${snap.rows.length} righe (${Math.round((Date.now() - (snap.savedAt || 0)) / 1000)}s fa)`);
+            return true;
+        } catch (e) { return false; }
+    }
+
+    static _clearPersistedCache() {
+        try {
+            const prefix = this._PERSIST_KEY + ':';
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(prefix)) localStorage.removeItem(k);
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // Fingerprint cheap: una query (count exact + riga col max updated_at). null su errore.
@@ -766,6 +887,9 @@ class BookingStorage {
         try {
             const user    = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
             const isAdmin = sessionStorage.getItem('adminAuth') === 'true';
+            const syncKey = ownOnly ? 'own' : 'all';
+            // Identity per lo scoping della cache persistita cross-pagina (anon → null = no persist)
+            const _identity = isAdmin ? 'admin' : (user?.id || null);
             // Snapshot anti-race: se la cache viene svuotata (logout/clear) DURANTE la sync,
             // non ricommittare dati vecchi sopra una cache appena pulita (controllo prima del commit).
             const clearedAtStart = localStorage.getItem('dataLastCleared') || '0';
@@ -777,10 +901,8 @@ class BookingStorage {
 
             if (!user && !isAdmin) {
                 // ── ANON: solo disponibilità aggregata, nessun dato personale ──────────
-                // Nuova firma multi-tenant: get_availability_range(p_org_slug, p_from, p_to)
-                const { data: availData, error } = await _rpcWithTimeout(
-                    supabaseClient.rpc('get_availability_range', { p_org_slug: _resolveOrgSlug(), p_from: todayStr, p_to: endStr })
-                ).catch(e => ({ data: null, error: e }));
+                // get_availability_range(p_org_slug, p_from, p_to) via cache dedup 60s
+                const { data: availData, error } = await this._fetchAvailabilityCached(todayStr, endStr);
                 if (error) {
                     // #10: l'errore qui è quasi sempre transitorio (es. blip auth dopo il logout
                     // → navigazione a index.html, lock navigator.locks ancora in assestamento).
@@ -817,6 +939,12 @@ class BookingStorage {
             if (isAdmin && typeof ensureValidSession === 'function') {
                 await ensureValidSession({ force: false, timeoutMs: 3000 }).catch(() => null);
             }
+
+            // Idrata la cache dallo snapshot localStorage PRIMA della decisione fingerprint:
+            // su una pagina nuova ripristina cache + watermark → il blocco sotto fa skip/delta
+            // invece di un full (admin). Per l'utente pre-popola la cache (render immediato);
+            // il full utente la sostituisce comunque subito dopo.
+            this._hydrateCache(syncKey, _identity);
 
             // ── Sync incrementale (solo admin full-list), basato sul fingerprint (count + max
             //    updated_at): 1) invariato → SKIP (wake istantaneo). 2) cambiato senza delete
@@ -865,10 +993,9 @@ class BookingStorage {
                 pageFrom += PAGE;
             }
             // Utente non-admin: richiede anche la disponibilità aggregata in parallelo
-            // Nuova firma multi-tenant: get_availability_range(p_org_slug, p_from, p_to)
+            // get_availability_range(p_org_slug, p_from, p_to) via cache dedup 60s
             const fetchAvail = !isAdmin
-                ? _rpcWithTimeout(supabaseClient.rpc('get_availability_range', { p_org_slug: _resolveOrgSlug(), p_from: todayStr, p_to: endStr }))
-                    .catch(e => ({ data: null, error: e }))
+                ? this._fetchAvailabilityCached(todayStr, endStr)
                 : Promise.resolve({ data: null, error: null });
 
             const { data: availData, error: e2 } = await fetchAvail;
@@ -941,6 +1068,10 @@ class BookingStorage {
                 }
                 console.log(`[Supabase] syncFromSupabase (${isAdmin ? 'admin FULL' : 'user'}): ${mapped.length} da Supabase, ${synth.length} sintetici, ${pending.length} pending`);
             }
+
+            // Persisti la cache aggiornata per la navigazione cross-pagina (full sempre; delta
+            // solo se sono arrivate righe nuove, per non riscrivere localStorage a vuoto).
+            if (!isDelta || mapped.length > 0) this._persistCache(syncKey, _identity);
 
             this._retryPending(pending, user);
             // Sync riuscita — cancella eventuale retry pendente
@@ -1159,6 +1290,7 @@ class BookingStorage {
         booking.paid = !!data.paid;
         this._cache.push(booking);
         this.updateStats(booking);
+        this._invalidateAvailabilityCache(); // disponibilità cambiata → niente cache stantia
         console.log('[Supabase] book_slot OK — id:', booking.id, 'paid:', booking.paid);
         return { ok: true, booking };
     }
@@ -1219,6 +1351,7 @@ class BookingStorage {
         booking.paid = !!data.paid;
         this._cache.push(booking);
         this.updateStats(booking);
+        this._invalidateAvailabilityCache(); // disponibilità cambiata → niente cache stantia
         return { ok: true, booking };
     }
 
@@ -1980,6 +2113,8 @@ class BookingStorage {
                 const localClearedAt = localStorage.getItem('dataLastCleared') || '0';
                 if (remoteClearedAt > localClearedAt) {
                     BookingStorage._cache = [];
+                    BookingStorage._clearPersistedCache(); // snapshot pre-clear: via dalla localStorage
+                    BookingStorage._invalidateAvailabilityCache();
                     localStorage.removeItem(_schedOverridesLsKey());
                     BookingStorage._scheduleOverridesCache = null;
                     BookingStorage._scheduleOverridesCacheOrg = null;
@@ -2060,6 +2195,9 @@ class BookingStorage {
                 || p.cancellationRequestedAt !== b.cancellationRequestedAt
                 || p.cancelledAt !== b.cancelledAt;
         });
+        // Un cambio di stato (annullo/conversione) libera/occupa un posto → invalida la
+        // cache disponibilità così il prossimo sync la rilegge fresca dal server.
+        if (changed.some(b => prevMap[b.id]?.status !== b.status)) this._invalidateAvailabilityCache();
         for (const b of changed) {
             if (!b._sbId) { console.warn('[Supabase] booking update skip — nessun _sbId per:', b.id); continue; }
             // Usa RPC SECURITY DEFINER per bypassare RLS (admin può modificare booking altrui)
@@ -2354,7 +2492,14 @@ class UserStorage {
                 console.log('[Supabase] syncUsersFromSupabase: fingerprint invariato → skip');
                 return;
             }
-            const response = await _rpcWithTimeout(supabaseClient.rpc('get_all_profiles'));
+            // Prova la variante leggera get_all_profiles_basic (senza le history JSONB, mai
+            // mostrate/scritte lato admin); se assente o in errore (migration non ancora
+            // applicata) ricade sulla full → deploy sicuro in qualsiasi ordine. Le history
+            // mancanti nel merge cadono su `existing` (cache locale preservata).
+            let response = await _rpcWithTimeout(supabaseClient.rpc('get_all_profiles_basic')).catch(() => null);
+            if (!response || response.error) {
+                response = await _rpcWithTimeout(supabaseClient.rpc('get_all_profiles'));
+            }
             const { data, error } = response || {};
             if (!response) {
                 console.warn('[Supabase] syncUsersFromSupabase: risposta vuota, tengo cache corrente');
@@ -2463,6 +2608,11 @@ class WorkoutPlanStorage {
     static _syncInFlightByMode = {};
 
     static _LS_TTL_MS = 30 * 60 * 1000;
+    // TTL di RETE: la query (join workout_exercises su tutti i piani) è pesante e
+    // partirebbe ad ogni renderSchedeTab. La ri-eseguiamo al massimo ogni _NET_TTL_MS;
+    // i CRUD aggiornano _cache localmente, quindi le modifiche admin si vedono subito.
+    static _NET_TTL_MS = 300000; // 5 min
+    static _lastSyncAtByMode = { admin: 0, client: 0 };
     static _lsKey(adminMode) { return `workout_plans_cache_${adminMode ? 'admin' : 'client'}_v1`; }
     static _loadFromLocalStorage(adminMode) {
         if (this._cache.length > 0) return false;
@@ -2486,6 +2636,7 @@ class WorkoutPlanStorage {
     static clearCache() {
         this._cache = [];
         this._syncInFlightByMode = {};
+        this._lastSyncAtByMode = { admin: 0, client: 0 };
         try { localStorage.removeItem(this._lsKey(true)); } catch (_) {}
         try { localStorage.removeItem(this._lsKey(false)); } catch (_) {}
     }
@@ -2506,11 +2657,14 @@ class WorkoutPlanStorage {
 
     // Admin: fetch all plans with nested exercises
     // Client: fetch only own active plan(s)
-    static async syncFromSupabase({ adminMode = false } = {}) {
+    static async syncFromSupabase({ adminMode = false, force = false } = {}) {
         if (typeof supabaseClient === 'undefined') return;
         this._loadFromLocalStorage(adminMode);
         const syncKey = adminMode ? 'admin' : 'client';
         if (this._syncInFlightByMode[syncKey]) return this._syncInFlightByMode[syncKey];
+        // TTL di rete: salta il re-fetch (join pesante) se la cache è popolata e l'ultimo
+        // fetch è recente. force lo bypassa (refresh espliciti).
+        if (!force && this._cache.length && (Date.now() - (this._lastSyncAtByMode[syncKey] || 0) < this._NET_TTL_MS)) return;
         this._syncInFlightByMode[syncKey] = (async () => {
             let query = supabaseClient
                 .from('workout_plans')
@@ -2542,6 +2696,7 @@ class WorkoutPlanStorage {
             }
             this._cache = data || [];
             this._saveToLocalStorage(adminMode);
+            this._lastSyncAtByMode[syncKey] = Date.now(); // marker TTL di rete
             console.log(`[Supabase] WorkoutPlanStorage.sync: ${this._cache.length} piani caricati`);
         })();
         try { return await this._syncInFlightByMode[syncKey]; }

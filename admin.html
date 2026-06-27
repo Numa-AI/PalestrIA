@@ -1,4 +1,25 @@
 <!DOCTYPE html>
+<!--
+  admin.html — Dashboard di amministrazione dello studio (owner/admin del tenant).
+  Cosa fa: pannello completo organizzato a tab — Prenotazioni, Calendario, Clienti,
+  Schede, Pagamenti/Registro, Analytics, Messaggi, Impostazioni, Salute sistema —
+  per gestire l'attività di una singola org. Accesso gated: l'overlay #adminGateOverlay
+  resta opaco finché il boot (in fondo alla pagina) non conferma il ruolo admin
+  (sessionStorage.adminAuth==='true'), così i non-admin non vedono mai un lampo dei dati.
+  Uno <script> in <head> legge sessionStorage.adminActiveTab e setta data-initial-tab
+  su <html> per evitare il flash del tab di default al refresh.
+  Come funziona: branding-boot.js/ls-namespace.js per branding e localStorage per-org;
+  supabase-client.js (client), org-settings.js (OrgSettings), entitlements.js (gating
+  per piano SaaS), data.js (Storage layer), auth.js (ruoli). Orchestrazione tab in
+  admin.js (bootstrap + switchTab), con i pannelli admin-analytics.js, admin-backup.js,
+  admin-calendar.js, admin-schedule.js, admin-settings.js, admin-payments.js,
+  admin-clients.js, admin-registro.js, admin-messaggi.js, admin-schede.js,
+  admin-health.js, admin-importa.js + admin-mobile-filters.js/admin-desktop-sidebar.js.
+  Usa anche xlsx (import/export), chart-mini.js (grafici), modals.js, ui.js, push.js,
+  silent-refresh.js, app-watchdog.js, maintenance.js e i moduli PWA
+  sw-update.js/pull-to-refresh.js/pwa-install.js. CSS: style.css + login.css + admin.css
+  + allenamento.css. Connesso a: super-admin.html (link piattaforma), index.html.
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -1014,21 +1035,22 @@
         }());
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/egress-debug.js?v=1"></script>
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/entitlements.js?v=2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=91"></script>
-    <script src="js/auth.js?v=32"></script>
+    <script src="js/data.js?v=92"></script>
+    <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/push.js?v=24"></script>
     <script src="js/chart-mini.js?v=13"></script>
     <script src="js/admin.js?v=120"></script>
     <script src="js/admin-analytics.js?v=9"></script>
-    <script src="js/admin-backup.js?v=8"></script>
+    <script src="js/admin-backup.js?v=9"></script>
     <script src="js/admin-calendar.js?v=21"></script>
     <script src="js/admin-schedule.js?v=11"></script>
     <script src="js/admin-settings.js?v=9"></script>

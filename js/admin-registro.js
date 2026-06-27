@@ -1,3 +1,34 @@
+/**
+ * admin-registro.js — Tab "Registro" del pannello admin: log/cronologia eventi del tenant.
+ *
+ * COSA FA
+ * Aggrega in un unico registro consultabile tutti gli eventi della org (prenotazioni create,
+ * pagamenti, richieste di annullamento, annullamenti) con filtri per tipo/data/ordinamento,
+ * paginazione, ricerca, vista desktop+mobile ed export. Include sotto-tab per i messaggi e le
+ * notifiche cliente.
+ *
+ * COME FUNZIONA
+ * - Aggregazione: buildRegistroEntries() trasforma ogni booking in più eventi
+ *   (booking_created/booking_paid/booking_cancellation_req/booking_cancelled), determinando
+ *   l'attore (user/admin/system) via _isAdminAction() confrontando createdBy/cancelledBy con
+ *   userId; SLOT_LABEL mappa i tipi slot. Esclude i booking sintetici (_avail_*).
+ * - Stato/filtri: _registroState (range, customFrom/To, sortField, sortDir, page) +
+ *   REGISTRO_PAGE_SIZE; applyRegistroFilters() (debounced via _debouncedRegistroFilter)
+ *   produce _registroFiltered; toggleRegistroType()/setRegistroRange()/toggleRegistroSort()/
+ *   applyRegistroCustomRange()/resetRegistroFilters() pilotano i filtri; registroNextPage()/
+ *   registroPrevPage() la paginazione.
+ * - Render: renderRegistroTable() (desktop) e renderRegistroMobile() (card); _updateRegistroSummary()
+ *   per i totali; exportRegistro() per l'esport. renderRegistroTab() è l'entry point.
+ * - Sotto-tab: switchRegistroSubtab() commuta tra Registro, Messaggi (loadMessaggi/
+ *   renderMessaggiTable, da admin_messages) e Notifiche cliente (loadClientNotifications/
+ *   renderClientNotifTable, da client_notifications); _registroRefreshData() ricarica i dati.
+ *
+ * CONNESSIONI
+ * - Eventi prenotazione da BookingStorage.getAllBookings() (js/data.js); prezzo via
+ *   getBookingPrice(). Messaggi/notifiche da tabelle admin_messages e client_notifications
+ *   via supabaseClient (org-scoped da RLS).
+ * - Helper condivisi: _debounce, _localDateStr (definiti altrove).
+ */
 // REGISTRO / LOG DB
 // ══════════════════════════════════════════════════════════════════════════════
 

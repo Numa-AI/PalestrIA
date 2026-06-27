@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!--
+  allenamento.html — Pagina "Allenamento": scheda di workout del cliente.
+  Cosa fa: mostra al cliente la propria scheda di allenamento con esercizi, serie/
+  ripetizioni, log dei progressi e generazione del report PDF. Su mobile usa un dock
+  fisso in basso (#allBottomStack/#allDock, btn #allMbarPage) che apre un bottom sheet
+  per cambiare sezione. <body class="allenamento-body">.
+  Come funziona: branding-boot.js/ls-namespace.js per branding e localStorage per-org;
+  supabase-client.js (client), data.js (Storage layer per workout_plans/exercises/logs),
+  auth.js (sessione/ruolo), ui.js, modals.js, silent-refresh.js, app-watchdog.js.
+  allenamento-report.js genera il PDF della scheda. Moduli PWA: sw-update.js,
+  pull-to-refresh.js, pwa-install.js. CSS: style.css + login.css + allenamento.css.
+  Connesso a: index.html/navbar, tablet.html (vista tablet della stessa scheda via QR).
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -261,8 +274,8 @@
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=91"></script>
-    <script src="js/auth.js?v=32"></script>
+    <script src="js/data.js?v=92"></script>
+    <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <!-- chart-mini.js non serve: usa drawDarkLineChart() interno -->

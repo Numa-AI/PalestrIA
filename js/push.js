@@ -1,3 +1,34 @@
+/**
+ * push.js — Gestione delle Web Push notifications (subscription + invio notifiche admin).
+ *
+ * COSA FA
+ * Registra/aggiorna la subscription push del browser, la salva su Supabase, gestisce permessi
+ * (incluso il caso iOS/standalone e il banner "permesso negato"), la cleanup al logout, e
+ * inoltra le notifiche agli admin della org (nuova prenotazione / annullamento / nuovo cliente).
+ *
+ * COME FUNZIONA
+ * - Flag PUSH_ENABLED (oggi false = demo, nessuna Edge Function di notifica deployata): gatea la
+ *   subscribe ma lascia raggiungibile il resto (es. teardown al logout). VAPID_PUBLIC_KEY è la
+ *   chiave pubblica; la privata sta nel secret edge VAPID_PRIVATE_KEY.
+ * - Subscribe: registerPushSubscription() (guard anti-concorrenza _pushInFlight, una sola volta a
+ *   sessione via _pushRegisteredThisSession/_pushFailedThisSession) usa urlBase64ToUint8Array() e
+ *   pushManager.subscribe(); rigenera la subscription se la chiave VAPID è cambiata o il permesso
+ *   era stato revocato. savePushSubscription()/_doSavePush() persistono su tabella push_subscriptions.
+ * - Logout: teardownPushOnLogout() rimuove il backup locale e annulla la subscription (così
+ *   l'endpoint del tenant A non resta legato ad A su un device condiviso).
+ * - Notifiche admin: notifyAdminBooking()/notifyAdminCancellation()/notifyAdminNewClient() fanno
+ *   fetch alle Edge Functions notify-admin-booking|cancellation|new-client (POST a
+ *   ${SUPABASE_URL}/functions/v1/...). La org è risolta server-side dal booking_id; il token è la
+ *   ANON_KEY (_getPushAuthToken). _disabledSlotAvailableBroadcast() colpisce slot-available-disabled.
+ * - Permessi/UI: promptPushPermission(), _syncPushEnabled() (aggiorna profiles.push_enabled),
+ *   _showDeniedBanner(), _isIOS()/_isStandalone()/_userHasBookings(); branding via _brandPrimaryColor()
+ *   (OrgSettings 'branding.primary_color' → CSS var --primary-purple → default #8B5CF6).
+ *
+ * CONNESSIONI
+ * - Tabelle Supabase via supabaseClient: push_subscriptions, profiles (push_enabled), org-scoped da RLS.
+ * - Edge Functions notify-admin-* (vedi supabase/functions/). Service Worker (sw.js) per la subscription.
+ * - Helper esterni: SUPABASE_ANON_KEY/SUPABASE_URL (js/supabase-client.js), OrgSettings, ensureValidSession.
+ */
 // Push notification subscription management
 // Chiave pubblica VAPID — la privata va nelle env vars di Supabase (secret VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC_KEY = 'BOIkkllAmpdW6-MWn85UW36xGPDk9rJDtEIs23w9gmVxGeKx3OSTqTVzcZOcz7gfm8kCHmzc3jp6J2IlEXC0AGA';

@@ -1,6 +1,29 @@
 // ─── UI UTILITIES ─────────────────────────────────────────────────────────────
 // Loading states, toast notifications, inline errors.
 // Usato in tutto il progetto — compatibile con le future chiamate async Supabase.
+//
+// COSA FA
+// Raccolta di utility UI condivise, senza dipendenze, riusate da tutte le pagine:
+// stato di caricamento sui pulsanti, toast temporanei, errori inline e helper di
+// escaping HTML anti-XSS.
+//
+// COME FUNZIONA
+//  - Loading: setLoading(btn, isLoading, loadingText) disabilita il pulsante, salva il
+//    testo originale in dataset.originalText e mostra uno spinner (.btn-spinner/.btn-loading).
+//  - Toast: showToast(message, type, duration) crea un toast (.toast/.toast-<type>) nel
+//    contenitore lazy _getToastContainer() (.toast-container), con animazione di entrata,
+//    auto-dismiss e chiusura al click. type ∈ 'success'|'error'|'info'.
+//  - Errori inline: showInlineError(elementId, message)/hideInlineError(elementId) mostrano o
+//    nascondono un messaggio in un elemento esistente.
+//  - Escaping: _escHtml(str) (entità HTML per innerHTML) e _escAttr(str) (per stringhe passate
+//    come argomento dentro handler inline tipo onclick="fn('${_escAttr(v)}')", che neutralizza
+//    prima il contesto JS poi quello HTML). Da usare SEMPRE su dati utente non sanitizzati
+//    all'origine (es. name/email) per prevenire lo stored XSS nella sessione admin.
+//
+// CONNESSIONI
+//  - Nessuna dipendenza esterna né accesso a Supabase. _escHtml/_escAttr sono usati
+//    pervasivamente dai moduli admin-*/booking/calendar quando interpolano dati utente in
+//    innerHTML; showToast/setLoading sono i feedback standard per le operazioni async.
 
 // ─── LOADING STATE ────────────────────────────────────────────────────────────
 

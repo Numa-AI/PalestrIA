@@ -1,4 +1,19 @@
 <!DOCTYPE html>
+<!--
+  prenotazioni.html — Area personale del cliente "Le mie prenotazioni".
+  Cosa fa: dopo il login del cliente, mostra un hero profilo (#prenoAvatar) e
+  l'elenco delle sue prenotazioni con la possibilità di gestirle/cancellarle e,
+  dove previsto, pagare online (la CSP abilita checkout.stripe.com per i pagamenti
+  cliente). È l'home post-login del cliente finale del tenant.
+  Come funziona: branding-boot.js/ls-namespace.js per branding e localStorage
+  per-org; supabase-client.js (client Supabase), org-settings.js (OrgSettings),
+  data.js (Storage layer dual-layer che legge/scrive bookings via RPC), auth.js
+  (sessione/ruolo cliente, popola navUserMenu/#navUserName/#navLogoutBtn). Completano:
+  ui.js, modals.js, silent-refresh.js, app-watchdog.js, maintenance.js, push.js,
+  chart-mini.js e i moduli PWA sw-update.js/pull-to-refresh.js/pwa-install.js.
+  CSS: style.css + login.css + prenotazioni.css. Connesso a: index.html (calendario
+  per prenotare), modulo_viewer.html (PDF modulo PT), login.html.
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -259,12 +274,13 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/egress-debug.js?v=1"></script>
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=91"></script>
-    <script src="js/auth.js?v=32"></script>
+    <script src="js/data.js?v=92"></script>
+    <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=3"></script>
@@ -378,6 +394,7 @@
         function _debouncedFullSync() {
             clearTimeout(_rtSyncTimer);
             _rtSyncTimer = setTimeout(async () => {
+                BookingStorage._invalidateAvailabilityCache(); // l'evento realtime può aver liberato/occupato un posto
                 await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[rt] booking sync:', e?.message || e));
                 renderPrenoList();
                 renderClientBilling();

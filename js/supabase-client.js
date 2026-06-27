@@ -1,3 +1,36 @@
+/**
+ * supabase-client.js — Inizializzazione del client Supabase, condiviso da tutte le pagine.
+ *
+ * COSA FA
+ * Crea e configura i client Supabase usati ovunque (auth + dati) e implementa il lock-handling
+ * robusto per PWA mobile, dove navigator.locks può restare appeso quando l'OS sospende la webview.
+ * È il primo script da caricare: espone supabaseAuth e supabaseClient agli altri moduli.
+ *
+ * COME FUNZIONA — ARCHITETTURA A DUE CLIENT (fix resume lento 11-14s → ~1-2s)
+ * - supabaseAuth: client AUTH. Tutta la sessione gira qui (getSession/refreshSession/signIn/
+ *   signOut/onAuthStateChange). Usa un lock custom su navigator.locks con autoRefreshToken:false
+ *   (il refresh lo gestiamo noi, vedi auth.js _proactiveRefreshTick + window._manualTokenRefresh).
+ * - supabaseClient: client DATI. Usa l'opzione accessToken: legge il token direttamente da
+ *   localStorage (ZERO lock) → tutte le query/RPC/Realtime/Storage passano da qui senza pagare il
+ *   lock auth. Con accessToken il namespace .auth è disabilitato.
+ * - Lock/fallback: il callback lock di supabaseAuth usa navigator.locks (ifAvailable per le richieste
+ *   non-bloccanti con acquireTimeout===0); se i lock non sono usabili usa _runSerialized() (una
+ *   Promise chain per-nome in _authLockChains) come mutex JS. _withFnWatchdog() sblocca la chain dopo
+ *   FALLBACK_FN_WATCHDOG_MS e, su cascata di firing (WATCHDOG_CASCADE_THRESHOLD in
+ *   WATCHDOG_CASCADE_WINDOW_MS), forza un reload di emergenza (solo a pagina visibile senza recovery
+ *   in corso). Stuck-lock detection: dopo 2 timeout in 30s marca i lock "rotti" per 60s
+ *   (_locksBrokenUntil) e salta al fallback JS.
+ * - Token diretto: _readAccessTokenDirect() legge la chiave sb-<ref>-auth-token (ref esatto da
+ *   SUPABASE_URL, mai wildcard; gestisce l'encoding "base64-"), ritornando anche un token scaduto
+ *   (meglio un 401 puntuale che bloccare la query); cache _lastKnownAccessToken se localStorage è
+ *   transitoriamente inaccessibile.
+ *
+ * CONNESSIONI
+ * - SUPABASE_URL / SUPABASE_ANON_KEY sono pubblici (protetti da RLS lato DB); i secret restano edge.
+ * - Espone supabaseAuth e supabaseClient consumati da auth.js, data.js e tutti i moduli admin/booking.
+ * - Coopera con auth.js (refresh proattivo, window._isManagedAuthPage) e silent-refresh/resume
+ *   (window._userRecoveryDepth) per evitare reload inutili durante i recovery graceful.
+ */
 // Supabase client — shared across all pages that need it
 const SUPABASE_URL = 'https://rwaiekhllujximrqftmp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_SDlyqyh2C78ZlQ42hQJClA_e1LIp2x5';

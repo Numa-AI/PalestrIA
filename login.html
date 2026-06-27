@@ -1,4 +1,16 @@
 <!DOCTYPE html>
+<!--
+  login.html — Pagina di accesso (email/password) per clienti e admin del tenant.
+  Cosa fa: form di login Supabase Auth; in base al ruolo restituito instrada l'utente
+  (admin/owner → admin.html, cliente → prenotazioni.html/index.html). Gestisce anche
+  i flussi correlati (recupero password / primo accesso) secondo la logica di auth.js.
+  Come funziona: branding-boot.js/ls-namespace.js per branding e localStorage per-org;
+  supabase-client.js (client Supabase), org-settings.js (OrgSettings), data.js (Storage
+  layer), auth.js (login, sessione, ruoli, normalizePhone), ui.js, modals.js,
+  silent-refresh.js, app-watchdog.js, maintenance.js, push.js. Moduli PWA: sw-update.js,
+  pull-to-refresh.js, pwa-install.js. CSS: style.css + login.css.
+  Connesso a: signup-trainer.html (registrazione nuovo studio), index.html, admin.html.
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -268,8 +280,8 @@
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=91"></script>
-    <script src="js/auth.js?v=32"></script>
+    <script src="js/data.js?v=92"></script>
+    <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=3"></script>

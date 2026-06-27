@@ -1,3 +1,25 @@
+/**
+ * chart-mini.js — Mini libreria di grafici su <canvas> (zero dipendenze esterne).
+ *
+ * COSA FA
+ * Fornisce la classe SimpleChart per disegnare grafici semplici direttamente su canvas 2D,
+ * senza CDN né bundler: usata dalla dashboard analitica per visualizzare prenotazioni,
+ * fatturato, tipologie slot e previsioni.
+ *
+ * COME FUNZIONA
+ * - constructor(canvas, options): legge le dimensioni reali (getBoundingClientRect/offsetWidth,
+ *   fallback 400px; altezza options.height o 250) e applica scale(2,2) per il rendering HiDPI
+ *   (retina-ready).
+ * - Metodi di disegno: drawLineChart() (linea con griglia, punti, etichette assi e stato vuoto
+ *   "Nessun dato"), drawBarChart() (barre), drawForecastChart() (proiezione/previsione),
+ *   drawPieChart() (torta). Ogni metodo accetta { labels, values } + options (es. color) e gestisce
+ *   i casi limite (denominatore minimo 1, max value minimo 1, dataset vuoto).
+ *
+ * CONNESSIONI
+ * - Istanziata da admin-analytics.js (drawBookingsChart/drawTypeChart e i drill-down) sui canvas
+ *   della dashboard admin. Nessuna dipendenza esterna né accesso a Supabase: riceve solo dati già
+ *   aggregati dal chiamante.
+ */
 // Mini chart library for simple visualizations
 class SimpleChart {
     constructor(canvas, options = {}) {

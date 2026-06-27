@@ -1,3 +1,19 @@
+/*
+  style.css — Foglio di stile GLOBALE di PalestrIA (SaaS multi-tenant).
+  Ruolo: definisce le variabili di tema in :root (palette viola brand
+  --primary-purple/#8B5CF6, colori tipi-slot personal-training/small-group/
+  group-class/cleaning, sfondi e colori testo) e gli stili condivisi di base
+  comuni a tutte le pagine: navbar (.navbar/.nav-brand/.nav-desktop-links/
+  .nav-hamburger/.nav-login-btn/.nav-user-name), layout .container, hero,
+  footer e componenti riusati. Le variabili --primary-* possono essere
+  sovrascritte a runtime dal branding per-org (OrgSettings.applyBranding /
+  branding-boot.js) per personalizzare i colori del tenant.
+  Caricato (come css/style.css) praticamente da ogni pagina dell'app:
+  index, prenotazioni, admin, allenamento, login, chi-sono, dove-sono,
+  nutrizione, regolamento, privacy, termini, super-admin. Ogni pagina
+  aggiunge poi il proprio CSS specifico (login.css, admin.css, ecc.).
+  NON è caricato da tablet.html (usa solo tablet.css) né da modulo_viewer.html.
+*/
 :root {
     --primary-purple: #8B5CF6;
     --primary-purple-dark: #7C3AED;

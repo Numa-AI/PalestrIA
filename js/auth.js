@@ -680,6 +680,8 @@ async function logoutUser() {
     //    Tutto best-effort: un errore non deve bloccare il logout/redirect.
     // Svuota cache in memoria booking/utenti
     try { BookingStorage._cache = []; } catch (_) {}
+    // Snapshot bookings persistito cross-pagina (contiene PII se admin) → via dal device condiviso
+    try { BookingStorage._clearPersistedCache(); } catch (_) {}
     try { UserStorage._cache = []; } catch (_) {}
     // Invalida la cache override (namespaced per org): evita bleed tra account diversi
     try { BookingStorage._scheduleOverridesCache = null; BookingStorage._scheduleOverridesCacheOrg = null; } catch (_) {}

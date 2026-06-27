@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<!--
+  super-admin.html — Dashboard SUPER ADMIN di piattaforma (cross-tenant, livello PalestrIA).
+  Cosa fa: console dell'owner della PIATTAFORMA (non del singolo studio) per monitorare
+  tutti gli studi/tenant: topbar con brand e #saRefresh, KPI aggregati (#saKpis), toolbar
+  filtri, e un banner #saBanner di "accesso aperto" con #saLock per limitare l'accesso a
+  una sola email finché non è configurata la whitelist super-admin. <body class="sa-body">.
+  Come funziona: set di script minimale — supabase-client.js (client Supabase) e
+  super-admin.js, che carica i dati cross-org e popola KPI/lista studi. CSS: style.css +
+  super-admin.css. Non carica branding/PWA/auth client-side delle pagine tenant.
+  Connesso a: admin.html (link "← Amministrazione studio" per tornare al singolo tenant).
+-->
 <html lang="it">
 <head>
     <meta charset="UTF-8">

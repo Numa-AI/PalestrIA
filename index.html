@@ -1,4 +1,21 @@
 <!DOCTYPE html>
+<!--
+  index.html — Home cliente / calendario prenotazioni pubblico (root del tenant).
+  Cosa fa: mostra la navbar pubblica (Calendario/Regolamento/Nutrizione/Chi sono/
+  Dove sono + Accedi o menu utente), l'hero con il nome dello studio (data-org-name)
+  e il calendario settimanale da cui il cliente sceglie uno slot e prenota.
+  Come funziona: il branding del tenant (logo/nome/colori) è applicato presto da
+  branding-boot.js; ls-namespace.js isola il localStorage per-org. Il client
+  Supabase è inizializzato in supabase-client.js, org-settings.js espone OrgSettings
+  (impostazioni org-scoped + Realtime), data.js è lo Storage layer dual-layer,
+  calendar.js disegna il calendario pubblico, booking.js gestisce il form di
+  prenotazione (RPC server-authoritative book_slot), auth.js gestisce sessione/ruoli
+  e mostra navLoginLink vs navUserMenu (#navUserName/#navLogoutBtn). Completano:
+  ui.js, silent-refresh.js, app-watchdog.js, maintenance.js, push.js (web push) e i
+  moduli PWA sw-update.js/pull-to-refresh.js/pwa-install.js. Uno <script> in <head>
+  redirige /index.html → / e gestisce l'override branding legacy via ?pt=.
+  Connesso a: login.html, prenotazioni.html, allenamento.html e le pagine info.
+-->
 <html lang="it">
 <head>
     <script>if(location.pathname.endsWith('/index.html'))location.replace(location.href.replace('/index.html','/'))</script>
@@ -235,13 +252,14 @@
         }());
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
+    <script src="js/egress-debug.js?v=1"></script>
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=3"></script>
-    <script src="js/data.js?v=91"></script>
+    <script src="js/data.js?v=92"></script>
     <script src="js/calendar.js?v=9"></script>
     <script src="js/booking.js?v=23"></script>
-    <script src="js/auth.js?v=32"></script>
+    <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=3"></script>
@@ -296,6 +314,7 @@
                 const _bookingsDebouncedSync = () => {
                     clearTimeout(_bookingsRtTimer);
                     _bookingsRtTimer = setTimeout(async () => {
+                        BookingStorage._invalidateAvailabilityCache(); // l'evento realtime può aver liberato/occupato un posto
                         await BookingStorage.syncFromSupabase().catch(e => console.warn('[rt] bookings sync:', e?.message || e));
                         _rerender();
                     }, 600);

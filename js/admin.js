@@ -1,3 +1,32 @@
+/**
+ * admin.js — Bootstrap e orchestrazione del pannello admin (entry point della dashboard).
+ *
+ * COSA FA
+ * Inizializza la dashboard admin, gestisce la navigazione a tab, l'accesso per ruolo,
+ * gli offset sticky dell'header e la modalità "privacy" che maschera i dati sensibili.
+ * È il file che lega insieme gli altri moduli admin-* (calendar/clients/analytics/registro/...).
+ *
+ * COME FUNZIONA
+ * - Init: initAdmin() (guard window._adminInitialized) prepara il contesto org via
+ *   _ensureAdminOrgContext() — legge org_id/role da org_members quando il claim JWT è assente —
+ *   poi showDashboard()/hideDashboard().
+ * - Accesso: ADMIN_UI_ROLES = ['owner','admin','staff']; hasAdminUiAccess() (UI visibile a tutti
+ *   e tre) e isOrgAdminRole() (solo owner/admin) si basano sul ruolo verificato window._orgRole,
+ *   NON sul flag sessionStorage. Il server resta l'autorità (RLS/RPC).
+ * - Tab: setupTabs() + switchTab(tabName) commutano tra i pannelli (Prenotazioni, Clienti,
+ *   Dashboard/Stats, Registro, Schede, Impostazioni, ...) delegando il render ai rispettivi
+ *   file admin-*.js.
+ * - Sticky/privacy: setupAdminStickyOffsets() gestisce navbar/.admin-tabs/.admin-calendar-controls/
+ *   .admin-day-selector su scroll/resize; SENSITIVE_IDS + toggleSensitiveData()/_applyPrivacyMask()/
+ *   sensitiveSet() mascherano (***) importi e liste debitori/creditori (stato in
+ *   localStorage 'adminSensitiveHidden', pulsante #btnToggleSensitive).
+ *
+ * CONNESSIONI
+ * - Legge la sessione/contesto org via supabaseAuth/supabaseClient (tabella org_members),
+ *   org-scoped da RLS; popola window._orgId/_orgRole.
+ * - Coordina i moduli: admin-calendar.js, admin-clients.js, admin-analytics.js,
+ *   admin-registro.js, admin-backup.js e gli altri admin-*.js (schede/settings/...).
+ */
 // Admin dashboard functionality
 
 
