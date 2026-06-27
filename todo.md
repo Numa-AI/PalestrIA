@@ -75,9 +75,18 @@ Confrontate tutte le voci nuove del changelog di Thomas (dal 2026-06-22 in poi) 
 - [x] **Doc — commenti-intestazione** su tutti i file scoperti: 15 HTML, `css/style.css`, `data.js` + 12 JS (admin-analytics/backup/calendar/clients/registro, admin, booking, calendar, chart-mini, push, supabase-client, ui). Solo commenti.
 - [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v570** (+`egress-debug.js` in APP_SHELL); `data.js` ?v=91→92, `auth.js` ?v=32→33, `admin-backup.js` ?v=8→9, `egress-debug.js` ?v=1. `node --check` OK su tutti i JS.
 
-### ⚠️ DA FARE (deploy)
-- [ ] **DEPLOY Supabase migration F**: `supabase db push` per **`00000000000021_get_all_profiles_basic.sql`** (NON si auto-deploya col push git). Finché non applicata, il frontend usa il fallback `get_all_profiles` (full) → egress profili invariato ma funzionante.
-- [ ] **DEPLOY asset GitHub Pages**: push del branch → Pages ridispiega HTML/JS/CSS (cache-bust già applicato).
+### DEPLOY — FATTO
+- [x] **Supabase migration F** `00000000000021_get_all_profiles_basic.sql` applicata dall'utente.
+- [x] **Asset GitHub Pages**: pushati su `origin/main` (commit `805de7b` egress+doc; `d99a125` landing; `95033fd` pulizia tracciamento).
+
+### 🔎 2 voci nuove di Thomas (2026-06-27) valutate → NIENTE da portare (scelta utente: solo Advisor live)
+- **Performance Advisor**: dedup permissive già pulito; **initplan** (wrap `auth.uid()`/`current_org_id()`/`is_org_admin()` in `(select …)` su ~30 policy) **applicabile ma rimandato** (tuning, non bug, beneficio minimo a questa scala).
+- **Security fase 2 (DB-side)**: `stripe_topup_credit` **N/A** (crediti rimossi); `cancel_booking` **già sicuro** (no importi dal client, refund server-side); `USING(true)` solo su `plans` (catalogo pubblico, ok); grant anon **già hardened**.
+- [x] **Advisor live lanciati dall'utente (2026-06-27)** → emersi problemi reali (drift del DB live, come per Thomas):
+  - **Security Advisor**: molte funzioni `SECURITY DEFINER` eseguibili da `anon` (lint 0028) — incluse `admin_*`/`admin_platform_*` (protette dalla `is_org_admin()` interna → difesa in profondità, non breach attivo) + helper (`current_org_id`, `resolve_slot_config`, …) senza `revoke from public`. Drift: i file HANNO i revoke (es. `admin_delete_booking` in 0001/0010) ma il live no. + `trg_set_updated_at` senza `search_path` (lint 0011). + `stripe_oauth_states` RLS-on senza policy (lint 0008 INFO = deny-all, già sicuro).
+  - ✅ **Creata migration `00000000000022_harden_anon_function_grants.sql`**: DO-block idempotente che revoca `public`+`anon` da TUTTE le definer, ri-concede `authenticated` (status quo; gli helper RLS devono restarlo) tranne `process_pending_cancellations` (solo service_role), e ri-concede `anon` SOLO all'allowlist del flusso pubblico (book_slot, get_availability_range, get_slot_availability, get_slot_attendees, is_whatsapp_taken, get_public_org_settings + 11 `kiosk_*`). + fix `search_path` su `trg_set_updated_at` + policy deny-all esplicita su `stripe_oauth_states`.
+- [ ] **DA FARE**: applicare la migration 022 (`supabase db push` o SQL Editor) e **testare**: prenotazione pubblica anon, kiosk tablet, un utente loggato (le policy RLS chiamano `current_org_id`/`is_org_admin`). Le funzioni dell'allowlist resteranno nel lint 0028 = atteso (DEFINER pubbliche per scelta).
+- [ ] **InitPlan** (lint 0003, perf): rimandato — vedi sotto, opzionale.
 
 ---
 
