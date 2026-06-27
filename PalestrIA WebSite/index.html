@@ -3,11 +3,95 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="PalestrIA — il gestionale che i tuoi clienti usano davvero. Prenotazioni, crediti, pagamenti e push. Da €39/mese.">
-<title>PalestrIA — Il gestionale che i tuoi clienti usano davvero</title>
+
+<!-- ==================== SEO ==================== -->
+<title>PalestrIA — Gestionale per Personal Trainer e Palestre</title>
+<meta name="description" content="Il gestionale per personal trainer e palestre: prenotazioni online, schede di allenamento con video, crediti, pagamenti, notifiche push e analisi con AI. App installabile (PWA). Prova 14 giorni gratis.">
+<meta name="keywords" content="gestionale palestra, software personal trainer, app prenotazioni palestra, software gestione palestra, schede allenamento app, gestione clienti palestra, prenotazioni online palestra, software studio fitness, app personal trainer, gestionale fitness">
+<meta name="author" content="PalestrIA">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="format-detection" content="telephone=no">
+<link rel="canonical" href="https://palestria.app/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PalestrIA">
+<meta property="og:locale" content="it_IT">
+<meta property="og:url" content="https://palestria.app/">
+<meta property="og:title" content="PalestrIA — Gestionale per Personal Trainer e Palestre">
+<meta property="og:description" content="Prenotazioni online, schede con video, crediti, pagamenti e push. L'app che i tuoi clienti usano davvero. Prova 14 giorni gratis, senza carta.">
+<meta property="og:image" content="https://palestria.app/images/logo-palestria.png">
+<meta property="og:image:alt" content="PalestrIA — gestionale per personal trainer e palestre">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PalestrIA — Gestionale per Personal Trainer e Palestre">
+<meta name="twitter:description" content="Prenotazioni, schede con video, crediti e pagamenti in un'app installabile. Prova 14 giorni gratis.">
+<meta name="twitter:image" content="https://palestria.app/images/logo-palestria.png">
+
+<!-- Performance hints -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://apilyfta.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="images/logo-palestria.png">
+<link rel="apple-touch-icon" href="images/logo-palestria.png">
+
+<!-- Progressive-enhancement flag: abilita le animazioni di scroll senza FOUC -->
+<script>document.documentElement.className += ' js';</script>
+
+<!-- ==================== Structured data (JSON-LD) ==================== -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://palestria.app/#organization",
+      "name": "PalestrIA",
+      "url": "https://palestria.app/",
+      "logo": "https://palestria.app/images/logo-palestria.png",
+      "description": "Gestionale per personal trainer e palestre: prenotazioni, schede di allenamento, crediti e pagamenti.",
+      "areaServed": "IT"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://palestria.app/#website",
+      "url": "https://palestria.app/",
+      "name": "PalestrIA",
+      "inLanguage": "it-IT",
+      "publisher": { "@id": "https://palestria.app/#organization" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "PalestrIA",
+      "operatingSystem": "Web, iOS, Android (PWA)",
+      "applicationCategory": "BusinessApplication",
+      "url": "https://palestria.app/",
+      "description": "Gestionale per personal trainer e palestre: calendario e prenotazioni online, schede di allenamento con oltre 5.500 esercizi con video, crediti e pacchetti, pagamenti Stripe, notifiche push e analisi con AI. App PWA installabile.",
+      "offers": [
+        { "@type": "Offer", "name": "Essential", "price": "39", "priceCurrency": "EUR", "description": "Fino a 15 clienti attivi, fatturato mensilmente." },
+        { "@type": "Offer", "name": "Pro", "price": "79", "priceCurrency": "EUR", "description": "Fino a 50 clienti attivi, schede illimitate, analisi con AI e statistiche avanzate." },
+        { "@type": "Offer", "name": "Business", "price": "149", "priceCurrency": "EUR", "description": "Clienti illimitati, multi-trainer e dominio personalizzato." }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "I video degli esercizi sono inclusi?", "acceptedAnswer": { "@type": "Answer", "text": "Sì, tutti i piani includono l'accesso completo alla libreria di oltre 5.500 esercizi con video HD e immagini dimostrative. I video sono in streaming dentro la tua app, senza abbonamenti aggiuntivi." } },
+        { "@type": "Question", "name": "Come iniziano i miei clienti?", "acceptedAnswer": { "@type": "Answer", "text": "Ricevono il link del tuo studio, installano l'app e si iscrivono da soli in un minuto. Le prenotazioni fatte prima della registrazione si collegano in automatico al loro profilo." } },
+        { "@type": "Question", "name": "Posso caricare i miei esercizi o i miei video?", "acceptedAnswer": { "@type": "Answer", "text": "Sì, dal piano Pro puoi aggiungere esercizi personalizzati (con immagine o link video tuo) alla libreria del tuo studio, oltre a quelli inclusi." } },
+        { "@type": "Question", "name": "Cosa succede se cancello l'abbonamento?", "acceptedAnswer": { "@type": "Answer", "text": "Puoi cancellare in qualsiasi momento dalla dashboard e mantieni l'accesso fino a fine periodo pagato. L'export completo di tutti i dati (clienti, transazioni, prenotazioni) in JSON/XLSX è sempre disponibile." } },
+        { "@type": "Question", "name": "I prezzi sono IVA inclusa?", "acceptedAnswer": { "@type": "Answer", "text": "No, i prezzi indicati sono IVA esclusa. Emettiamo fattura elettronica italiana scaricabile dalla dashboard." } },
+        { "@type": "Question", "name": "Quali sono le commissioni sui pagamenti?", "acceptedAnswer": { "@type": "Answer", "text": "PalestrIA non trattiene nulla sui tuoi incassi. Paghi solo le commissioni standard Stripe (1,5% + €0,25 su carte europee). I soldi arrivano diretti sul tuo conto Stripe." } },
+        { "@type": "Question", "name": "Funziona se ho più sale o più trainer?", "acceptedAnswer": { "@type": "Answer", "text": "Sì. Il piano Business supporta fino a 5 trainer con calendari separati e permessi admin differenziati. Per strutture più grandi è disponibile un piano Enterprise dedicato." } },
+        { "@type": "Question", "name": "Che tipo di supporto offrite?", "acceptedAnswer": { "@type": "Answer", "text": "Essential: supporto via email con risposta entro 24h. Pro: supporto prioritario entro 4h in orario lavorativo. Business: onboarding 1-to-1 con call dedicata e canale diretto con il team." } }
+      ]
+    }
+  ]
+}
+</script>
 <style>
   :root {
     --bg: #0a0a0a;
@@ -18,8 +102,8 @@
     --text: #fff;
     --text-dim: #888;
     --text-dim-2: #aaa;
-    --accent: #ccff00;
-    --accent-dim: #a3cc00;
+    --accent: #8B5CF6;
+    --accent-dim: #7C3AED;
     --danger: #ff5555;
     --radius: 14px;
     --radius-lg: 22px;
@@ -45,13 +129,13 @@
     display: inline-block;
     padding: 6px 14px;
     border-radius: 100px;
-    background: rgba(204, 255, 0, 0.08);
+    background: rgba(139, 92, 246, 0.08);
     color: var(--accent);
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    border: 1px solid rgba(204, 255, 0, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.2);
     margin-bottom: 20px;
   }
   h1, h2, h3 { font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
@@ -76,8 +160,8 @@
     transition: transform .15s ease, background .15s ease, color .15s ease;
     white-space: nowrap;
   }
-  .btn-primary { background: var(--accent); color: #000; }
-  .btn-primary:hover { transform: translateY(-2px); background: #fff; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { transform: translateY(-2px); background: var(--accent-dim); }
   .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border-2); }
   .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
   .btn-lg { padding: 18px 32px; font-size: 16px; }
@@ -99,7 +183,8 @@
     align-items: center;
     justify-content: space-between;
   }
-  .logo { font-size: 22px; font-weight: 900; letter-spacing: -0.03em; }
+  .logo { font-size: 22px; font-weight: 900; letter-spacing: -0.03em; display: inline-flex; align-items: center; gap: 10px; }
+  .logo-img { height: 30px; width: auto; }
   .logo span { color: var(--accent); }
   .nav-links { display: flex; gap: 32px; align-items: center; }
   .nav-links a { color: var(--text-dim-2); font-size: 15px; font-weight: 500; transition: color .15s; }
@@ -123,7 +208,7 @@
     transform: translateX(-50%);
     width: 900px;
     height: 600px;
-    background: radial-gradient(circle, rgba(204, 255, 0, 0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
     pointer-events: none;
   }
   .hero-inner { text-align: center; position: relative; }
@@ -156,7 +241,7 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-2);
     background: linear-gradient(180deg, #141414, #0d0d0d);
-    box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(204, 255, 0, 0.05);
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(139, 92, 246, 0.05);
     overflow: hidden;
     position: relative;
   }
@@ -199,7 +284,7 @@
   }
   .mockup-day b { display: block; color: var(--text); font-size: 12px; margin-bottom: 6px; }
   .mockup-slot {
-    background: rgba(204, 255, 0, 0.15);
+    background: rgba(139, 92, 246, 0.15);
     border-left: 2px solid var(--accent);
     padding: 4px 6px;
     border-radius: 4px;
@@ -234,9 +319,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
     margin-bottom: 18px;
   }
+  .problem-icon svg { width: 24px; height: 24px; stroke: var(--danger); }
   .problem-card p { color: var(--text-dim-2); font-size: 15px; }
 
   /* ---------- Demo app interattiva ---------- */
@@ -255,7 +340,7 @@
     transform: translateX(-50%);
     width: 800px;
     height: 800px;
-    background: radial-gradient(circle, rgba(0, 174, 239, 0.05), transparent 70%);
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.05), transparent 70%);
     pointer-events: none;
   }
   .demo-wrap {
@@ -272,8 +357,8 @@
     align-items: center;
     gap: 8px;
     padding: 10px 16px;
-    background: rgba(204, 255, 0, 0.08);
-    border: 1px solid rgba(204, 255, 0, 0.2);
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.2);
     border-radius: 100px;
     font-size: 13px;
     color: var(--accent);
@@ -321,7 +406,7 @@
   .demo-steps-list li.done .step-dot {
     background: var(--accent);
     border-color: var(--accent);
-    color: #000;
+    color: #fff;
   }
   .demo-steps-list li.active { color: var(--text); font-weight: 600; }
 
@@ -407,29 +492,10 @@
     position: relative;
     z-index: 2;
   }
-  .app-nav-logo-img {
-    height: 36px;
+  .app-nav-logo-real {
+    height: 30px;
     width: auto;
-    border-radius: 6px;
-    background: #fff;
-    padding: 3px 8px;
-    font-size: 13px;
-    font-weight: 900;
-    color: #1a1a1a;
-    letter-spacing: -0.03em;
-    display: flex;
-    align-items: center;
-    font-family: 'Inter', sans-serif;
-  }
-  .app-nav-logo-img .tb-mark {
-    display: inline-block;
-    background: #00AEEF;
-    color: #fff;
-    padding: 2px 6px;
-    border-radius: 4px;
-    margin-right: 6px;
-    font-size: 11px;
-    font-weight: 900;
+    display: block;
   }
   .app-nav-right {
     display: flex;
@@ -440,7 +506,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #00AEEF, #0098d4);
+    background: linear-gradient(135deg, #8B5CF6, #7C3AED);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -468,7 +534,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at 80% 30%, rgba(0,174,239,0.12), transparent 60%);
+    background: radial-gradient(circle at 80% 30%, rgba(139, 92, 246,0.12), transparent 60%);
     pointer-events: none;
   }
   .app-hero-mini .hname {
@@ -479,7 +545,7 @@
   }
   .app-hero-mini .hrole {
     font-size: 11px;
-    color: #00AEEF;
+    color: #8B5CF6;
     font-weight: 600;
     letter-spacing: 0.05em;
   }
@@ -555,8 +621,8 @@
     line-height: 1.1;
   }
   .day-pill.active {
-    background: #00AEEF;
-    border-color: #00AEEF;
+    background: #8B5CF6;
+    border-color: #8B5CF6;
   }
   .day-pill.active .dw, .day-pill.active .dn { color: #fff; }
   .day-pill.has-booking::after {
@@ -623,22 +689,22 @@
     width: 6px; height: 6px; border-radius: 50%; background: currentColor;
   }
   .slot-card.highlight {
-    box-shadow: 0 0 0 3px rgba(0,174,239,0.3);
-    border-color: #00AEEF;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246,0.3);
+    border-color: #8B5CF6;
     animation: hintPulse 1.2s ease-in-out infinite;
   }
   @keyframes hintPulse {
-    0%,100% { box-shadow: 0 0 0 3px rgba(0,174,239,0.3); }
-    50%     { box-shadow: 0 0 0 7px rgba(0,174,239,0.05); }
+    0%,100% { box-shadow: 0 0 0 3px rgba(139, 92, 246,0.3); }
+    50%     { box-shadow: 0 0 0 7px rgba(139, 92, 246,0.05); }
   }
   .slot-card.highlight {
-    box-shadow: 0 0 0 3px rgba(0,174,239,0.3);
-    border-color: #00AEEF;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246,0.3);
+    border-color: #8B5CF6;
     animation: hintPulse 1.2s ease-in-out infinite;
   }
   @keyframes hintPulse {
-    0%,100% { box-shadow: 0 0 0 3px rgba(0,174,239,0.3); }
-    50%     { box-shadow: 0 0 0 6px rgba(0,174,239,0.1); }
+    0%,100% { box-shadow: 0 0 0 3px rgba(139, 92, 246,0.3); }
+    50%     { box-shadow: 0 0 0 6px rgba(139, 92, 246,0.1); }
   }
 
   /* ------------ MODAL CONFERMA ------------ */
@@ -672,7 +738,7 @@
   .confirm-row:last-of-type { border-bottom: none; margin-bottom: 12px; }
   .confirm-btn {
     width: 100%;
-    background: #00AEEF;
+    background: #8B5CF6;
     color: #fff;
     padding: 14px;
     border-radius: 12px;
@@ -726,8 +792,8 @@
   }
   .all-nav-pills button.active {
     color: #fff;
-    background: #00AEEF;
-    box-shadow: 0 2px 6px rgba(0,174,239,0.3);
+    background: #8B5CF6;
+    box-shadow: 0 2px 6px rgba(139, 92, 246,0.3);
   }
   .all-nav-pills button.icon { flex: 0 0 34px; padding: 7px 4px; }
 
@@ -811,9 +877,9 @@
     margin-top: 2px;
   }
   .day-tab.active {
-    background: #00AEEF;
-    border-color: #00AEEF;
-    box-shadow: 0 4px 12px rgba(0,174,239,0.3);
+    background: #8B5CF6;
+    border-color: #8B5CF6;
+    box-shadow: 0 4px 12px rgba(139, 92, 246,0.3);
   }
   .day-tab.active .dt-label { color: rgba(255,255,255,0.8); }
   .day-tab.active .dt-day { color: #fff; }
@@ -898,8 +964,8 @@
     color: #64748b;
   }
   .ex-cat-badge {
-    background: rgba(0,174,239,0.1);
-    color: #00AEEF;
+    background: rgba(139, 92, 246,0.1);
+    color: #8B5CF6;
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 9px;
@@ -925,8 +991,8 @@
     font-weight: 600;
   }
   .ex-card.highlight {
-    box-shadow: 0 0 0 3px rgba(0,174,239,0.25), 0 4px 12px rgba(0,174,239,0.15);
-    border-color: #00AEEF;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246,0.25), 0 4px 12px rgba(139, 92, 246,0.15);
+    border-color: #8B5CF6;
     animation: hintPulse 1.2s ease-in-out infinite;
   }
 
@@ -973,8 +1039,8 @@
     align-items: center;
   }
   .ex-detail-meta .cat {
-    background: rgba(0,174,239,0.12);
-    color: #00AEEF;
+    background: rgba(139, 92, 246,0.12);
+    color: #8B5CF6;
     padding: 2px 7px;
     border-radius: 4px;
     font-size: 9px;
@@ -1042,7 +1108,7 @@
   }
   .ex-log h4 .kpi {
     font-size: 10px;
-    color: #00AEEF;
+    color: #8B5CF6;
     text-transform: none;
     letter-spacing: 0;
     font-weight: 700;
@@ -1065,11 +1131,11 @@
     background: linear-gradient(135deg, rgba(16,185,129,0.04), #fff);
   }
   .set-row.current {
-    border-color: #00AEEF;
-    box-shadow: 0 0 0 3px rgba(0,174,239,0.1), 0 4px 12px rgba(0,174,239,0.08);
+    border-color: #8B5CF6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246,0.1), 0 4px 12px rgba(139, 92, 246,0.08);
   }
   .set-num {
-    background: #00AEEF;
+    background: #8B5CF6;
     color: #fff;
     width: 24px;
     height: 24px;
@@ -1128,7 +1194,7 @@
   }
   .phone-nav button:hover:not(:disabled) {
     background: var(--accent);
-    color: #000;
+    color: #fff;
     border-color: var(--accent);
   }
   .phone-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -1151,7 +1217,7 @@
     right: -200px;
     width: 600px;
     height: 600px;
-    background: radial-gradient(circle, rgba(204, 255, 0, 0.06), transparent 70%);
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.06), transparent 70%);
     pointer-events: none;
   }
   .workout-split {
@@ -1179,7 +1245,7 @@
     width: 36px;
     height: 36px;
     border-radius: 10px;
-    background: rgba(204, 255, 0, 0.1);
+    background: rgba(139, 92, 246, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1195,7 +1261,7 @@
     border: 1px solid var(--border-2);
     border-radius: var(--radius-lg);
     padding: 24px;
-    box-shadow: 0 30px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(204, 255, 0, 0.04);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(139, 92, 246, 0.04);
     position: relative;
   }
   .plan-header {
@@ -1209,7 +1275,7 @@
   .plan-header b { font-size: 16px; display: block; }
   .plan-header span { color: var(--text-dim); font-size: 12px; }
   .plan-tag {
-    background: rgba(204, 255, 0, 0.15);
+    background: rgba(139, 92, 246, 0.15);
     color: var(--accent);
     padding: 4px 10px;
     border-radius: 6px;
@@ -1225,7 +1291,7 @@
     color: var(--text-dim);
     font-weight: 600;
   }
-  .plan-day-tab.active { background: var(--accent); color: #000; }
+  .plan-day-tab.active { background: var(--accent); color: #fff; }
   .plan-exercise {
     display: flex;
     gap: 12px;
@@ -1284,7 +1350,7 @@
     width: 44px;
     height: 44px;
     border-radius: 10px;
-    background: rgba(204, 255, 0, 0.1);
+    background: rgba(139, 92, 246, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1323,7 +1389,7 @@
     top: -40px;
     right: 30px;
     font-size: 280px;
-    color: rgba(204, 255, 0, 0.05);
+    color: rgba(139, 92, 246, 0.05);
     font-family: Georgia, serif;
     line-height: 1;
   }
@@ -1360,7 +1426,7 @@
     align-items: center;
     justify-content: center;
     font-weight: 800;
-    color: #000;
+    color: #fff;
   }
   @media (max-width: 640px) {
     .testimonial { padding: 32px 24px; }
@@ -1387,18 +1453,18 @@
     font-size: 14px;
     transition: all .2s;
   }
-  .billing-toggle button.active { background: var(--accent); color: #000; }
+  .billing-toggle button.active { background: var(--accent); color: #fff; }
   .billing-toggle .save {
     display: inline-block;
     margin-left: 6px;
-    background: rgba(204, 255, 0, 0.2);
+    background: rgba(139, 92, 246, 0.2);
     color: var(--accent);
     padding: 2px 8px;
     border-radius: 6px;
     font-size: 11px;
     font-weight: 700;
   }
-  .billing-toggle button.active .save { background: rgba(0,0,0,0.15); color: #000; }
+  .billing-toggle button.active .save { background: rgba(255,255,255,0.2); color: #fff; }
   .pricing-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -1417,7 +1483,7 @@
   }
   .price-card.featured {
     border-color: var(--accent);
-    background: linear-gradient(180deg, rgba(204, 255, 0, 0.04), transparent 60%), var(--bg-2);
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.04), transparent 60%), var(--bg-2);
     transform: scale(1.02);
   }
   .price-badge {
@@ -1426,7 +1492,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: var(--accent);
-    color: #000;
+    color: #fff;
     padding: 5px 14px;
     border-radius: 100px;
     font-size: 12px;
@@ -1492,7 +1558,7 @@
     font-size: 18px;
     font-weight: 400;
   }
-  .faq-item.open .icon { transform: rotate(45deg); background: var(--accent); color: #000; }
+  .faq-item.open .icon { transform: rotate(45deg); background: var(--accent); color: #fff; }
   .faq-a {
     max-height: 0;
     overflow: hidden;
@@ -1507,7 +1573,7 @@
   .final-cta {
     text-align: center;
     padding: 120px 24px;
-    background: radial-gradient(circle at center top, rgba(204, 255, 0, 0.06), transparent 60%);
+    background: radial-gradient(circle at center top, rgba(139, 92, 246, 0.06), transparent 60%);
   }
   .final-cta h2 { font-size: clamp(36px, 5vw, 60px); margin-bottom: 16px; max-width: 800px; margin-left: auto; margin-right: auto; }
   .final-cta p { font-size: 19px; color: var(--text-dim-2); margin-bottom: 32px; }
@@ -1543,13 +1609,171 @@
     .footer-inner { grid-template-columns: 1fr 1fr; }
     section { padding: 70px 0; }
   }
+
+  /* ============================================================
+     SCROLL ANIMATIONS & MICRO-INTERACTIONS
+     (UX: enter ease-out 150–700ms, transform/opacity only,
+      stagger 60ms, reduced-motion safe, no-FOUC via .js gate)
+     ============================================================ */
+
+  /* Ancoraggio: i titoli di sezione non finiscono sotto la nav sticky */
+  section[id], header[id] { scroll-margin-top: 84px; }
+
+  /* Barra di avanzamento scroll */
+  .scroll-progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    width: 0;
+    background: linear-gradient(90deg, var(--accent), #a78bfa);
+    z-index: 200;
+    transition: width .08s linear;
+    will-change: width;
+  }
+
+  /* Stato nav dopo lo scroll */
+  .nav-inner { transition: padding .25s ease; }
+  nav.scrolled { background: rgba(10, 10, 10, 0.94); box-shadow: 0 8px 30px rgba(0,0,0,0.45); }
+  nav.scrolled .nav-inner { padding-top: 12px; padding-bottom: 12px; }
+
+  /* Indicatore link nav attivo (scrollspy) */
+  .nav-links a { position: relative; }
+  .nav-links a::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -6px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform .25s ease;
+  }
+  .nav-links a:hover::after,
+  .nav-links a.active::after { transform: scaleX(1); }
+  .nav-links a.active { color: var(--text); }
+
+  /* Pulsante "torna su" */
+  .to-top {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(12px);
+    transition: opacity .25s ease, transform .25s ease, visibility .25s ease, background .2s ease;
+    z-index: 120;
+    box-shadow: 0 10px 30px rgba(139, 92, 246, 0.4);
+  }
+  .to-top.show { opacity: 1; visibility: visible; transform: translateY(0); }
+  .to-top:hover { background: var(--accent-dim); transform: translateY(-3px); }
+  .to-top svg { width: 22px; height: 22px; }
+
+  /* Micro-interazione bottoni: scia di luce + glow */
+  .btn-primary { position: relative; overflow: hidden; }
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -130%;
+    width: 60%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.28), transparent);
+    transform: skewX(-20deg);
+    transition: left .6s ease;
+    pointer-events: none;
+  }
+  .btn-primary:hover::after { left: 150%; }
+  .btn-primary:hover { box-shadow: 0 10px 30px rgba(139, 92, 246, 0.38); }
+  .btn-primary:active { transform: translateY(0) scale(0.98); }
+
+  /* Glow/lift su card */
+  .feature, .problem-card { transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease; }
+  .feature:hover { box-shadow: 0 18px 44px rgba(0,0,0,0.45), 0 0 0 1px rgba(139, 92, 246, 0.18); }
+  .problem-card:hover { box-shadow: 0 18px 44px rgba(0,0,0,0.45); }
+  .price-card { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+  .price-card:hover { transform: translateY(-5px); border-color: var(--border-2); box-shadow: 0 26px 54px rgba(0,0,0,0.45); }
+  .price-card.featured:hover { transform: scale(1.02) translateY(-5px); box-shadow: 0 30px 60px rgba(139, 92, 246, 0.18); }
+  .mockup { transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease; }
+  .mockup:hover { transform: translateY(-5px); }
+  .step { transition: transform .25s ease; }
+  .step:hover { transform: translateY(-4px); }
+  .step:hover .step-num { opacity: 0.45; }
+  .step-num { transition: opacity .25s ease; }
+
+  /* ---- Reveal on scroll: stato base solo se JS attivo e motion ok ---- */
+  @media (prefers-reduced-motion: no-preference) {
+    .js .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
+      will-change: opacity, transform;
+    }
+    .js .reveal.is-visible { opacity: 1; transform: none; }
+
+    .js .reveal-group > * {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1);
+      will-change: opacity, transform;
+    }
+    .js .reveal-group.is-visible > * { opacity: 1; transform: none; }
+    .js .reveal-group.is-visible > *:nth-child(1) { transition-delay: 0s; }
+    .js .reveal-group.is-visible > *:nth-child(2) { transition-delay: .06s; }
+    .js .reveal-group.is-visible > *:nth-child(3) { transition-delay: .12s; }
+    .js .reveal-group.is-visible > *:nth-child(4) { transition-delay: .18s; }
+    .js .reveal-group.is-visible > *:nth-child(5) { transition-delay: .24s; }
+    .js .reveal-group.is-visible > *:nth-child(6) { transition-delay: .30s; }
+    .js .reveal-group.is-visible > *:nth-child(7) { transition-delay: .36s; }
+    .js .reveal-group.is-visible > *:nth-child(8) { transition-delay: .42s; }
+    .js .reveal-group.is-visible > *:nth-child(9) { transition-delay: .48s; }
+    .js .reveal-group.is-visible > *:nth-child(n+10) { transition-delay: .54s; }
+
+    /* Entrata hero al caricamento (above the fold) */
+    .js .hero-inner > * { opacity: 0; animation: heroRise .8s cubic-bezier(.16,1,.3,1) forwards; }
+    .js .hero-inner > *:nth-child(1) { animation-delay: .05s; }
+    .js .hero-inner > *:nth-child(2) { animation-delay: .13s; }
+    .js .hero-inner > *:nth-child(3) { animation-delay: .21s; }
+    .js .hero-inner > *:nth-child(4) { animation-delay: .29s; }
+    .js .hero-inner > *:nth-child(5) { animation-delay: .37s; }
+    .js .hero-inner > *:nth-child(6) { animation-delay: .47s; }
+    @keyframes heroRise {
+      from { opacity: 0; transform: translateY(34px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* Glow dell'hero in lento movimento */
+    .hero::before { animation: glowFloat 9s ease-in-out infinite; }
+    @keyframes glowFloat {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50%      { transform: translateX(-50%) translateY(26px); }
+    }
+  }
+
+  /* ---- Rispetto totale di prefers-reduced-motion ---- */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
 <body>
 
+<!-- Barra di avanzamento scroll -->
+<div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+
 <nav>
   <div class="nav-inner">
-    <a href="#" class="logo">Palestr<span>IA</span></a>
+    <a href="#" class="logo"><img src="images/logo-palestria-light.png" alt="PalestrIA" class="logo-img">Palestr<span>IA</span></a>
     <div class="nav-links">
       <a href="#features">Funzionalità</a>
       <a href="#how">Come funziona</a>
@@ -1576,7 +1800,7 @@
     <div class="hero-trust">
       <span>Nessuna carta richiesta</span>
       <span>Setup in 10 minuti</span>
-      <span>Import clienti da Excel</span>
+      <span>I clienti si iscrivono da soli</span>
     </div>
 
     <!-- Mockup -->
@@ -1627,25 +1851,25 @@
 <!-- ==================== PROBLEM ==================== -->
 <section class="problem">
   <div class="container">
-    <div class="problem-head">
+    <div class="problem-head reveal">
       <span class="eyebrow">Il problema</span>
       <h2>Quanto ti costa <span class="strike">WhatsApp</span> davvero?</h2>
       <p class="section-lead" style="margin:16px auto 0;">Ogni minuto speso a rispondere "puoi domani alle 18?" è tempo che non alleni. Ogni no-show è un cliente pagante perso.</p>
     </div>
-    <div class="problem-grid">
+    <div class="problem-grid reveal-group">
       <div class="problem-card">
-        <div class="problem-icon">💬</div>
-        <h3>Caos WhatsApp</h3>
+        <div class="problem-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Caos su WhatsApp</h3>
         <p>Chat sparse, conferme a mano, clienti dimenticati. Gestire 30 persone su 30 conversazioni diverse non è un lavoro: è stress.</p>
       </div>
       <div class="problem-card">
-        <div class="problem-icon">💸</div>
-        <h3>No-show = stipendio perso</h3>
+        <div class="problem-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg></div>
+        <h3>No-show non pagati</h3>
         <p>Senza regole chiare di cancellazione, chi non si presenta non paga. E tu perdi l'ora che avresti potuto dare a un altro cliente.</p>
       </div>
       <div class="problem-card">
-        <div class="problem-icon">📊</div>
-        <h3>Excel = zero visibilità</h3>
+        <div class="problem-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></div>
+        <h3>Excel senza visibilità</h3>
         <p>Quanti pacchetti hai venduto a marzo? Chi ha ancora 3 sedute residue? Qual è il tuo cliente più fedele? Senza dati, decidi alla cieca.</p>
       </div>
     </div>
@@ -1656,7 +1880,7 @@
 <section class="demo-app" id="demo">
   <div class="container">
     <div class="demo-wrap">
-      <div class="demo-intro">
+      <div class="demo-intro reveal">
         <span class="eyebrow">Provala ora</span>
         <h2>Questa è <span class="accent">l'app vera</span>.<br>Non un video. Non uno screenshot.</h2>
         <p class="lead">Tocca lo schermo del telefono qui a fianco. Prenoti un allenamento, apri la scheda, guardi il video dell'esercizio, logghi la tua serie. Esattamente come fanno i tuoi clienti.</p>
@@ -1671,7 +1895,7 @@
       </div>
 
       <!-- Phone -->
-      <div>
+      <div class="reveal">
         <div class="phone">
           <div class="phone-screen">
             <div class="phone-notch"></div>
@@ -1698,7 +1922,7 @@
               <!-- SCREEN 0: Calendario pubblico mobile -->
               <div class="screen active" data-screen="0">
                 <div class="app-nav">
-                  <div class="app-nav-logo-img"><span class="tb-mark">TB</span>TRAINING</div>
+                  <img src="images/logo-palestria-light.png" alt="PalestrIA" class="app-nav-logo-real">
                   <div class="app-nav-right">
                     <div class="app-nav-user">MR</div>
                     <div class="app-nav-hamburger">
@@ -1781,7 +2005,7 @@
               <!-- SCREEN 1: Scheda lista (allenamento.html) -->
               <div class="screen" data-screen="1">
                 <div class="app-nav">
-                  <div class="app-nav-logo-img"><span class="tb-mark">TB</span>TRAINING</div>
+                  <img src="images/logo-palestria-light.png" alt="PalestrIA" class="app-nav-logo-real">
                   <div class="app-nav-right">
                     <div class="app-nav-user">MR</div>
                     <div class="app-nav-hamburger">
@@ -1816,7 +2040,7 @@
                   <div class="sect-title"><b>Giorno A — Upper</b><span>4 esercizi</span></div>
                   <div class="ex-card highlight" onclick="demoOpenExercise()" id="exTarget">
                     <div class="ex-thumb">
-                      <img src="https://apilyfta.com/static/GymvisualPNG/00251101-Barbell-Bench-Press_Chest-FIX_small.png" alt="Panca Piana" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
+                      <img loading="lazy" decoding="async" src="https://apilyfta.com/static/GymvisualPNG/00251101-Barbell-Bench-Press_Chest-FIX_small.png" alt="Panca Piana" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
                       <div class="ex-thumb-play"></div>
                     </div>
                     <div class="ex-info">
@@ -1830,7 +2054,7 @@
                   </div>
                   <div class="ex-card">
                     <div class="ex-thumb">
-                      <img src="https://apilyfta.com/static/GymvisualPNG/00271101-Barbell-Bent-Over-Row_Back-FIX_small.png" alt="Rematore" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
+                      <img loading="lazy" decoding="async" src="https://apilyfta.com/static/GymvisualPNG/00271101-Barbell-Bent-Over-Row_Back-FIX_small.png" alt="Rematore" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
                       <div class="ex-thumb-play"></div>
                     </div>
                     <div class="ex-info">
@@ -1844,7 +2068,7 @@
                   </div>
                   <div class="ex-card">
                     <div class="ex-thumb">
-                      <img src="https://apilyfta.com/static/GymvisualPNG/11651101-Barbell-Standing-Military-Press-(without-rack)_Shoulders-FIX_small.png" alt="Military Press" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
+                      <img loading="lazy" decoding="async" src="https://apilyfta.com/static/GymvisualPNG/11651101-Barbell-Standing-Military-Press-(without-rack)_Shoulders-FIX_small.png" alt="Military Press" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
                       <div class="ex-thumb-play"></div>
                     </div>
                     <div class="ex-info">
@@ -1858,7 +2082,7 @@
                   </div>
                   <div class="ex-card">
                     <div class="ex-thumb">
-                      <img src="https://apilyfta.com/static/GymvisualPNG/02411101-Cable-Triceps-Pushdown-(V-bar-attachment)_Upper-Arms_small.png" alt="Pushdown" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
+                      <img loading="lazy" decoding="async" src="https://apilyfta.com/static/GymvisualPNG/02411101-Cable-Triceps-Pushdown-(V-bar-attachment)_Upper-Arms_small.png" alt="Pushdown" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'ex-thumb-play\'></div>';">
                       <div class="ex-thumb-play"></div>
                     </div>
                     <div class="ex-info">
@@ -1944,11 +2168,11 @@
 <section class="workout-hero">
   <div class="container">
     <div class="workout-split">
-      <div class="workout-copy">
+      <div class="workout-copy reveal">
         <span class="eyebrow">Schede & Allenamenti</span>
         <h2>Crea schede in 2 minuti.<br><span class="accent">Con video di ogni esercizio.</span></h2>
-        <p class="lead">Il cuore del lavoro di un PT non è la prenotazione — è la scheda. PalestrIA ti dà una libreria di <b style="color:var(--text);">7.000+ esercizi con video HD</b> e immagini. Trascini, assegni serie e reps, duplichi. Il cliente apre l'app e vede esattamente cosa fare.</p>
-        <ul class="workout-bullets">
+        <p class="lead">Il cuore del lavoro di un PT non è la prenotazione — è la scheda. PalestrIA ti dà una libreria di <b style="color:var(--text);">5.500+ esercizi con video HD</b> e immagini. Trascini, assegni serie e reps, duplichi. Il cliente apre l'app e vede esattamente cosa fare.</p>
+        <ul class="workout-bullets reveal-group">
           <li>
             <div class="b-icon"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none" style="fill:var(--accent);"/></svg></div>
             <div><b>Video dimostrativi in-app</b><span>Ogni esercizio ha il video. Il cliente tap e guarda. Niente più dubbi su come si fa un rematore.</span></div>
@@ -1974,7 +2198,7 @@
       </div>
 
       <!-- Mockup scheda -->
-      <div class="plan-mockup">
+      <div class="plan-mockup reveal">
         <div class="plan-header">
           <div>
             <b>Scheda Upper/Lower · Marco</b>
@@ -2027,12 +2251,12 @@
 <!-- ==================== FEATURES ==================== -->
 <section id="features">
   <div class="container">
-    <div class="features-head">
+    <div class="features-head reveal">
       <span class="eyebrow">E tutto il resto</span>
       <h2>Non solo schede. Un'app completa.</h2>
       <p class="section-lead" style="margin:16px auto 0;">Costruita partendo dalle esigenze reali di un personal trainer in attività. Non da un team marketing.</p>
     </div>
-    <div class="features-grid">
+    <div class="features-grid reveal-group">
       <div class="feature">
         <div class="feature-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
         <h3>Calendario smart</h3>
@@ -2059,8 +2283,13 @@
         <p>Trend mensili, top clienti, proiezioni d'incasso. Capisci chi rischi di perdere prima che se ne vada. Export XLSX per il commercialista.</p>
       </div>
       <div class="feature">
+        <div class="feature-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 14l.6 1.6 1.6.6-1.6.6L19 19l-.6-1.6-1.6-.6 1.6-.6z"/></svg></div>
+        <h3>Analisi con AI</h3>
+        <p>Ogni mese l'AI legge i tuoi dati e ti scrive il report: chi rischi di perdere, cosa sta crescendo, su cosa agire. Lo leggi in 30 secondi.</p>
+      </div>
+      <div class="feature">
         <div class="feature-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
-        <h3>Libreria 7.000+ esercizi</h3>
+        <h3>Libreria 5.500+ esercizi</h3>
         <p>Ogni esercizio ha video HD e immagine. Tu crei la scheda, il cliente guarda l'esecuzione dal telefono. Niente più "coach come si fa?".</p>
       </div>
       <div class="feature">
@@ -2080,11 +2309,11 @@
 <!-- ==================== HOW IT WORKS ==================== -->
 <section id="how" class="how">
   <div class="container">
-    <div class="features-head">
+    <div class="features-head reveal">
       <span class="eyebrow">Come funziona</span>
       <h2>Dal signup al primo incasso in 24 ore.</h2>
     </div>
-    <div class="how-steps">
+    <div class="how-steps reveal-group">
       <div class="step">
         <div class="step-num">01</div>
         <h3>Registrati in 2 minuti</h3>
@@ -2092,13 +2321,13 @@
       </div>
       <div class="step">
         <div class="step-num">02</div>
-        <h3>Importa clienti e orari</h3>
-        <p>Carica la lista clienti da Excel in un click. Configura i tuoi orari settimanali con 3 template. Fatto.</p>
+        <h3>Configura orari e prezzi</h3>
+        <p>Imposta i tuoi orari settimanali con 3 template, definisci tipi di lezione, capienze e prezzi. Pronto in pochi minuti.</p>
       </div>
       <div class="step">
         <div class="step-num">03</div>
         <h3>Inizia a incassare</h3>
-        <p>I clienti ricevono il link, installano l'app, prenotano. Tu vedi tutto dalla dashboard. Stripe gira i soldi sul tuo conto.</p>
+        <p>I clienti ricevono il link del tuo studio, si iscrivono in un minuto e prenotano da soli. Tu vedi tutto dalla dashboard. Stripe gira i soldi sul tuo conto.</p>
       </div>
     </div>
   </div>
@@ -2107,7 +2336,7 @@
 <!-- ==================== TESTIMONIAL ==================== -->
 <section>
   <div class="container">
-    <div class="testimonial">
+    <div class="testimonial reveal">
       <span class="eyebrow">Caso reale</span>
       <p class="testimonial-quote" style="margin-top:20px;">
         "Sono passato da gestire tutto su Excel e WhatsApp a un'app che i miei clienti adorano. Prenotano da soli, pagano da soli, ricevono i promemoria. Io mi concentro solo sull'allenarli."
@@ -2119,7 +2348,7 @@
           Personal Trainer · Brescia
         </div>
       </div>
-      <div class="testimonial-numbers">
+      <div class="testimonial-numbers reveal-group">
         <div class="testimonial-number"><b>200+</b><span>prenotazioni/mese</span></div>
         <div class="testimonial-number"><b>€0</b><span>no-show non pagati</span></div>
         <div class="testimonial-number"><b>6h</b><span>risparmiate a settimana</span></div>
@@ -2132,7 +2361,7 @@
 <!-- ==================== PRICING ==================== -->
 <section id="pricing" class="pricing">
   <div class="container">
-    <div class="pricing-head">
+    <div class="pricing-head reveal">
       <span class="eyebrow">Prezzi</span>
       <h2>Scegli il piano. Cresci senza cambiarlo.</h2>
       <p class="section-lead" style="margin:16px auto 0;">14 giorni di prova gratuita. Nessuna carta richiesta. Cancellazione in un click.</p>
@@ -2141,7 +2370,7 @@
         <button data-billing="yearly">Annuale <span class="save">-20%</span></button>
       </div>
     </div>
-    <div class="pricing-grid">
+    <div class="pricing-grid reveal-group">
       <!-- Essential -->
       <div class="price-card">
         <div class="price-name">Essential</div>
@@ -2152,11 +2381,8 @@
           <li class="bold">Fino a 15 clienti attivi</li>
           <li>Calendario e prenotazioni</li>
           <li class="bold">Schede con video (libreria completa)</li>
-          <li>Fino a 20 schede attive</li>
-          <li>Crediti e pacchetti base</li>
-          <li>Push notifications</li>
-          <li>Pagamenti Stripe</li>
-          <li>App PWA installabile</li>
+          <li>Crediti, pacchetti e pagamenti Stripe</li>
+          <li>Push notifications + App PWA</li>
           <li>Supporto email</li>
         </ul>
         <a href="#" class="btn btn-secondary">Inizia gratis</a>
@@ -2172,13 +2398,9 @@
           <li class="bold">Fino a 50 clienti attivi</li>
           <li>Tutto di Essential, più:</li>
           <li class="bold">Schede illimitate + duplicazione 1-click</li>
-          <li>Modalità tablet per la palestra</li>
-          <li>Tracking RPE + storico progressi cliente</li>
-          <li>Export PDF schede brandizzate</li>
-          <li>Statistiche avanzate e proiezioni</li>
-          <li>Export XLSX per commercialista</li>
-          <li>Gestione certificati medici</li>
-          <li>Backup automatico</li>
+          <li class="bold">Analisi con AI + statistiche avanzate</li>
+          <li>Modalità tablet + tracking RPE</li>
+          <li>Export PDF/XLSX e certificati medici</li>
           <li>Supporto prioritario</li>
         </ul>
         <a href="#" class="btn btn-primary">Inizia gratis</a>
@@ -2192,13 +2414,9 @@
         <ul class="price-features">
           <li class="bold">Clienti illimitati</li>
           <li>Tutto di Pro, più:</li>
-          <li class="bold">Schede condivise tra trainer del team</li>
-          <li>Multi-trainer (fino a 5)</li>
-          <li>Template scheda del team riutilizzabili</li>
-          <li>Dominio personalizzato</li>
-          <li>Branding personalizzato (logo su PDF)</li>
-          <li>Audit trail operazioni admin</li>
-          <li>Health check automatico</li>
+          <li class="bold">Multi-trainer (fino a 5) + schede condivise</li>
+          <li>Dominio e branding personalizzato</li>
+          <li>Audit trail + health check</li>
           <li>Onboarding 1-to-1</li>
         </ul>
         <a href="#" class="btn btn-secondary">Contattaci</a>
@@ -2213,41 +2431,41 @@
 <!-- ==================== FAQ ==================== -->
 <section id="faq">
   <div class="container">
-    <div class="faq-wrap">
+    <div class="faq-wrap reveal-group">
       <div class="faq-head">
         <span class="eyebrow">Domande frequenti</span>
         <h2>Risposte chiare.</h2>
       </div>
       <div class="faq-item">
-        <button class="faq-q">I video degli esercizi sono inclusi?<span class="icon">+</span></button>
-        <div class="faq-a">Sì, **tutti i piani** includono l'accesso completo alla libreria di oltre 7.000 esercizi con video HD e immagini dimostrative. Niente abbonamenti aggiuntivi, niente libreria "limitata" da sbloccare. I video sono in streaming dentro la tua app.</div>
+        <button class="faq-q" aria-expanded="false">I video degli esercizi sono inclusi?<span class="icon">+</span></button>
+        <div class="faq-a">Sì, <b>tutti i piani</b> includono l'accesso completo alla libreria di oltre 5.500 esercizi con video HD e immagini dimostrative. Niente abbonamenti aggiuntivi, niente libreria "limitata" da sbloccare. I video sono in streaming dentro la tua app.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">Posso importare i miei clienti da Excel?<span class="icon">+</span></button>
-        <div class="faq-a">Sì. Carichi il file XLSX o CSV con nome, email e telefono. In 1 click importiamo tutto, inclusi eventuali crediti residui o pacchetti attivi.</div>
+        <button class="faq-q" aria-expanded="false">Come iniziano i miei clienti?<span class="icon">+</span></button>
+        <div class="faq-a">Ricevono il link del tuo studio, installano l'app e si iscrivono da soli in un minuto. Le prenotazioni fatte prima della registrazione si collegano in automatico al loro profilo.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">Posso caricare i miei esercizi o i miei video?<span class="icon">+</span></button>
+        <button class="faq-q" aria-expanded="false">Posso caricare i miei esercizi o i miei video?<span class="icon">+</span></button>
         <div class="faq-a">Sì, dal piano <b>Pro</b> puoi aggiungere esercizi personalizzati (con immagine o link video tuo) alla libreria del tuo studio, oltre a quelli inclusi. Utile se hai protocolli specifici o riabilitazione.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">Cosa succede se cancello l'abbonamento?<span class="icon">+</span></button>
+        <button class="faq-q" aria-expanded="false">Cosa succede se cancello l'abbonamento?<span class="icon">+</span></button>
         <div class="faq-a">Cancellazione in qualsiasi momento dalla dashboard. Mantieni accesso fino a fine periodo pagato. Export completo di tutti i dati (clienti, transazioni, prenotazioni) in JSON/XLSX sempre disponibile.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">I prezzi sono IVA inclusa?<span class="icon">+</span></button>
+        <button class="faq-q" aria-expanded="false">I prezzi sono IVA inclusa?<span class="icon">+</span></button>
         <div class="faq-a">No, i prezzi indicati sono IVA esclusa. Emettiamo fattura elettronica italiana scaricabile dalla dashboard.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">Quali sono le commissioni sui pagamenti?<span class="icon">+</span></button>
+        <button class="faq-q" aria-expanded="false">Quali sono le commissioni sui pagamenti?<span class="icon">+</span></button>
         <div class="faq-a">PalestrIA <b>non trattiene nulla</b> sui tuoi incassi. Paghi solo le commissioni standard Stripe (1,5% + €0,25 su carte europee). I soldi arrivano diretti sul tuo conto Stripe.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">Funziona se ho più sale o più trainer?<span class="icon">+</span></button>
+        <button class="faq-q" aria-expanded="false">Funziona se ho più sale o più trainer?<span class="icon">+</span></button>
         <div class="faq-a">Sì. Il piano <b>Business</b> supporta fino a 5 trainer con calendari separati e permessi admin differenziati. Per strutture più grandi contattaci: abbiamo un piano Enterprise dedicato.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q">Che tipo di supporto offrite?<span class="icon">+</span></button>
+        <button class="faq-q" aria-expanded="false">Che tipo di supporto offrite?<span class="icon">+</span></button>
         <div class="faq-a">Essential: supporto via email (risposta entro 24h). Pro: supporto prioritario (entro 4h in orario lavorativo). Business: onboarding 1-to-1 con call dedicata + canale diretto con il team.</div>
       </div>
     </div>
@@ -2255,7 +2473,7 @@
 </section>
 
 <!-- ==================== FINAL CTA ==================== -->
-<section class="final-cta">
+<section class="final-cta reveal-group">
   <h2>Il tuo tempo vale più di <span style="color:var(--accent);">€39 al mese.</span></h2>
   <p>14 giorni gratis. Nessuna carta richiesta. Cancelli quando vuoi.</p>
   <a href="#pricing" class="btn btn-primary btn-lg">Inizia ora →</a>
@@ -2266,7 +2484,7 @@
   <div class="container">
     <div class="footer-inner">
       <div class="footer-brand">
-        <div class="logo">Palestr<span>IA</span></div>
+        <div class="logo"><img src="images/logo-palestria-light.png" alt="PalestrIA" class="logo-img">Palestr<span>IA</span></div>
         <p>Il gestionale pensato da un personal trainer in attività, per personal trainer in attività.</p>
       </div>
       <div>
@@ -2301,6 +2519,11 @@
     </div>
   </div>
 </footer>
+
+<!-- Torna su -->
+<button class="to-top" id="toTop" type="button" aria-label="Torna all'inizio della pagina">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+</button>
 
 <script>
   // ============ DEMO APP INTERATTIVA ============
@@ -2470,6 +2693,110 @@
       });
     });
   });
+</script>
+
+<script>
+  // ============ SCROLL ANIMATIONS & MICRO-INTERAZIONI ============
+  (function () {
+    'use strict';
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ---- 1. Reveal on scroll (IntersectionObserver, one-shot) ---- */
+    const revealEls = document.querySelectorAll('.reveal, .reveal-group');
+    if ('IntersectionObserver' in window && revealEls.length) {
+      const revealObs = new IntersectionObserver((entries, obs) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            obs.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+      revealEls.forEach(el => revealObs.observe(el));
+    } else {
+      // Fallback senza IO: mostra tutto
+      revealEls.forEach(el => el.classList.add('is-visible'));
+    }
+
+    /* ---- 2. Conteggio animato dei numeri ---- */
+    function animateCount(el) {
+      if (el.dataset.counted) return;
+      el.dataset.counted = '1';
+      const text = el.textContent.trim();
+      const match = text.match(/^(\D*?)([\d.,]+)(\D*)$/);
+      if (!match) return;
+      const prefix = match[1], suffix = match[3];
+      const target = parseInt(match[2].replace(/[^\d]/g, ''), 10);
+      if (isNaN(target) || prefersReduced) return;       // motion ridotto: lascia il valore statico
+      const duration = 1300, start = performance.now();
+      const easeOut = t => 1 - Math.pow(1 - t, 3);
+      function tick(now) {
+        const p = Math.min((now - start) / duration, 1);
+        const val = Math.round(easeOut(p) * target);
+        el.textContent = prefix + val.toLocaleString('it-IT') + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+    const counters = document.querySelectorAll('.testimonial-number b, .mockup-stat b');
+    if ('IntersectionObserver' in window && counters.length && !prefersReduced) {
+      const countObs = new IntersectionObserver((entries, obs) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) { animateCount(entry.target); obs.unobserve(entry.target); }
+        });
+      }, { threshold: 0.6 });
+      counters.forEach(el => countObs.observe(el));
+    }
+
+    /* ---- 3. Scrollspy: link nav attivo ---- */
+    const navLinks = document.querySelectorAll('.nav-links a[href^="#"]');
+    const spyTargets = ['features', 'how', 'pricing', 'faq']
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+    if ('IntersectionObserver' in window && navLinks.length && spyTargets.length) {
+      const spy = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+          }
+        });
+      }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
+      spyTargets.forEach(s => spy.observe(s));
+    }
+
+    /* ---- 4. Barra di avanzamento + nav scrolled + torna su (un solo handler rAF) ---- */
+    const progress = document.getElementById('scrollProgress');
+    const navEl = document.querySelector('nav');
+    const toTop = document.getElementById('toTop');
+    let ticking = false;
+    function onScroll() {
+      const st = window.scrollY || document.documentElement.scrollTop;
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      if (progress) progress.style.width = (docH > 0 ? (st / docH) * 100 : 0) + '%';
+      if (navEl) navEl.classList.toggle('scrolled', st > 8);
+      if (toTop) toTop.classList.toggle('show', st > 600);
+      ticking = false;
+    }
+    window.addEventListener('scroll', () => {
+      if (!ticking) { requestAnimationFrame(onScroll); ticking = true; }
+    }, { passive: true });
+    onScroll();
+
+    if (toTop) {
+      toTop.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: prefersReduced ? 'auto' : 'smooth' });
+      });
+    }
+
+    /* ---- 5. FAQ: sincronizza aria-expanded per accessibilità ---- */
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const open = btn.closest('.faq-item').classList.contains('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    });
+  })();
 </script>
 
 </body>
