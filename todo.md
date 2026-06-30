@@ -81,8 +81,8 @@ Confrontate le voci NUOVE del changelog di Thomas (tutte datate **2026-06-30**) 
 ### Follow-up opzionale (non bloccante)
 - [ ] **Bollino rosso "debito >60gg"** sulla card debitore (Thomas): ora che i debiti vecchi sono di nuovo visibili, un indicatore visivo per gli arretrati >60gg sarebbe utile. Solo cosmetico (`unpaidBookings[].date`, niente More qui). Da valutare.
 
-### DEPLOY — DA FARE
-- [ ] **Asset GitHub Pages**: push del branch (cache-bust già applicato, `CACHE_NAME palestria-v571`). **Nessuna migration/edge** in questo batch (tutto client). Verifica post-deploy: (1) un cliente con molti log vede di nuovo Progressi/Storico vecchi; (2) tab Pagamenti mostra i debiti >60gg; (3) "Carica storico completo" sulla card cliente; (4) grafico mensile prenotazioni conta i mesi vecchi; (5) PWA non resta su 404 dopo un blip di rete.
+### DEPLOY — FATTO
+- [x] **Asset GitHub Pages**: pushati su `origin/main` (commit **7eafb5d**, `CACHE_NAME palestria-v571`). **Nessuna migration/edge** in questo batch (tutto client). Verifica post-deploy: (1) un cliente con molti log vede di nuovo Progressi/Storico vecchi; (2) tab Pagamenti mostra i debiti >60gg; (3) "Carica storico completo" sulla card cliente; (4) grafico mensile prenotazioni conta i mesi vecchi; (5) PWA non resta su 404 dopo un blip di rete.
 
 ---
 
