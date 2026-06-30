@@ -58,6 +58,34 @@ Portato il fix registrato in `Aggiornamenti Thomas.md.lnk` (changelog del proget
 
 ---
 
+## 🔄 Port dal gemello Thomas — bug fix storico + debiti vecchi (2026-06-30) — APPLICATO
+Confrontate le voci NUOVE del changelog di Thomas (tutte datate **2026-06-30**) col codice di PalestrIA. Diverse N/A (crediti/More rimossi §11; hosting Cloudflare/`_headers`/privacy = infra diversa, PalestrIA su GitHub Pages) o coperte in forma equivalente.
+
+### Portato (bug reali — solo client, nessuna migration)
+- [x] **SW: mai cachare risposte non-`ok` nelle navigazioni** ([sw.js](sw.js)): il navigate handler (Network First) faceva `cache.put` **incondizionato** → un 404/5xx transitorio (es. buco di deploy/DNS) restava persistito come fallback offline e la PWA si "appendeva" su una 404. Aggiunto guard `if (response.ok)` prima del `cache.put`, allineandolo agli handler JS/CSS e immagini che lo avevano già. Il bump `CACHE_NAME` purga le 404 avvelenate.
+- [x] **Paginazione query `workout_logs` (cap ~1000 righe PostgREST)**: c'è una riga per ogni serie loggata → un cliente assiduo supera le 1000 righe in pochi mesi e i log/allenamenti più vecchi sparivano da Progressi/Storico (cliente) e dalla vista allenamenti lato admin. Convertite a `fetchAllPaginated(() => …, { timeoutMs })` con tiebreaker **`.order('id')`** (pagine stabili: `log_date`/`set_number` non sono univoci) le **6 query di lettura storico**: `WorkoutLogStorage.syncForPlan`/`syncForUser` ([data.js](js/data.js)); `_loadLogsForPlan`/`renderStorico`/`renderProgressi` ([allenamento.html](allenamento.html)); `_schedeClientDetailLoadLogs` ([admin-schede.js](js/admin-schede.js)). **NON toccata** la query "loggato oggi" (già limitata a un giorno).
+- [x] **Prenotazioni/debiti vecchi "spariti" + storico completo on-demand** ([data.js](js/data.js)): la cache `bookings` era finestrata a **60gg passati + 90 futuri**, quindi le lezioni passate **non pagate** oltre i 60gg sparivano dalla lista **debitori** (tab Pagamenti, `_getUnpaidContacts` legge `getAllBookings()`) → rischio di non incassare debiti vecchi. Fix:
+  - **FULL** ora carica `[pastStr, futureStr]` **OPPURE** qualsiasi lezione passata non pagata e non annullata (`.lte('date',futureStr).or('date.gte.{past},and(paid.is.false,status.neq.cancelled)')`); **DELTA** senza floor di data (solo `updated_at >= cursore`) → ripesca un debito vecchio appena saldato/editato.
+  - **Fingerprint allineato** allo stesso filtro (`_bookingsFingerprint`): un debito vecchio saldato fa **scendere il count** → FULL reconcile (lo rimuove); un edit bumpa `maxUpd` → DELTA. Coerenza count/maxUpd ↔ contenuto cache.
+  - **Persist key `gym_bookings_cache_v1`→`v2`**: invalida gli snapshot incompleti → primo load post-deploy = FULL che ripesca subito i debiti vecchi.
+  - Nuovo **`BookingStorage.fetchClientHistory({userId,email,whatsapp})`**: storico completo per singolo cliente (anche pagato, senza finestra), paginato + `.order('id')`, email/whatsapp quotati+escaped (anti-PGRST100), non tocca la cache globale. RLS-safe: l'utente vede solo i propri.
+  - **Bottone "📜 Carica storico completo"** nella card cliente ([admin-clients.js](js/admin-clients.js) `createClientCard`+`loadClientFullHistory`): fetch → merge dedup (live vince) → re-render card preservando lo stato aperto.
+  - **Grafico mensile/settimanale** ([prenotazioni.html](prenotazioni.html)): `openWeeklyChartModal` reso async (render immediato dalla cache → `_ensureChartBookings()` → re-render); nuovi `_chartFullBookings`/`_chartSourceBookings()`; la vista mensile (5 mesi indietro) non è più sotto-contata.
+- [x] **Cache-bust**: `sw.js` `CACHE_NAME` **palestria-v570→v571**; `data.js` v92→**93** (9 HTML), `admin-clients.js` v11→**12**, `admin-schede.js` v50→**51** (admin.html). Modifiche inline in allenamento/prenotazioni = network-first, coperte dal bump `CACHE_NAME`. `node --check` OK su data/admin-clients/admin-schede/sw + script inline dei 2 HTML.
+
+### Non portato (N/A o coperto in forma equivalente)
+- **Formato date DD-MM-YYYY**: PalestrIA mostra **già** DD/MM/YYYY (giorno-first, leggibile) nelle viste operative → nessun ISO esposto, il problema che Thomas risolveva non esiste qui (slash vs trattino = solo stile → §0.1.4, conta come fatto).
+- **Crediti/More** (auto-apply Mora, riconciliazione credito, card debitore lordo/saldato): **N/A**, sistema crediti rimosso (§11). In PalestrIA il debito = lezioni passate non pagate (no ledger More).
+- **Migrazione Cloudflare + `_headers` security headers + privacy responsabili**: **N/A**, PalestrIA è su GitHub Pages (no file `_headers`); la revisione GDPR resta il todo dedicato sotto (Sicurezza).
+
+### Follow-up opzionale (non bloccante)
+- [ ] **Bollino rosso "debito >60gg"** sulla card debitore (Thomas): ora che i debiti vecchi sono di nuovo visibili, un indicatore visivo per gli arretrati >60gg sarebbe utile. Solo cosmetico (`unpaidBookings[].date`, niente More qui). Da valutare.
+
+### DEPLOY — DA FARE
+- [ ] **Asset GitHub Pages**: push del branch (cache-bust già applicato, `CACHE_NAME palestria-v571`). **Nessuna migration/edge** in questo batch (tutto client). Verifica post-deploy: (1) un cliente con molti log vede di nuovo Progressi/Storico vecchi; (2) tab Pagamenti mostra i debiti >60gg; (3) "Carica storico completo" sulla card cliente; (4) grafico mensile prenotazioni conta i mesi vecchi; (5) PWA non resta su 404 dopo un blip di rete.
+
+---
+
 ## 📦 Port dal gemello Thomas — egress + security + doc (2026-06-27) — APPLICATO
 Confrontate tutte le voci nuove del changelog di Thomas (dal 2026-06-22 in poi) col codice di PalestrIA.
 

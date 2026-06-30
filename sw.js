@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v570';
+const CACHE_NAME = 'palestria-v571';
 
 const APP_SHELL = [
     './',
@@ -156,8 +156,14 @@ self.addEventListener('fetch', event => {
         event.respondWith(
             fetchWithTimeout(request, 8000)
                 .then(response => {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+                    // Cachare SOLO risposte valide: un 404/5xx transitorio (es. buco DNS/hosting
+                    // durante un cambio di deploy) NON deve essere persistito come fallback offline,
+                    // altrimenti la PWA resta "appesa" su una pagina 404 anche a sito sano. Stesso
+                    // guard già presente sugli handler JS/CSS e immagini sotto.
+                    if (response.ok) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+                    }
                     return response;
                 })
                 .catch(() => caches.match(request, { ignoreSearch: true }))

@@ -550,6 +550,11 @@ function createClientCard(client, index) {
     const showMoreBooksBtn = bTotal > 5
         ? `<button class="show-more-btn" onclick="_showMoreItems(this,10)" data-container="${tbodyId}" data-shown="5" data-total="${bTotal}" style="margin-top:0.5rem;">▼ Mostra altri ${Math.min(10, bTotal - 5)}</button>`
         : '';
+    // Storico completo on-demand: la cache è finestrata a 60gg passati, quindi le prenotazioni
+    // (anche pagate) più vecchie non compaiono. Il bottone le carica al volo per QUESTO cliente.
+    const fullHistBtnHTML = client._fullHistoryLoaded
+        ? '<div class="client-fullhist-note" style="margin-top:0.5rem;font-size:0.8rem;color:#16a34a;">✓ Storico completo caricato</div>'
+        : `<button class="show-more-btn" onclick="loadClientFullHistory(this, ${index})" style="margin-top:0.5rem;">📜 Carica storico completo</button>`;
 
     // ── Schede assegnate ──────────────────────────────────────────────────
     const clientUserId = userRecord?.id || client.userId || null;
@@ -634,16 +639,62 @@ function createClientCard(client, index) {
                     <tbody id="${tbodyId}">${bookingsHTML}</tbody>
                 </table>
                 ${showMoreBooksBtn}
+                ${fullHistBtnHTML}
             </div>
             ${schedeHTML}
             ${economyHTML}
         </div>
     `;
 
+    // Riferimento al client object per il re-render dopo "Carica storico completo".
+    card._client = client;
+
     // Carica in background la situazione economica (pacchetto/abbonamento/incassato)
     _loadClientEconomy(index, clientUserId, client.email);
 
     return card;
+}
+
+// Carica lo storico COMPLETO del cliente (anche prenotazioni pagate >60gg, fuori dalla cache
+// finestrata) via query mirata per-cliente, lo fonde nella card e ri-renderizza preservando lo
+// stato aperto. La cache "live" vince sui duplicati (più fresca dopo prenota/annulla/saldo).
+async function loadClientFullHistory(btn, index) {
+    const card = document.getElementById(`client-card-${index}`);
+    const client = card && card._client;
+    if (!client) return;
+    btn.disabled = true;
+    const _orig = btn.textContent;
+    btn.textContent = '⏳ Caricamento…';
+    try {
+        const rows = (typeof BookingStorage !== 'undefined' && typeof BookingStorage.fetchClientHistory === 'function')
+            ? await BookingStorage.fetchClientHistory({
+                userId:   client.userId || null,
+                email:    client.email || null,
+                whatsapp: client.whatsapp || null,
+              })
+            : null;
+        if (!rows) {
+            btn.disabled = false; btn.textContent = _orig;
+            if (typeof showToast === 'function') showToast('Impossibile caricare lo storico completo', 'error');
+            return;
+        }
+        // Merge dedup per _sbId/id: la copia "live" (cache) vince → no flash "Non pagato" su una
+        // lezione appena saldata che lo storico ripescato avrebbe ancora come non pagata.
+        const byKey = new Map();
+        for (const b of rows) byKey.set(b._sbId || b.id, b);
+        for (const b of client.bookings) byKey.set(b._sbId || b.id, b);
+        client.bookings = [...byKey.values()].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+        client._fullHistoryLoaded = true;
+        // Rebuild della card preservando lo stato aperto (toggleClientCard è CSS-only su .open).
+        const wasOpen = card.classList.contains('open');
+        const fresh = createClientCard(client, index);
+        if (wasOpen) fresh.classList.add('open');
+        card.replaceWith(fresh);
+    } catch (e) {
+        console.error('[Clienti] loadClientFullHistory error:', e);
+        btn.disabled = false; btn.textContent = _orig;
+        if (typeof showToast === 'function') showToast('Errore caricamento storico', 'error');
+    }
 }
 
 // ── Carica e renderizza la situazione economica del cliente (modello nuovo) ──

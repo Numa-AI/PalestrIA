@@ -4,7 +4,7 @@
  * COSA FA: è il cuore dei dati lato client. Espone classi *Storage* statiche che leggono dalla
  * cache in memoria/localStorage e sincronizzano con Supabase (Postgres + RLS + RPC):
  *   - BookingStorage   — prenotazioni: cache + delta-sync con fingerprint, persistenza cross-pagina
- *                        (gym_bookings_cache_v1), prenotazione server-authoritative via RPC book_slot,
+ *                        (gym_bookings_cache_v2), prenotazione server-authoritative via RPC book_slot,
  *                        disponibilità via RPC get_availability_range (cache dedup 60s), capienza
  *                        effettiva (override → template settimana attivata → default slot_type).
  *   - UserStorage      — profili clienti dell'org (RPC get_all_profiles / get_all_profiles_basic).
@@ -753,7 +753,10 @@ class BookingStorage {
     // prenotazioni restano server-authoritative (book_slot con advisory lock); i pagamenti
     // vengono dal ledger `payments`. Identity-scoped per non mischiare dati di utenti diversi.
     // Snapshot oltre il TTL → non idratato (ricade nel full da cache vuota, come oggi).
-    static _PERSIST_KEY = 'gym_bookings_cache_v1';
+    // v2: la FULL ora carica anche i debiti vecchi (lezioni passate non pagate fuori finestra) →
+    // gli snapshot v1 (solo finestra 60gg) sono incompleti; bumpare la chiave li invalida così il
+    // primo load post-deploy fa un FULL che ripesca subito i debiti vecchi (no attesa del reconcile).
+    static _PERSIST_KEY = 'gym_bookings_cache_v2';
     static _PERSIST_MAX_ROWS = 8000;          // oltre, salta il persist (evita quota localStorage)
     static _PERSIST_TTL_MS = 15 * 60 * 1000;  // età max snapshot idratabile (oltre → full da vuoto)
 
@@ -858,12 +861,17 @@ class BookingStorage {
     }
 
     // Fingerprint cheap: una query (count exact + riga col max updated_at). null su errore.
+    // Il filtro DEVE coincidere con quello della FULL (finestra [past,future] OPPURE qualsiasi
+    // lezione passata non pagata e non annullata), altrimenti count/maxUpd non rispecchiano ciò
+    // che la cache contiene: un debito vecchio appena SALDATO esce dall'insieme → count scende →
+    // FULL reconcile (lo rimuove); un debito vecchio EDITATO bumpa maxUpd → DELTA lo ripesca.
     static async _bookingsFingerprint(pastStr, futureStr) {
         try {
             const { data, count, error } = await _queryWithTimeout(
                 supabaseClient.from('bookings')
                     .select('updated_at', { count: 'exact' })
-                    .gte('date', pastStr).lte('date', futureStr)
+                    .lte('date', futureStr)
+                    .or(`date.gte.${pastStr},and(paid.is.false,status.neq.cancelled)`)
                     .order('updated_at', { ascending: false, nullsFirst: false })
                     .limit(1),
                 10000
@@ -923,9 +931,11 @@ class BookingStorage {
             }
 
             // ── ADMIN o UTENTE: SELECT bookings reali ─────────────────────────────────
-            // Admin: finestra operativa (6 mesi passati + 3 futuri) per contenere localStorage.
-            // Utente: ultime 4 settimane + prossimi 3 mesi (storico vecchio non serve).
-            // Query complete (senza limite) per stats/export avvengono tramite fetchForAdmin().
+            // Finestra operativa: 60 giorni passati + 90 futuri (contiene localStorage/egress),
+            // PIÙ qualsiasi lezione passata NON pagata e non annullata (senza floor di data) → i
+            // debiti vecchi (>60gg) restano visibili in Pagamenti/debitori e non si rischia di non
+            // incassarli. Lo storico completo per-cliente (anche pagato) è on-demand via
+            // fetchClientHistory(); le query stats/export complete via fetchForAdmin().
             const bookingSelect = 'id,local_id,user_id,date,time,slot_type,date_display,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,created_at,cancellation_requested_at,cancelled_at,updated_at,cancelled_payment_method,cancelled_paid_at,cancelled_refund_pct,created_by,cancelled_by,arrived_at';
             // ownOnly: filtra per user_id server-side (es. prenotazioni.html — anche admin vedono solo i propri)
             const pastD   = new Date(); pastD.setDate(pastD.getDate() - 60);
@@ -979,10 +989,18 @@ class BookingStorage {
                 let q = supabaseClient.from('bookings').select(bookingSelect)
                     .order(isDelta ? 'updated_at' : 'created_at', { ascending: false })
                     .range(pageFrom, pageFrom + PAGE - 1)
-                    .gte('date', pastStr).lte('date', futureStr);
-                // DELTA: solo le righe modificate dall'ultimo cursore (overlap anti clock-skew).
-                // Mantiene la finestra date per restare coerente col count del fingerprint.
-                if (isDelta) q = q.gte('updated_at', deltaFrom);
+                    .lte('date', futureStr);
+                if (isDelta) {
+                    // DELTA: solo le righe modificate dal cursore (overlap anti clock-skew). NIENTE
+                    // floor di data → ripesca anche un debito vecchio appena saldato/editato (la sua
+                    // updated_at è recente) che resterebbe altrimenti "appeso" come non pagato.
+                    q = q.gte('updated_at', deltaFrom);
+                } else {
+                    // FULL: finestra [pastStr, futureStr] OPPURE qualsiasi lezione passata non pagata
+                    // e non annullata → i debiti vecchi restano in cache (debitori/registro/card).
+                    // Coincide col filtro del fingerprint → count/maxUpd coerenti col contenuto cache.
+                    q = q.or(`date.gte.${pastStr},and(paid.is.false,status.neq.cancelled)`);
+                }
                 if (ownOnly && user) q = q.eq('user_id', user.id);
                 // Timeout 12s: senza, su rete lenta/wake-from-idle questa query raw
                 // appende l'intero sync e refreshInFlight non si resetta mai (→ freeze).
@@ -1197,6 +1215,38 @@ class BookingStorage {
             return null;
         } finally {
             delete this._adminFetchInFlightByKey[cacheKey];
+        }
+    }
+
+    // Storico COMPLETO di un singolo cliente (anche lezioni pagate fuori finestra 60gg), senza
+    // limiti di data — query mirata per cliente, NON tocca la cache globale/localStorage. Usato da:
+    //  • admin: bottone "Carica storico completo" nella card cliente (vede tutte le righe via is_admin);
+    //  • utente: grafico mensile in prenotazioni.html (RLS → ritorna solo le PROPRIE righe).
+    // Paginato (cap 1000 righe PostgREST); tiebreaker .order('id') per pagine stabili. Ritorna
+    // righe mappate con _mapRow, oppure null se mancano identificatori o su errore.
+    static async fetchClientHistory({ userId = null, email = null, whatsapp = null } = {}) {
+        if (typeof supabaseClient === 'undefined') return null;
+        // Email/whatsapp racchiusi tra doppi apici con escape: una virgola/parentesi nel valore
+        // romperebbe il logic-tree di PostgREST .or() → PGRST100.
+        const quote = (v) => `"${String(v).replace(/(["\\])/g, '\\$1')}"`;
+        const ors = [];
+        if (userId)   ors.push(`user_id.eq.${userId}`);
+        if (email)    ors.push(`email.eq.${quote(email)}`);
+        if (whatsapp) ors.push(`whatsapp.eq.${quote(whatsapp)}`);
+        if (!ors.length) return null;
+        const cols = 'id,local_id,user_id,date,time,slot_type,date_display,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,created_at,cancellation_requested_at,cancelled_at,cancelled_payment_method,cancelled_paid_at,cancelled_refund_pct,updated_at,created_by,cancelled_by,arrived_at';
+        try {
+            const { data, error } = await fetchAllPaginated(() => supabaseClient
+                .from('bookings')
+                .select(cols)
+                .or(ors.join(','))
+                .order('date', { ascending: false })
+                .order('id'), { timeoutMs: 15000 });
+            if (error) { console.error('[Supabase] fetchClientHistory error:', error.message || error); return null; }
+            return (data || []).map(row => this._mapRow(row));
+        } catch (e) {
+            console.error('[Supabase] fetchClientHistory exception:', e);
+            return null;
         }
     }
 
@@ -2937,12 +2987,16 @@ class WorkoutLogStorage {
             const plan = WorkoutPlanStorage.getPlanById(planId);
             if (!plan || !plan.workout_exercises?.length) { this._cache = []; return; }
             const exIds = plan.workout_exercises.map(e => e.id);
-            const { data, error } = await _queryWithTimeout(supabaseClient
+            // Paginato: c'è UNA riga per ogni serie loggata → un cliente assiduo supera il cap di
+            // ~1000 righe di PostgREST in pochi mesi e i log più vecchi sparivano dallo storico.
+            // Tiebreaker .order('id') = pagine stabili (log_date/set_number non sono univoci).
+            const { data, error } = await fetchAllPaginated(() => supabaseClient
                 .from('workout_logs')
                 .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rest_done,rpe')
                 .in('exercise_id', exIds)
                 .order('log_date', { ascending: false })
-                .order('set_number', { ascending: true }));
+                .order('set_number', { ascending: true })
+                .order('id'));
             if (error) { console.error('[Supabase] WorkoutLogStorage.sync error:', error.message); return; }
             this._cache = data || [];
             console.log(`[Supabase] WorkoutLogStorage.sync: ${this._cache.length} log caricati`);
@@ -2953,12 +3007,15 @@ class WorkoutLogStorage {
     static async syncForUser(userId) {
         if (typeof supabaseClient === 'undefined') return;
         try {
-            const { data, error } = await _queryWithTimeout(supabaseClient
+            // Paginato (cap ~1000 righe PostgREST): una riga per serie → lo storico vecchio veniva
+            // troncato. Tiebreaker .order('id') = pagine stabili.
+            const { data, error } = await fetchAllPaginated(() => supabaseClient
                 .from('workout_logs')
                 .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rest_done,rpe')
                 .eq('user_id', userId)
                 .order('log_date', { ascending: false })
-                .order('set_number', { ascending: true }));
+                .order('set_number', { ascending: true })
+                .order('id'));
             if (error) { console.error('[Supabase] WorkoutLogStorage.syncUser error:', error.message); return; }
             this._cache = data || [];
         } catch (e) { console.error('[Supabase] WorkoutLogStorage.syncUser exception:', e); }

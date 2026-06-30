@@ -1763,11 +1763,14 @@ async function _schedeClientDetailLoadLogs(userId, plans, { force = false } = {}
 
     const promise = (async () => {
         try {
-            const { data, error } = await _queryWithTimeout(supabaseClient
+            // Paginato (cap ~1000 righe PostgREST): una riga per serie → lo storico cliente lato
+            // admin veniva troncato e gli allenamenti vecchi sparivano. Tiebreaker .order('id').
+            const { data, error } = await fetchAllPaginated(() => supabaseClient
                 .from('workout_logs')
                 .select('exercise_id, log_date, weight_done, reps_done')
                 .in('exercise_id', allExIds)
-                .order('log_date', { ascending: true }));
+                .order('log_date', { ascending: true })
+                .order('id'));
             if (error) throw error;
             const logs = data || [];
             _schedeLogsCacheByUser.set(userId, { logs, fetchedAt: Date.now() });

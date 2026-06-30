@@ -274,7 +274,7 @@
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=92"></script>
+    <script src="js/data.js?v=93"></script>
     <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
@@ -966,13 +966,16 @@
             if (!user) return;
             const exIds = (plan.workout_exercises || []).map(e => e.id);
             if (exIds.length) {
-                const { data: logsData } = await supabaseClient
+                // Paginato (cap ~1000 righe PostgREST): una riga per serie → i log vecchi sparivano.
+                // fetchAllPaginated è globale (data.js, caricato prima); tiebreaker .order('id').
+                const { data: logsData } = await fetchAllPaginated(() => supabaseClient
                     .from('workout_logs')
                     .select('*')
                     .in('exercise_id', exIds)
                     .eq('user_id', user.id)
                     .order('log_date', { ascending: false })
-                    .order('set_number', { ascending: true });
+                    .order('set_number', { ascending: true })
+                    .order('id'));
                 _allLogs = logsData || [];
             } else {
                 _allLogs = [];
@@ -1709,13 +1712,16 @@
                     return;
                 }
 
-                const { data: logs, error: logsErr } = await _queryWithTimeout(supabaseClient
+                // Paginato (cap ~1000 righe PostgREST): una riga per serie → lo storico veniva
+                // troncato e gli allenamenti vecchi sparivano. Tiebreaker .order('id') = pagine stabili.
+                const { data: logs, error: logsErr } = await fetchAllPaginated(() => supabaseClient
                     .from('workout_logs')
                     .select('*')
                     .in('exercise_id', allExIds)
                     .eq('user_id', user.id)
                     .order('log_date', { ascending: false })
-                    .order('set_number', { ascending: true }), 15000);
+                    .order('set_number', { ascending: true })
+                    .order('id'), { timeoutMs: 15000 });
                 if (logsErr) throw logsErr;
 
                 if (!logs?.length) {
@@ -1986,13 +1992,16 @@
                     return;
                 }
 
-                // Fetch ALL logs for this user's exercises (timeout 15s come safety net)
-                const { data: logs, error: logsErr } = await _queryWithTimeout(supabaseClient
+                // Fetch ALL logs for this user's exercises (paginato: cap ~1000 righe PostgREST,
+                // una riga per serie → senza paginazione i progressi vecchi sparivano).
+                // Tiebreaker .order('id') = pagine stabili (log_date non è univoco).
+                const { data: logs, error: logsErr } = await fetchAllPaginated(() => supabaseClient
                     .from('workout_logs')
                     .select('*')
                     .in('exercise_id', allExIds)
                     .eq('user_id', user.id)
-                    .order('log_date', { ascending: true }), 15000);
+                    .order('log_date', { ascending: true })
+                    .order('id'), { timeoutMs: 15000 });
                 if (logsErr) throw logsErr;
 
                 if (!logs?.length) {

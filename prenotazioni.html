@@ -279,7 +279,7 @@
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=92"></script>
+    <script src="js/data.js?v=93"></script>
     <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
@@ -769,12 +769,43 @@
         // ── Edit profile modal ────────────────────────────────────────────
         // ── Weekly / Monthly training chart ──────────────────────────────
         let _chartView = 'weekly'; // 'weekly' | 'monthly'
+        let _chartFullBookings = null; // storico completo on-demand (null = non ancora caricato)
 
-        function openWeeklyChartModal() {
+        // Sorgente dati dei grafici: la cache live (getUserBookings, finestra 60gg passati) FUSA con
+        // lo storico completo on-demand. La vista mensile mostra 5 mesi indietro: senza lo storico
+        // i mesi più vecchi di ~2 mesi erano sotto-contati (solo le prenotazioni non pagate, le
+        // uniche vecchie che la cache utente tiene). Su id duplicati vince la cache live (più fresca
+        // dopo prenota/annulla). Entrambe le sorgenti sono già filtrate sul cliente corrente.
+        function _chartSourceBookings() {
+            const { upcoming, past } = getUserBookings();
+            const live = [...past, ...upcoming];
+            if (!_chartFullBookings) return live;
+            const byKey = new Map();
+            for (const b of _chartFullBookings) byKey.set(b._sbId || b.id, b);
+            for (const b of live) byKey.set(b._sbId || b.id, b); // live vince
+            return [...byKey.values()];
+        }
+
+        // Carica una sola volta lo storico completo del cliente (anche lezioni pagate >60gg) via
+        // query mirata per-cliente (non tocca la cache globale). Fail-silent: se non disponibile,
+        // i grafici restano sulla cache finestrata (comportamento pre-fix).
+        async function _ensureChartBookings() {
+            if (_chartFullBookings) return;
+            const user = getCurrentUser();
+            if (!user || typeof BookingStorage === 'undefined' || typeof BookingStorage.fetchClientHistory !== 'function') return;
+            try {
+                const rows = await BookingStorage.fetchClientHistory({ userId: user.id, email: user.email, whatsapp: user.whatsapp });
+                if (rows) _chartFullBookings = rows;
+            } catch (e) { /* fail-silent: resta sulla cache finestrata */ }
+        }
+
+        async function openWeeklyChartModal() {
             _chartView = 'weekly';
             document.getElementById('weeklyChartModal').style.display = 'flex';
             _updateChartToggleUI();
-            setTimeout(renderCurrentChart, 50);
+            setTimeout(renderCurrentChart, 50);   // render immediato dalla cache
+            await _ensureChartBookings();          // carica storico completo
+            renderCurrentChart();                  // re-render coi dati completi (no attesa visibile)
         }
         function closeWeeklyChartModal() {
             document.getElementById('weeklyChartModal').style.display = 'none';
@@ -795,8 +826,7 @@
         }
 
         function renderMonthlyChart() {
-            const { upcoming, past } = getUserBookings();
-            const all = [...past, ...upcoming].filter(b => b.status !== 'cancelled');
+            const all = _chartSourceBookings().filter(b => b.status !== 'cancelled');
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -861,8 +891,7 @@
         }
 
         function renderWeeklyChart() {
-            const { upcoming, past } = getUserBookings();
-            const all = [...past, ...upcoming].filter(b => b.status !== 'cancelled');
+            const all = _chartSourceBookings().filter(b => b.status !== 'cancelled');
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
