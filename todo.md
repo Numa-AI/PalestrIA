@@ -79,8 +79,8 @@ Confrontate le ~20 voci NUOVE del changelog di Thomas (tutte **2026-07-01**) col
 - **Rimozione bottone `desktop-wake-sync` da admin**: PalestrIA non ha `desktop-wake-sync.js`.
 - **security.txt (Cloudflare/thomasbresciani.com)**: PalestrIA su GitHub Pages, dominio/email di Thomas (infra diversa §0.1).
 
-### DEPLOY — DA FARE
-- [ ] **Asset GitHub Pages**: `git push origin HEAD:main` (nessuna migration/edge, tutto client). Verifica post-deploy: (1) niente doppio reload dopo un refresh; (2) tel cliente apre WhatsApp; (3) Registro "Vedi cliente" apre la card; (4) refresh tab Statistiche senza lampo skeleton; (5) lista clienti pagina a 20 con "Mostra altri"; (6) popup nuovo cliente su mobile/PWA quando un cliente completa l'anagrafica; (7) prenotazioni future in rosso nella card.
+### DEPLOY — FATTO
+- [x] **Asset GitHub Pages**: pushato su `origin/main` (commit **8b6d0e9**, 18 file; `CACHE_NAME palestria-v572`). Nessuna migration/edge, tutto client. Verifica post-deploy: (1) niente doppio reload dopo un refresh; (2) tel cliente apre WhatsApp; (3) Registro "Vedi cliente" apre la card; (4) refresh tab Statistiche senza lampo skeleton; (5) lista clienti pagina a 20 con "Mostra altri"; (6) popup nuovo cliente su mobile/PWA quando un cliente completa l'anagrafica; (7) prenotazioni future in rosso nella card.
 
 ---
 
