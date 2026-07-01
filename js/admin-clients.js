@@ -516,6 +516,18 @@ function toggleClientCard(id, idx) {
     openClientIndex = isOpen ? idx : null;
 }
 
+// Switch segmentato Prenotazioni ⇄ Storico dentro la card cliente: mostra un pannello per volta.
+function switchClientSeg(index, seg) {
+    const card = document.getElementById(`client-card-${index}`);
+    if (!card) return;
+    card.querySelectorAll('.cv2-seg-btn').forEach(b => {
+        const on = b.dataset.seg === seg;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    card.querySelectorAll('.cv2-seg-panel').forEach(p => { p.hidden = (p.dataset.seg !== seg); });
+}
+
 // "▼ Mostra altri N": rivela in blocchi le righe .pag-item nascoste di una lista paginata
 // (prenotazioni della card cliente). A fine paginazione rivela un eventuale elemento collegato
 // via data-reveal-on-done (es. "Carica storico completo") e si rimuove.
@@ -539,6 +551,12 @@ function _showMoreItems(btn, stepCount) {
         btn.textContent = `▼ Mostra altri ${Math.min(stepCount, total - newShown)}`;
     }
 }
+
+// Icone SVG (stroke currentColor → il colore lo dà la classe del contenitore/bottone).
+const CV2_PHONE_SVG = '<svg class="cv2-contact-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+const CV2_MAIL_SVG = '<svg class="cv2-contact-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>';
+const CV2_EDIT_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>';
+const CV2_TRASH_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
 
 function createClientCard(client, index) {
     const card = document.createElement('div');
@@ -588,48 +606,85 @@ function createClientCard(client, index) {
         ? `<button type="button" class="cedit-cert-badge cedit-cert-badge--clickable cedit-cert-expiring" onclick="event.stopPropagation(); openEditClientPopup(${index},'${_wEscBadge}','${_emEscBadge}','${_nEscBadge}')">📋 Completa anagrafica</button>`
         : '';
 
-    const methodLabel = m => ({ contanti: '💵 Contanti', 'contanti-report': '🧾 Contanti con Report', carta: '💳 Carta', iban: '🏦 Bonifico', stripe: '💳 Stripe', gratuito: '🎁 Gratuita', 'lezione-gratuita': '🎁 Gratuita' }[m] || '—');
-    const fmtPaidAt = iso => {
-        if (!iso) return '<span style="color:#ccc">—</span>';
-        const d = new Date(iso);
-        return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    };
+    const _methodShort = m => ({ contanti: 'Contanti', 'contanti-report': 'Contanti (report)', carta: 'Carta', iban: 'Bonifico', stripe: 'Stripe', gratuito: 'Gratuita', 'lezione-gratuita': 'Gratuita' }[m] || '');
 
+    // ── Righe-card PRENOTAZIONI (barra colore per tipo slot, org-aware via getSlotColor) ──
     const bookingRows = client.bookings.map((b, bIdx) => {
-        const dateStr = b.date.split('-').reverse().join('/');
-        const isCancelPending  = b.status === 'cancellation_requested';
-        const isCancelled      = b.status === 'cancelled';
-        const rowClass = [
-            'pag-item',
+        const dateShort = b.date.split('-').reverse().slice(0, 2).join('/');
+        const dateFull  = b.date.split('-').reverse().join('/');
+        const isCancelPending = b.status === 'cancellation_requested';
+        const isCancelled     = b.status === 'cancelled';
+        const isFree = b.paid && (b.paymentMethod === 'gratuito' || b.paymentMethod === 'lezione-gratuita');
+        const rowClass = ['book-row', 'pag-item',
             bookingHasPassed(b) ? '' : 'future-booking',
             isCancelPending ? 'row-cancel-pending' : '',
-            isCancelled     ? 'row-cancelled'      : ''
-        ].filter(Boolean).join(' ');
+            isCancelled ? 'row-cancelled' : ''].filter(Boolean).join(' ');
         const nEsc = _escAttr(b.name);
-        const statusCell = isCancelled
+        const barColor = isCancelled ? '#e5e7eb' : ((typeof getSlotColor === 'function') ? getSlotColor(b.slotType) : '#cbd5e1');
+        const statusPill = isCancelled
             ? `<span class="payment-status" style="background:#f3f4f6;color:#6b7280">✕ Annullata</span>`
             : isCancelPending
                 ? `<span class="payment-status" style="background:#fef3c7;color:#92400e">⏳ Annullamento</span>`
-                : `<span class="payment-status ${b.paid ? 'paid' : 'unpaid'}">${b.paid ? '✓ Pagato' : 'Non pagato'}</span>`;
-        return `<tr id="brow-${b.id}" class="${rowClass}"${bIdx >= 5 ? ' style="display:none"' : ''}>
-            <td>${dateStr}</td>
-            <td>${b.time}</td>
-            <td>${SLOT_NAMES[b.slotType]}</td>
-            <td>${statusCell}</td>
-            <td>${(isCancelPending || isCancelled) ? '—' : methodLabel(b.paymentMethod)}</td>
-            <td class="paidat-cell">${(isCancelPending || isCancelled) ? '—' : fmtPaidAt(b.paidAt)}</td>
-            <td class="booking-actions">
-                ${!isCancelled ? `<button class="btn-row-edit" onclick="startEditBookingRow('${b.id}', ${index})" title="Modifica">✏️</button>` : ''}
-                <button class="btn-row-delete" onclick="deleteBookingFromClients('${b.id}', '${nEsc}')" title="Elimina">🗑️</button>
-            </td>
-        </tr>`;
+                : isFree
+                    ? `<span class="payment-status" style="background:#f3f4f6;color:#6b7280">🎁 Gratuita</span>`
+                    : b.paid
+                        ? `<span class="payment-status paid">✓ Pagato${_methodShort(b.paymentMethod) ? ' con ' + _methodShort(b.paymentMethod) : ''}</span>`
+                        : `<span class="payment-status unpaid">Non pagato</span>`;
+        const actions = (!isCancelled ? `<button class="btn-row-edit" onclick="openBookingEditPopup('${b.id}', ${index})" title="Modifica">${CV2_EDIT_SVG}</button>` : '')
+            + `<button class="btn-row-delete" onclick="deleteBookingFromClients('${b.id}', '${nEsc}')" title="Elimina">${CV2_TRASH_SVG}</button>`;
+        return `<div id="brow-${b.id}" class="${rowClass}"${bIdx >= 5 ? ' style="display:none"' : ''} title="${_escAttr(SLOT_NAMES[b.slotType] || '')} · ${dateFull} · ${b.time}">
+            <span class="book-row-bar" style="background:${barColor}"></span>
+            <div class="book-row-main">
+                <div class="book-row-type">${SLOT_NAMES[b.slotType] || ''}</div>
+                <div class="book-row-when">${dateShort} · ${b.time}</div>
+            </div>
+            <div class="book-row-side">
+                ${statusPill}
+                <div class="book-row-actions">${actions}</div>
+            </div>
+        </div>`;
     });
-    const bookingsHTML = bookingRows.join('');
-    const tbodyId = `tbody-brows-${index}`;
     const bTotal = bookingRows.length;
+    const bookingsHTML = bTotal ? bookingRows.join('') : '<div class="cv2-seg-empty">Nessuna prenotazione</div>';
+    const listId = `brows-${index}`;
+
+    // ── Storico movimenti (incassi): prenotazioni pagate = entrata (+€), gratuite = €0 ──
+    const _movs = client.bookings
+        .filter(b => b.status !== 'cancelled' && b.paid)
+        .map(b => {
+            const free = b.paymentMethod === 'gratuito' || b.paymentMethod === 'lezione-gratuita';
+            return {
+                sortKey: b.paidAt || (b.date + 'T00:00:00'),
+                dateShort: b.date.split('-').reverse().slice(0, 2).join('/'),
+                time: b.time,
+                label: SLOT_NAMES[b.slotType] || 'Lezione',
+                method: _methodShort(b.paymentMethod),
+                free,
+                price: free ? 0 : getBookingPrice(b)
+            };
+        })
+        .sort((a, b) => new Date(b.sortKey) - new Date(a.sortKey));
+    const storicoCount = _movs.length;
+    const storicoRows = _movs.map(m => {
+        const amt = m.free
+            ? `<span class="tx-row-amount free">€0</span>`
+            : `<span class="tx-row-amount plus">+€${Math.round(m.price * 100) / 100}</span>`;
+        return `<div class="tx-row ${m.free ? 'tx-free' : 'tx-plus'}">
+            <span class="tx-row-bar"></span>
+            <div class="tx-row-main">
+                <div class="tx-row-label"><span class="tx-row-ic">${m.free ? '🎁' : '💰'}</span>${_escHtml(m.label)}${m.method ? ' · ' + _escHtml(m.method) : ''}</div>
+                <div class="tx-row-when">${m.dateShort} · ${_escHtml(m.time)}</div>
+            </div>
+            <div class="tx-row-side">${amt}</div>
+        </div>`;
+    }).join('');
+    const storicoHTML = storicoCount
+        ? `<div class="client-credit-history">${storicoRows}</div>`
+        : `<div class="cv2-seg-empty">Nessun incasso registrato</div>`;
+
     const fullHistBtnId = `fullhist-btn-${index}`;
     const showMoreBooksBtn = bTotal > 5
-        ? `<button class="show-more-btn" onclick="_showMoreItems(this,10)" data-container="${tbodyId}" data-shown="5" data-total="${bTotal}" data-reveal-on-done="${fullHistBtnId}" style="margin-top:0.5rem;">▼ Mostra altri ${Math.min(10, bTotal - 5)}</button>`
+        ? `<button class="show-more-btn" onclick="_showMoreItems(this,10)" data-container="${listId}" data-shown="5" data-total="${bTotal}" data-reveal-on-done="${fullHistBtnId}" style="margin-top:0.5rem;">▼ Mostra altri ${Math.min(10, bTotal - 5)}</button>`
         : '';
     // Storico completo on-demand: la cache è finestrata a 60gg passati, quindi le prenotazioni
     // (anche pagate) più vecchie non compaiono. Il bottone le carica al volo per QUESTO cliente.
@@ -705,8 +760,8 @@ function createClientCard(client, index) {
             <div class="client-info-block">
                 <div class="client-name">${_escHtml(client.name)} <button class="btn-edit-contact-icon" onclick="event.stopPropagation(); openEditClientPopup(${index}, '${wEsc}', '${emEsc}', '${nEsc}')" title="Modifica contatto">✏️</button></div>
                 <div class="client-contacts">
-                    ${phoneRaw ? `<a class="cv2-contact-link" href="https://wa.me/${_escHtml(phoneWa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📱 ${_escHtml(phoneRaw)}</a>` : ''}
-                    ${client.email ? `<a class="cv2-contact-link" href="mailto:${_escHtml(client.email)}" onclick="event.stopPropagation()">✉️ ${_escHtml(client.email)}</a>` : ''}
+                    ${phoneRaw ? `<a class="cv2-contact-link" href="https://wa.me/${_escHtml(phoneWa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${CV2_PHONE_SVG}<span class="cv2-contact-txt">${_escHtml(phoneRaw)}</span></a>` : ''}
+                    ${client.email ? `<a class="cv2-contact-link" href="mailto:${_escHtml(client.email)}" onclick="event.stopPropagation()">${CV2_MAIL_SVG}<span class="cv2-contact-txt">${_escHtml(client.email)}</span></a>` : ''}
                 </div>
                 <div class="cv2-badges-row">
                     ${certDisplay}${assicDisplay}${anagDisplay}${docDisplay}
@@ -716,15 +771,17 @@ function createClientCard(client, index) {
         </div>
         <div class="client-stats-block cv2-stats-grid" onclick="toggleClientCard('client-card-${index}', ${index})">${statsGridHTML}</div>
         <div class="client-card-body">
-            <div class="client-bookings-section">
-                <table class="client-bookings-table">
-                    <thead><tr>
-                        <th>Data</th><th>Ora</th><th>Tipo</th><th>Stato</th><th>Metodo</th><th>Data Pag.</th><th></th>
-                    </tr></thead>
-                    <tbody id="${tbodyId}">${bookingsHTML}</tbody>
-                </table>
+            <div class="cv2-segmented" role="tablist">
+                <button class="cv2-seg-btn active" role="tab" data-seg="pren" aria-selected="true" onclick="switchClientSeg(${index}, 'pren')">Prenotazioni · ${bTotal}</button>
+                <button class="cv2-seg-btn" role="tab" data-seg="storico" aria-selected="false" onclick="switchClientSeg(${index}, 'storico')">Storico · ${storicoCount}</button>
+            </div>
+            <div class="cv2-seg-panel" data-seg="pren" role="tabpanel">
+                <div class="client-bookings-list" id="${listId}">${bookingsHTML}</div>
                 ${showMoreBooksBtn}
                 ${fullHistBtnHTML}
+            </div>
+            <div class="cv2-seg-panel" data-seg="storico" role="tabpanel" hidden>
+                ${storicoHTML}
             </div>
             ${schedeHTML}
             ${economyHTML}
@@ -1266,16 +1323,12 @@ async function deleteClientData(index, whatsapp, email) {
     renderClientsTab();
 }
 
-function startEditBookingRow(bookingId, clientIndex) {
+// Modifica prenotazione in POPUP (riusa l'overlay .edit-client-popup-overlay). Gli input hanno
+// gli stessi ID (bedit-paid/method/paidat-<id>) dell'edit inline precedente → saveBookingRowEdit
+// resta invariato (legge per ID, indipendente da dove vivono gli input).
+function openBookingEditPopup(bookingId, clientIndex) {
     const booking = BookingStorage.getAllBookings().find(b => b.id === bookingId);
     if (!booking) return;
-
-    const row = document.getElementById(`brow-${bookingId}`);
-    if (!row) return;
-
-    row._origHTML  = row.innerHTML;
-    row._origClass = row.className;
-    row.classList.add('editing');
 
     const methods = [
         { v: 'contanti',        l: '💵 Contanti'            },
@@ -1294,39 +1347,55 @@ function startEditBookingRow(bookingId, clientIndex) {
         ? new Date(booking.paidAt).toISOString().slice(0, 16)   // "YYYY-MM-DDTHH:MM" per datetime-local
         : '';
 
-    row.innerHTML = `
-        <td>${dateStr}</td>
-        <td>${booking.time}</td>
-        <td>${SLOT_NAMES[booking.slotType]}</td>
-        <td>
-            <select id="bedit-paid-${bookingId}">
-                <option value="true"  ${booking.paid  ? 'selected' : ''}>✓ Pagato</option>
-                <option value="false" ${!booking.paid ? 'selected' : ''}>✗ Non pagato</option>
-            </select>
-        </td>
-        <td>
-            <select id="bedit-method-${bookingId}">
-                <option value="">—</option>
-                ${methodOpts}
-            </select>
-        </td>
-        <td>
-            <input type="datetime-local" id="bedit-paidat-${bookingId}" value="${paidAtInput}" class="bedit-date-input">
-        </td>
-        <td class="booking-actions">
-            <button class="btn-row-save"   onclick="saveBookingRowEdit('${bookingId}', ${clientIndex})" title="Salva">✓</button>
-            <button class="btn-row-cancel" onclick="cancelBookingRowEdit('${bookingId}')" title="Annulla">✕</button>
-        </td>
+    document.getElementById('bookingEditPopupOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'bookingEditPopupOverlay';
+    overlay.className = 'edit-client-popup-overlay';
+    overlay.innerHTML = `
+        <div class="edit-client-popup">
+            <div class="edit-client-popup-header">
+                <h3>Modifica prenotazione</h3>
+                <button class="edit-client-popup-close" onclick="closeBookingEditPopup()">&times;</button>
+            </div>
+            <div class="edit-client-popup-body">
+                <div class="bedit-popup-meta">
+                    <strong>${_escHtml(SLOT_NAMES[booking.slotType] || 'Lezione')}</strong> · ${dateStr} · ${_escHtml(booking.time)}
+                </div>
+                <div class="edit-client-popup-section">
+                    <label>Stato pagamento
+                        <select id="bedit-paid-${bookingId}">
+                            <option value="true"  ${booking.paid  ? 'selected' : ''}>✓ Pagato</option>
+                            <option value="false" ${!booking.paid ? 'selected' : ''}>✗ Non pagato</option>
+                        </select>
+                    </label>
+                    <label>Metodo
+                        <select id="bedit-method-${bookingId}">
+                            <option value="">—</option>
+                            ${methodOpts}
+                        </select>
+                    </label>
+                    <label>Data/ora pagamento
+                        <input type="datetime-local" id="bedit-paidat-${bookingId}" value="${paidAtInput}">
+                    </label>
+                </div>
+            </div>
+            <div class="edit-client-popup-actions">
+                <button class="btn-cancel-edit" onclick="closeBookingEditPopup()">Annulla</button>
+                <button class="btn-save-edit" onclick="saveBookingRowEdit('${bookingId}', ${clientIndex})">Salva</button>
+            </div>
+        </div>
     `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeBookingEditPopup(); });
+    setTimeout(() => overlay.classList.add('open'), 10);
 }
 
-function cancelBookingRowEdit(bookingId) {
-    const row = document.getElementById(`brow-${bookingId}`);
-    if (!row || !row._origHTML) return;
-    row.innerHTML  = row._origHTML;
-    row.className  = row._origClass || '';
-    delete row._origHTML;
-    delete row._origClass;
+function closeBookingEditPopup() {
+    const overlay = document.getElementById('bookingEditPopupOverlay');
+    if (overlay) {
+        overlay.classList.remove('open');
+        setTimeout(() => overlay.remove(), 200);
+    }
 }
 
 async function saveBookingRowEdit(bookingId, clientIndex) {
@@ -1386,6 +1455,7 @@ async function saveBookingRowEdit(bookingId, clientIndex) {
 
                 await BookingStorage.syncFromSupabase().catch(e => console.warn('[Clients] booking sync:', e?.message || e));
                 invalidateStatsCache();
+                closeBookingEditPopup();
                 renderClientsTab();
             } catch (ex) {
                 console.error('[saveBookingRowEdit] unexpected error:', ex);
@@ -1409,6 +1479,7 @@ async function saveBookingRowEdit(bookingId, clientIndex) {
 
     BookingStorage.replaceAllBookings(bookings);
     if (_saveBtn) _saveBtn.disabled = false;
+    closeBookingEditPopup();
     renderClientsTab();
 }
 

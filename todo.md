@@ -72,15 +72,24 @@ Confrontate le ~20 voci NUOVE del changelog di Thomas (tutte **2026-07-01**) col
 - [x] **H — Sfondo rosso prenotazioni future** ([admin.css](css/admin.css)): adattato alla **tabella** `.client-bookings-table tr.future-booking:not(.row-cancelled):not(.editing) td { background:#fef2f2 }` (Thomas usa le `.book-row` card, PalestrIA no). Escluse annullate e riga in modifica.
 - [x] **Cache-bust**: `sw.js` `CACHE_NAME` **palestria-v571→v572** (+`new-client-popup.js` in `APP_SHELL`); `data.js` v93→**94** (9 HTML), `admin-clients.js` v12→**13**, `admin-registro.js` v9→**10**, `admin-analytics.js` v9→**10**, `admin.css` v78→**79**, `new-client-popup.js` v1 (admin.html). `node --check` OK su sw-update/new-client-popup/admin-clients/admin-registro/admin-analytics/data/sw.
 
+### Redesign grafico card cliente — PORTATO (2026-07-01 pt.2, su richiesta utente)
+Inizialmente segnato N/A, poi portato dalla **[GUIDA REPLICA]** aggiunta da Thomas al changelog. Adattato: **brand viola** (non `--primary-cyan`), **colori slot org-aware** via `getSlotColor()` (non var CSS fisse), **niente crediti/bonus** (§11).
+- [x] **Card ritematizzata in viola** ([admin.css](css/admin.css)): accento `#8B5CF6`/`#7C3AED`, avatar `#ede9fe/#7c3aed`, stati open `#f5f3ff/#ede9fe`, stat "Prenot. Future" viola. (Era blu.)
+- [x] **Contatti con icone SVG** (`CV2_PHONE_SVG`/`CV2_MAIL_SVG`) + testo troncabile `.cv2-contact-txt` ([admin-clients.js](js/admin-clients.js)).
+- [x] **Prenotazioni → righe-card `.book-row`**: barra colore per tipo slot **org-aware** (`getSlotColor` inline), future=rosso, pill "✓ Pagato con {metodo}"/"🎁 Gratuita"/"Non pagato" (metodi reali, **no Credito**), azioni edit/trash SVG. `.pag-item` preservato → `_showMoreItems` + reveal storico completo intatti.
+- [x] **Switch segmentato Prenotazioni ⇄ Storico** (`switchClientSeg`): pannello **Storico = incassi** del cliente (prenotazioni pagate = `+€`, gratuite = €0), costruito dai bookings già in cache (nessun fetch extra). Schede + Situazione economica restano sotto entrambi i pannelli.
+- [x] **Modifica prenotazione in POPUP** (`openBookingEditPopup`/`closeBookingEditPopup`, riusa overlay `.edit-client-popup-overlay`): stessi ID input `bedit-*` → `saveBookingRowEdit` (RPC `admin_pay_bookings`/`admin_update_booking`) **invariato**. Rimosso l'edit inline (`startEditBookingRow`/`cancelBookingRowEdit`) e la vecchia tabella `.client-bookings-table`.
+- [x] **Cache-bust**: `sw.js` `palestria-v572→v573`, `admin-clients.js` v13→**14**, `admin.css` v79→**80** (admin.html). `node --check` OK.
+
 ### Non portato (N/A o coperto in forma diversa)
 - **Tab "Richieste" + carosello swipe** (4 voci: carosello aggiunto poi rimosso, ordine Richieste/Messaggi): PalestrIA **non ha** la tab Richieste né `admin-richieste.js`.
-- **Restyle card "righe-card" + switch segmentato + pill/colori/troncamento** (4 voci): PalestrIA usa ancora la **tabella** `.client-bookings-table`, non le `.book-row`; e `admin_change_payment_method`/"Bonus"/"Pagato con Credito"/`--primary-cyan` sono rimossi/diversi (§11).
 - **More/debiti pill nello Storico** e **fix 403 RLS reset bonus**: crediti/bonus rimossi (§11).
 - **Rimozione bottone `desktop-wake-sync` da admin**: PalestrIA non ha `desktop-wake-sync.js`.
 - **security.txt (Cloudflare/thomasbresciani.com)**: PalestrIA su GitHub Pages, dominio/email di Thomas (infra diversa §0.1).
 
-### DEPLOY — FATTO
+### DEPLOY — FATTO (batch A–H)
 - [x] **Asset GitHub Pages**: pushato su `origin/main` (commit **8b6d0e9**, 18 file; `CACHE_NAME palestria-v572`). Nessuna migration/edge, tutto client. Verifica post-deploy: (1) niente doppio reload dopo un refresh; (2) tel cliente apre WhatsApp; (3) Registro "Vedi cliente" apre la card; (4) refresh tab Statistiche senza lampo skeleton; (5) lista clienti pagina a 20 con "Mostra altri"; (6) popup nuovo cliente su mobile/PWA quando un cliente completa l'anagrafica; (7) prenotazioni future in rosso nella card.
+- [ ] **DEPLOY redesign card (v573)**: da pushare. Verifica post-deploy: card cliente in viola, prenotazioni a righe-card con barra colore per tipo, switch Prenotazioni/Storico, modifica prenotazione in popup, pill "Pagato con {metodo}".
 
 ---
 
