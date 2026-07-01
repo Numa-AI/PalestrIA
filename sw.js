@@ -1,4 +1,4 @@
-const CACHE_NAME = 'palestria-v571';
+const CACHE_NAME = 'palestria-v572';
 
 const APP_SHELL = [
     './',
@@ -29,6 +29,7 @@ const APP_SHELL = [
     'js/push.js',
     'js/pwa-install.js',
     'js/sw-update.js',
+    'js/new-client-popup.js',
     'js/pull-to-refresh.js',
     'js/silent-refresh.js',
     'js/app-watchdog.js',

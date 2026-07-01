@@ -49,8 +49,82 @@ let _statsPaymentsRange = null;  // { from, to }
 const _excludeAdminBookings = arr => arr.filter(b => !ADMIN_EMAILS.has((b.email || '').toLowerCase()));
 // Sequenza per scartare risposte stale in caso di click rapidi sui filtri
 let _loadDashboardSeq = 0;
-// Invalida la cache stats (chiamare dopo save/cancel booking)
-function invalidateStatsCache() { _statsCacheRange = null; _statsPaymentsRange = null; }
+
+// ── Snapshot stats persistito (stale-while-revalidate al cold start) ──────────
+// La cache stats è solo in RAM (sopra) per non pesare sul budget ~5MB di localStorage, ma
+// un refresh (cold start) la azzera → skeleton finché non torna il fetch (finestra ~2 anni).
+// Persistiamo uno snapshot su localStorage: al cold start paint immediato (niente skeleton) e,
+// se fresco entro TTL e copre il range, si salta pure il fetch bookings (meno egress). Scoped
+// per identità admin; cap righe + quota-guard; scartato se predate un clear globale dei dati.
+// NB: lo snapshot copre i SOLI bookings (la parte pesante); il ledger payments resta un fetch
+// separato più leggero → il fatturato reale si aggiorna appena arriva (niente skeleton comunque).
+const _STATS_PERSIST_KEY = 'gym_stats_cache_v1';
+const _STATS_PERSIST_TTL_MS = 90_000;   // entro 90s un refresh salta il fetch (dati economici freschi)
+const _STATS_PERSIST_MAX_ROWS = 6000;   // oltre, niente persist (evita quota)
+
+function _statsIdentity() {
+    try {
+        if (sessionStorage.getItem('adminAuth') === 'true') return 'admin';
+        const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+        return user?.id || null;
+    } catch (_) { return null; }
+}
+function _statsPersistKey() {
+    const id = _statsIdentity();
+    return id ? `${_STATS_PERSIST_KEY}:${id}` : null;
+}
+// Salva lo snapshot dopo un fetch riuscito. setItem diretto + try/catch: su quota fallisce
+// in silenzio (niente toast) e resta il fallback stale-while-revalidate.
+function _persistStatsCache() {
+    const key = _statsPersistKey();
+    if (!key || !_statsBookings || !_statsCacheRange) return;
+    if (_statsBookings.length > _STATS_PERSIST_MAX_ROWS) return;
+    try {
+        localStorage.setItem(key, JSON.stringify({
+            savedAt: Date.now(),
+            clearedAt: localStorage.getItem('dataLastCleared') || '0',
+            range: _statsCacheRange,
+            rows: _statsBookings,
+        }));
+    } catch (_) { /* quota/serialize: ignora — resta il fallback SWR */ }
+}
+// Idrata la cache RAM dallo snapshot persistito (solo cold start). Ritorna:
+//  'fresh' → entro TTL e range coperto (setta _statsCacheRange → skip fetch bookings)
+//  'stale' → serve solo per il primo paint (_statsCacheRange resta null → rivalida)
+//  null    → assente/invalido
+function _hydrateStatsCache(extFromStr, extToStr) {
+    const key = _statsPersistKey();
+    if (!key) return null;
+    const snap = _lsGetJSON(key, null);
+    if (!snap || !Array.isArray(snap.rows) || snap.rows.length === 0 || !snap.range) return null;
+    // Scarta (e rimuovi) se predate un clear globale dei dati.
+    if ((localStorage.getItem('dataLastCleared') || '0') !== (snap.clearedAt || '0')) {
+        try { localStorage.removeItem(key); } catch (_) { /* ignore */ }
+        return null;
+    }
+    _statsBookings = snap.rows;
+    const fresh = (Date.now() - (snap.savedAt || 0)) < _STATS_PERSIST_TTL_MS
+        && extFromStr >= snap.range.from
+        && extToStr   <= snap.range.to;
+    if (fresh) { _statsCacheRange = snap.range; return 'fresh'; }
+    return 'stale';
+}
+// Rimuove gli snapshot stats persistiti (tutte le identità). Chiamato su mutazione
+// (invalidateStatsCache) e, cross-pagina, da BookingStorage._clearPersistedCache
+// (logout / clear globale) per non lasciare dati economici admin sul dispositivo.
+function _clearPersistedStatsCache() {
+    try {
+        const prefix = _STATS_PERSIST_KEY + ':';
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(prefix)) localStorage.removeItem(k);
+        }
+    } catch (_) { /* ignore */ }
+}
+
+// Invalida la cache stats (chiamare dopo save/cancel booking): azzera i range in RAM
+// e butta lo snapshot persistito, così dopo una mutazione un refresh rifà il fetch.
+function invalidateStatsCache() { _statsCacheRange = null; _statsPaymentsRange = null; _clearPersistedStatsCache(); }
 
 // Fetch diretto del ledger pagamenti per il range richiesto (RLS filtra org_id).
 // Ritorna array di { date, amount, method, kind, email } o null in caso di errore.
@@ -300,7 +374,7 @@ async function loadDashboardData() {
     BookingStorage.processPendingCancellations();
 
     // 1) Stale-while-revalidate: se abbiamo dati in cache, render immediato
-    const hasCache = !!_statsBookings;
+    let hasCache = !!_statsBookings;
     if (hasCache) _renderDashboardUI();
 
     if (typeof BookingStorage !== 'undefined' && typeof supabaseClient !== 'undefined') {
@@ -317,6 +391,19 @@ async function loadDashboardData() {
         const extToDate = new Date(Math.max(to.getTime(), twelveMonthsAhead.getTime()));
         const extFromStr = _localDateStr(extFromDate);
         const extToStr   = _localDateStr(extToDate);
+
+        // 1b) Cold start (post-refresh): niente cache RAM → idrata dallo snapshot persistito.
+        // 'fresh' (entro TTL e range coperto) setta _statsCacheRange → salta il fetch bookings
+        // qui sotto; altrimenti paint immediato e si rivalida. Fallback allo snapshot condiviso
+        // di BookingStorage. Serve a togliere il "lampo" di skeleton al refresh.
+        if (!hasCache) {
+            _hydrateStatsCache(extFromStr, extToStr);
+            if (!_statsBookings) {
+                const snapshot = _excludeAdminBookings(BookingStorage.getAllBookings());
+                if (snapshot.length) _statsBookings = snapshot; // solo paint: _statsCacheRange resta null → fetch
+            }
+            if (_statsBookings) { hasCache = true; _renderDashboardUI(); }
+        }
 
         // 2) Cache hit: se il range richiesto è già coperto, skip fetch.
         // Bookings e payments hanno copertura tracciata SEPARATAMENTE: il ledger
@@ -357,6 +444,7 @@ async function loadDashboardData() {
             if (freshData !== null) {
                 _statsBookings = _excludeAdminBookings(freshData);
                 _statsCacheRange = { from: extFromStr, to: extToStr };
+                _persistStatsCache();   // persisti per il prossimo refresh (SWR cold start)
             } else if (!bookingsCovers && !_statsBookings) {
                 _statsBookings = _excludeAdminBookings(BookingStorage.getAllBookings());
             }

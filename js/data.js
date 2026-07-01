@@ -852,10 +852,13 @@ class BookingStorage {
 
     static _clearPersistedCache() {
         try {
-            const prefix = this._PERSIST_KEY + ':';
+            // Purga sia la cache bookings persistita sia lo snapshot stats admin
+            // (gym_stats_cache_v1:*, admin-analytics.js) → i dati economici non
+            // sopravvivono a logout / clear globale sul dispositivo.
+            const prefixes = [this._PERSIST_KEY + ':', 'gym_stats_cache_v1:'];
             for (let i = localStorage.length - 1; i >= 0; i--) {
                 const k = localStorage.key(i);
-                if (k && k.startsWith(prefix)) localStorage.removeItem(k);
+                if (k && prefixes.some(p => k.startsWith(p))) localStorage.removeItem(k);
             }
         } catch (e) { /* ignore */ }
     }
@@ -882,16 +885,21 @@ class BookingStorage {
         } catch (_) { return null; }
     }
 
-    static async syncFromSupabase({ ownOnly = false } = {}) {
+    // forceFull: bypassa il delta/skip e forza un FULL sync (finestra operativa completa +
+    // debiti vecchi). Usato dal Registro (vista di audit) che deve avere dati completi, non la
+    // cache delta ottimizzata per l'egress. Se c'è già un sync in volo per questa chiave riusa
+    // quello (anche se delta) — accettabile: il forceFull serve all'apertura del tab (throttlata)
+    // e si ripete al prossimo ingresso.
+    static async syncFromSupabase({ ownOnly = false, forceFull = false } = {}) {
         if (typeof supabaseClient === 'undefined') return;
         const syncKey = ownOnly ? 'own' : 'all';
         if (this._syncInFlightByKey[syncKey]) return this._syncInFlightByKey[syncKey];
-        this._syncInFlightByKey[syncKey] = this._syncFromSupabaseImpl({ ownOnly });
+        this._syncInFlightByKey[syncKey] = this._syncFromSupabaseImpl({ ownOnly, forceFull });
         try { return await this._syncInFlightByKey[syncKey]; }
         finally { delete this._syncInFlightByKey[syncKey]; }
     }
 
-    static async _syncFromSupabaseImpl({ ownOnly = false } = {}) {
+    static async _syncFromSupabaseImpl({ ownOnly = false, forceFull = false } = {}) {
         try {
             const user    = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
             const isAdmin = sessionStorage.getItem('adminAuth') === 'true';
@@ -962,7 +970,8 @@ class BookingStorage {
             //    3) altrimenti (primo load, count sceso = hard-delete, reconcile dovuto) → FULL.
             //    Reconcile periodico (5 min) come safety net per delete/edge a count invariato.
             let isDelta = false, deltaFrom = null, deltaNewFp = null;
-            if (isAdmin && !ownOnly) {
+            // forceFull salta l'intero blocco (niente skip-su-fingerprint-invariato né delta) → FULL.
+            if (isAdmin && !ownOnly && !forceFull) {
                 const reconcileDue = !this._bkLastFullFetch || (Date.now() - this._bkLastFullFetch > this._BK_RECONCILE_MS);
                 const prev = this._parseFingerprint(this._bkFingerprint);
                 if (prev && this._cache.length > 0) {
@@ -988,6 +997,7 @@ class BookingStorage {
             while (!done) {
                 let q = supabaseClient.from('bookings').select(bookingSelect)
                     .order(isDelta ? 'updated_at' : 'created_at', { ascending: false })
+                    .order('id')  // tiebreaker: created_at/updated_at non unici → pagine stabili oltre le 1000 righe
                     .range(pageFrom, pageFrom + PAGE - 1)
                     .lte('date', futureStr);
                 if (isDelta) {

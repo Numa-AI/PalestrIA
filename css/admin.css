@@ -1777,7 +1777,9 @@ canvas {
     white-space: nowrap;
 }
 
-.client-bookings-table tr.future-booking td { color: #aaa; font-style: italic; }
+/* Prenotazioni future evidenziate con sfondo rosso tenue (escluse annullate e riga in modifica). */
+.client-bookings-table tr.future-booking:not(.row-cancelled):not(.editing) td { background: #fef2f2; }
+.client-bookings-table tr.future-booking:not(.row-cancelled):not(.editing):hover td { background: #fee2e2; }
 .client-bookings-table tr.row-cancelled td { color: #bbb; text-decoration: line-through; }
 .client-bookings-table tr.row-cancelled td:last-child { text-decoration: none; }
 .client-bookings-table tr.editing td { background: #f0f9ff; }
@@ -3342,6 +3344,8 @@ canvas {
     transition: background 0.15s, color 0.15s;
 }
 .show-more-btn:hover { background: #f3f4f6; color: #374151; }
+/* Bottone paginazione lista clienti (largo, sotto le card renderizzate). */
+.clients-load-more { display: block; width: 100%; align-self: stretch; margin-top: 0.75rem; padding: 0.55rem 0.9rem; }
 
 .debtor-booking-item {
     background-color: #f8f9fb;

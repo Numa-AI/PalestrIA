@@ -58,6 +58,32 @@ Portato il fix registrato in `Aggiornamenti Thomas.md.lnk` (changelog del proget
 
 ---
 
+## 🧰 Port dal gemello Thomas — batch UI/perf/fix (2026-07-01) — APPLICATO
+Confrontate le ~20 voci NUOVE del changelog di Thomas (tutte **2026-07-01**) col codice di PalestrIA. Su scelta utente portato **tutto l'applicabile (A–H)**; le N/A segnalate sotto.
+
+### Portato (adattato a PalestrIA — solo client, nessuna migration/edge)
+- [x] **A — Stop reload SW "a sorpresa"** ([sw-update.js](js/sw-update.js)): PalestrIA ricaricava la pagina a ogni `controllerchange`/`activated` del SW → doppio refresh dopo ogni deploy (e alla prima presa di controllo). Riscritto: solo `register('sw.js')` + `reg.update()`; il nuovo SW prende il controllo in silenzio (`skipWaiting`+`clients.claim` invariati) e la versione entra alla **prima navigazione naturale** (MPA, HTML network-first). Caricato senza `?v=` → aggiornato dal bump `CACHE_NAME`.
+- [x] **B — Telefono cliente → chat WhatsApp** ([admin-clients.js](js/admin-clients.js) `createClientCard`): il link contatto era `tel:`; ora `https://wa.me/<num>` (`target=_blank rel=noopener`). Nuovo `phoneWa` (sole cifre, `0039→39`, prefissa `39` ai nazionali 10 cifre da `3`); rimosso `phoneTel`.
+- [x] **C — Registro "Vedi cliente" apre la card** ([admin-clients.js](js/admin-clients.js) + [admin-registro.js](js/admin-registro.js)): estratta `showSingleClientCard(client,{expand})` da `selectClientFromDropdown`; nuova `openClientCardByName(name)` (match nome case-insensitive). `regMobOpenClient` ora apre **direttamente** la card espansa (fallback: riempi la ricerca se non trovato).
+- [x] **D — Statistiche: snapshot persistito (SWR, no lampo skeleton)** ([admin-analytics.js](js/admin-analytics.js)): la cache stats era **solo in RAM** → al refresh (cold start) skeleton finché non tornava il fetch ~2 anni. Nuovo snapshot `gym_stats_cache_v1:<identità>` (helper `_persistStatsCache`/`_hydrateStatsCache`/`_clearPersistedStatsCache`, TTL 90s, cap 6000 righe); ramo cold-start 1b (paint immediato + skip fetch se fresco/coperto). `invalidateStatsCache()` butta anche lo snapshot; purga cross-pagina in `BookingStorage._clearPersistedCache` ([data.js](js/data.js), logout/clear). NB: snapshot = solo bookings (il ledger payments resta un fetch separato leggero).
+- [x] **E — Registro: fetch autoritativo su apertura tab** ([data.js](js/data.js) + [admin-registro.js](js/admin-registro.js)): `BookingStorage.syncFromSupabase({forceFull})` bypassa lo skip-su-fingerprint e il delta → FULL (il Registro è vista di audit, non deve saltare righe per il watermark); `_registroRefreshData()` lo usa (throttlato 10s). + tiebreaker **`.order('id')`** sulla query paginata dei bookings (`created_at`/`updated_at` non unici → pagine stabili >1000 righe). La parte `credit_history` di Thomas è **N/A** (crediti rimossi §11).
+- [x] **F — Paginazione lista clienti** ([admin-clients.js](js/admin-clients.js)): `renderClientsTab` costruiva **tutte** le card in un `forEach` (lento con molti clienti). Ora `_appendClientBatch(CLIENTS_PAGE_SIZE=20)` + bottone `#clientsLoadMoreBtn`; il primo batch si estende per includere una card aperta oltre il blocco. Bonus: **portato `_showMoreItems`** (in PalestrIA era referenziato ma **non definito** → bottone "Mostra altri" prenotazioni rotto) con `data-reveal-on-done` → "Carica storico completo" appare a fine paginazione (nascosto se >5 prenotazioni). CSS `.clients-load-more`.
+- [x] **G — Popup "Nuovo cliente iscritto" (mobile/PWA)** (nuovo [new-client-popup.js](js/new-client-popup.js)): all'admin, quando un cliente completa **tutta** l'anagrafica, popup con Nome + numero e bottoni WhatsApp/Telefono. Fonte `UserStorage._cache` (org-scoped da `get_all_profiles_basic`), `isComplete` = stesso criterio di `isAnagraficaComplete`. "Nuovo" = userId non in `palestria_newClientSeen_<orgId>` (namespaced per tenant); prima semina = baseline (niente flood). Gate: admin + mobile/PWA. CSS self-contained `.ncp-*`, accento **viola brand**. Wiring in `admin.html` + `APP_SHELL`.
+- [x] **H — Sfondo rosso prenotazioni future** ([admin.css](css/admin.css)): adattato alla **tabella** `.client-bookings-table tr.future-booking:not(.row-cancelled):not(.editing) td { background:#fef2f2 }` (Thomas usa le `.book-row` card, PalestrIA no). Escluse annullate e riga in modifica.
+- [x] **Cache-bust**: `sw.js` `CACHE_NAME` **palestria-v571→v572** (+`new-client-popup.js` in `APP_SHELL`); `data.js` v93→**94** (9 HTML), `admin-clients.js` v12→**13**, `admin-registro.js` v9→**10**, `admin-analytics.js` v9→**10**, `admin.css` v78→**79**, `new-client-popup.js` v1 (admin.html). `node --check` OK su sw-update/new-client-popup/admin-clients/admin-registro/admin-analytics/data/sw.
+
+### Non portato (N/A o coperto in forma diversa)
+- **Tab "Richieste" + carosello swipe** (4 voci: carosello aggiunto poi rimosso, ordine Richieste/Messaggi): PalestrIA **non ha** la tab Richieste né `admin-richieste.js`.
+- **Restyle card "righe-card" + switch segmentato + pill/colori/troncamento** (4 voci): PalestrIA usa ancora la **tabella** `.client-bookings-table`, non le `.book-row`; e `admin_change_payment_method`/"Bonus"/"Pagato con Credito"/`--primary-cyan` sono rimossi/diversi (§11).
+- **More/debiti pill nello Storico** e **fix 403 RLS reset bonus**: crediti/bonus rimossi (§11).
+- **Rimozione bottone `desktop-wake-sync` da admin**: PalestrIA non ha `desktop-wake-sync.js`.
+- **security.txt (Cloudflare/thomasbresciani.com)**: PalestrIA su GitHub Pages, dominio/email di Thomas (infra diversa §0.1).
+
+### DEPLOY — DA FARE
+- [ ] **Asset GitHub Pages**: `git push origin HEAD:main` (nessuna migration/edge, tutto client). Verifica post-deploy: (1) niente doppio reload dopo un refresh; (2) tel cliente apre WhatsApp; (3) Registro "Vedi cliente" apre la card; (4) refresh tab Statistiche senza lampo skeleton; (5) lista clienti pagina a 20 con "Mostra altri"; (6) popup nuovo cliente su mobile/PWA quando un cliente completa l'anagrafica; (7) prenotazioni future in rosso nella card.
+
+---
+
 ## 🔄 Port dal gemello Thomas — bug fix storico + debiti vecchi (2026-06-30) — APPLICATO
 Confrontate le voci NUOVE del changelog di Thomas (tutte datate **2026-06-30**) col codice di PalestrIA. Diverse N/A (crediti/More rimossi §11; hosting Cloudflare/`_headers`/privacy = infra diversa, PalestrIA su GitHub Pages) o coperte in forma equivalente.
 

@@ -26,6 +26,11 @@
  */
 // Clients Tab State
 let openClientIndex = null;
+// Paginazione lista clienti: costruire tutte le ~N card in un forEach è lento
+// (ogni createClientCard è pesante). Renderizziamo a blocchi con "Mostra altri".
+const CLIENTS_PAGE_SIZE = 20;
+let clientsShown = 0;
+let _clientsFiltered = null;
 let clientsSearchQuery = '';
 let clientCertFilter  = false;
 let clientAssicFilter = false;
@@ -241,21 +246,28 @@ function selectClientFromDropdown(index) {
     const dropdown = document.getElementById('clientsSearchDropdown');
     const matches = dropdown._matches;
     if (!matches || !matches[index]) return;
-    const client = matches[index];
+    showSingleClientCard(matches[index]);
+}
 
-    // Show only the selected client's card with close button
+// Mostra la card di un singolo cliente (vista "Risultato ricerca").
+// opts.expand: apre subito la card (dettagli visibili senza altro click).
+function showSingleClientCard(client, opts) {
+    opts = opts || {};
     const container = document.getElementById('clientsList');
+    if (!container) return;
     container.innerHTML = '';
     const header = document.createElement('div');
     header.className = 'search-results-header';
     header.innerHTML = '<h4>Risultato ricerca</h4><button class="btn-clear-search" onclick="clearClientsSearch()">✕ Chiudi</button>';
     container.appendChild(header);
     const card = createClientCard(client, 0);
+    if (opts.expand) { card.classList.add('open'); openClientIndex = 0; }
     container.appendChild(card);
     container.style.display = '';
 
     closeClientsSearchDropdown();
-    document.getElementById('clientSearchInput').value = client.name;
+    const searchInput = document.getElementById('clientSearchInput');
+    if (searchInput) searchInput.value = client.name;
     // Nascondi stat cards e filtri durante la ricerca
     const statsGrid = document.getElementById('clientsStatsGrid');
     const filterToggle = document.getElementById('clientsFilterToggle');
@@ -264,6 +276,17 @@ function selectClientFromDropdown(index) {
     if (filterToggle) filterToggle.style.display = 'none';
     if (filterChips) filterChips.style.display = 'none';
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Apre direttamente la card di un cliente dato il nome (usato da "Vedi cliente"
+// nel Registro). Ritorna false se il cliente non è trovato (il chiamante fa fallback).
+function openClientCardByName(name) {
+    const target = (name || '').trim().toLowerCase();
+    if (!target) return false;
+    const client = getAllClients().find(c => (c.name || '').trim().toLowerCase() === target);
+    if (!client) return false;
+    showSingleClientCard(client, { expand: true });
+    return true;
 }
 
 
@@ -442,14 +465,47 @@ function renderClientsTab() {
         return;
     }
 
-    filtered.forEach((client, index) => {
-        container.appendChild(createClientCard(client, index));
-    });
+    // Paginazione: costruire tutte le card in una volta è lento con molti clienti.
+    // Renderizziamo a blocchi (CLIENTS_PAGE_SIZE) con un bottone "Mostra altri clienti".
+    _clientsFiltered = filtered;
+    clientsShown = 0;
+    // Se una card era aperta oltre il primo blocco, estendi il primo batch per includerla.
+    let firstBatch = CLIENTS_PAGE_SIZE;
+    if (openClientIndex !== null && openClientIndex + 1 > firstBatch) {
+        firstBatch = Math.ceil((openClientIndex + 1) / CLIENTS_PAGE_SIZE) * CLIENTS_PAGE_SIZE;
+    }
+    _appendClientBatch(firstBatch);
+}
 
-    // Restore previously open card
+// Renderizza il prossimo blocco di card cliente e aggiorna il bottone "Mostra altri clienti".
+function _appendClientBatch(n) {
+    const container = document.getElementById('clientsList');
+    if (!container) return;
+    document.getElementById('clientsLoadMoreBtn')?.remove();
+    const filtered = _clientsFiltered || [];
+    const end = Math.min(clientsShown + n, filtered.length);
+    for (let i = clientsShown; i < end; i++) {
+        try {
+            container.appendChild(createClientCard(filtered[i], i));
+        } catch (e) {
+            console.error(`[_appendClientBatch] errore card cliente "${filtered[i]?.name || '?'}":`, e);
+        }
+    }
+    clientsShown = end;
+    // Ripristina la card aperta se ora è nel DOM
     if (openClientIndex !== null) {
         const card = document.getElementById(`client-card-${openClientIndex}`);
         if (card) card.classList.add('open');
+    }
+    // Bottone "Mostra altri clienti" se ne restano da renderizzare
+    const remaining = filtered.length - clientsShown;
+    if (remaining > 0) {
+        const btn = document.createElement('button');
+        btn.id = 'clientsLoadMoreBtn';
+        btn.className = 'show-more-btn clients-load-more';
+        btn.textContent = `▼ Mostra altri ${Math.min(CLIENTS_PAGE_SIZE, remaining)} clienti (${remaining} rimanenti)`;
+        btn.onclick = () => _appendClientBatch(CLIENTS_PAGE_SIZE);
+        container.appendChild(btn);
     }
 }
 
@@ -458,6 +514,30 @@ function toggleClientCard(id, idx) {
     if (!card) return;
     const isOpen = card.classList.toggle('open');
     openClientIndex = isOpen ? idx : null;
+}
+
+// "▼ Mostra altri N": rivela in blocchi le righe .pag-item nascoste di una lista paginata
+// (prenotazioni della card cliente). A fine paginazione rivela un eventuale elemento collegato
+// via data-reveal-on-done (es. "Carica storico completo") e si rimuove.
+function _showMoreItems(btn, stepCount) {
+    const containerId = btn.dataset.container;
+    const container = containerId ? document.getElementById(containerId) : btn.parentElement;
+    if (!container) return;
+    const shown = parseInt(btn.dataset.shown, 10);
+    const total = parseInt(btn.dataset.total, 10);
+    const items = container.querySelectorAll('.pag-item');
+    const newShown = Math.min(shown + stepCount, total);
+    for (let i = shown; i < newShown; i++) {
+        if (items[i]) items[i].style.display = '';
+    }
+    btn.dataset.shown = newShown;
+    if (newShown >= total) {
+        const revealId = btn.dataset.revealOnDone;
+        if (revealId) { const el = document.getElementById(revealId); if (el) el.style.display = ''; }
+        btn.remove();
+    } else {
+        btn.textContent = `▼ Mostra altri ${Math.min(stepCount, total - newShown)}`;
+    }
 }
 
 function createClientCard(client, index) {
@@ -547,14 +627,16 @@ function createClientCard(client, index) {
     const bookingsHTML = bookingRows.join('');
     const tbodyId = `tbody-brows-${index}`;
     const bTotal = bookingRows.length;
+    const fullHistBtnId = `fullhist-btn-${index}`;
     const showMoreBooksBtn = bTotal > 5
-        ? `<button class="show-more-btn" onclick="_showMoreItems(this,10)" data-container="${tbodyId}" data-shown="5" data-total="${bTotal}" style="margin-top:0.5rem;">▼ Mostra altri ${Math.min(10, bTotal - 5)}</button>`
+        ? `<button class="show-more-btn" onclick="_showMoreItems(this,10)" data-container="${tbodyId}" data-shown="5" data-total="${bTotal}" data-reveal-on-done="${fullHistBtnId}" style="margin-top:0.5rem;">▼ Mostra altri ${Math.min(10, bTotal - 5)}</button>`
         : '';
     // Storico completo on-demand: la cache è finestrata a 60gg passati, quindi le prenotazioni
     // (anche pagate) più vecchie non compaiono. Il bottone le carica al volo per QUESTO cliente.
+    // Con >5 prenotazioni resta nascosto finché non si esaurisce la paginazione (reveal-on-done).
     const fullHistBtnHTML = client._fullHistoryLoaded
         ? '<div class="client-fullhist-note" style="margin-top:0.5rem;font-size:0.8rem;color:#16a34a;">✓ Storico completo caricato</div>'
-        : `<button class="show-more-btn" onclick="loadClientFullHistory(this, ${index})" style="margin-top:0.5rem;">📜 Carica storico completo</button>`;
+        : `<button id="${fullHistBtnId}" class="show-more-btn" onclick="loadClientFullHistory(this, ${index})" style="margin-top:0.5rem;${bTotal > 5 ? 'display:none;' : ''}">📜 Carica storico completo</button>`;
 
     // ── Schede assegnate ──────────────────────────────────────────────────
     const clientUserId = userRecord?.id || client.userId || null;
@@ -592,7 +674,10 @@ function createClientCard(client, index) {
     // Avatar iniziali (max 2 lettere)
     const initials = (client.name || '?').trim().split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2);
     const phoneRaw = (client.whatsapp || '').replace(/^\+39\s*/, '');
-    const phoneTel = (client.whatsapp || '').replace(/\s+/g, '');
+    // Link WhatsApp: normalizza a sole cifre, 0039→39, e prefissa 39 ai numeri nazionali (10 cifre da 3).
+    let phoneWa = (client.whatsapp || '').replace(/\D/g, '');
+    if (phoneWa.startsWith('0039')) phoneWa = phoneWa.slice(2);
+    if (phoneWa.length === 10 && phoneWa.startsWith('3')) phoneWa = '39' + phoneWa;
 
     // 3 celle stat: Prenot. Future / Sessioni residue (pacchetto) / Da saldare
     // I valori economici (sessioni residue) sono caricati async da client_packages.
@@ -620,7 +705,7 @@ function createClientCard(client, index) {
             <div class="client-info-block">
                 <div class="client-name">${_escHtml(client.name)} <button class="btn-edit-contact-icon" onclick="event.stopPropagation(); openEditClientPopup(${index}, '${wEsc}', '${emEsc}', '${nEsc}')" title="Modifica contatto">✏️</button></div>
                 <div class="client-contacts">
-                    ${phoneRaw ? `<a class="cv2-contact-link" href="tel:${_escHtml(phoneTel)}" onclick="event.stopPropagation()">📱 ${_escHtml(phoneRaw)}</a>` : ''}
+                    ${phoneRaw ? `<a class="cv2-contact-link" href="https://wa.me/${_escHtml(phoneWa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📱 ${_escHtml(phoneRaw)}</a>` : ''}
                     ${client.email ? `<a class="cv2-contact-link" href="mailto:${_escHtml(client.email)}" onclick="event.stopPropagation()">✉️ ${_escHtml(client.email)}</a>` : ''}
                 </div>
                 <div class="cv2-badges-row">

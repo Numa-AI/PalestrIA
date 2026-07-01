@@ -368,7 +368,11 @@ function _regBtnArg(s) {
 
 function regMobOpenClient(name) {
     if (typeof switchTab === 'function') switchTab('clients');
+    // Delay: lascia che switchTab→renderClientsTab finisca, così non ci sovrascrive.
     setTimeout(() => {
+        // Apri DIRETTAMENTE la card del cliente (già espansa).
+        if (typeof openClientCardByName === 'function' && openClientCardByName(name)) return;
+        // Fallback (cliente non trovato per nome): riempi la barra di ricerca.
         const inputs = document.querySelectorAll('#tab-clients input[type="text"], #tab-clients input[type="search"]');
         for (const inp of inputs) {
             const ph = (inp.placeholder || '').toLowerCase();
@@ -674,7 +678,10 @@ async function _registroRefreshData() {
 
     _registroSyncInFlight = true;
     try {
-        await BookingStorage.syncFromSupabase();
+        // Registro = vista di audit dei movimenti: deve avere dati COMPLETI, non la cache
+        // delta ottimizzata per l'egress (una riga saltata dal watermark sparirebbe fino a
+        // un full/reload). forceFull bypassa watermark/_shouldFullSync (throttlato a 10s).
+        await BookingStorage.syncFromSupabase({ forceFull: true });
         _registroLastSyncAt = Date.now();
         // Re-render solo se siamo ancora sul tab Registro: evita lavoro inutile
         // se l'utente ha già cambiato tab mentre il fetch era in volo.
