@@ -519,21 +519,29 @@ function _buildParticipantCard(booking) {
     const nm  = _escAttr(booking.name);
     const initials = _participantInitials(booking.name);
     const avatarHue = _participantAvatarHue(booking.name);
+    // Saldo (sistema credito rimosso §11): chip compatto a 2 stati — deve pagare (rosso, tap =
+    // incasso) / €0 (grigio). Etichetta di stato sotto il nome ("Da pagare"/"Pagato"), decouplata
+    // dal chip così riflette solo il pagamento.
+    const saldoStatus = hasDebts
+        ? `<span class="participant-saldo-status owes">Da pagare</span>`
+        : (!isCancelPending && isPaid ? `<span class="participant-saldo-status paid">Pagato</span>` : '');
+    const saldoChip = hasDebts
+        ? `<span class="saldo-chip owes" onclick="openDebtPopup('${wa}','${em}','${nm}')">−€${unpaidAmount}</span>`
+        : `<span class="saldo-chip zero">€0</span>`;
     return `
         <div class="admin-participant-card${isCancelPending ? ' cancel-pending' : ''}">
-            <button class="btn-delete-booking" onclick="deleteBooking('${booking.id}','${nm}')">✕</button>
             <div class="participant-card-content">
                 <div class="participant-row">
                     <div class="participant-avatar" data-hue="${avatarHue}">${initials}</div>
                     <div class="participant-row-main">
                         <div class="participant-name">${_escHtml(booking.name)} ${_pushIcon(userRecord)}</div>
                         ${cancelPendingBadge}
-                        ${hasDebts ? `<div class="debt-warning" onclick="openDebtPopup('${wa}','${em}','${nm}')">⚠️ Da pagare: €${unpaidAmount}</div>` : ''}
-                        ${!isCancelPending && isPaid ? `<div class="payment-status paid">✓ Pagato</div>` : ''}
+                        <div class="participant-saldo-line">${saldoStatus}${saldoChip}</div>
                     </div>
+                    <button class="btn-delete-booking" onclick="deleteBooking('${booking.id}','${nm}')">✕</button>
                 </div>
                 ${certBadge}${cfBadge}${assicBadge}${docBadge}
-                ${booking.notes ? `<div class="participant-notes">📝 ${_escHtml(booking.notes)}</div>` : ''}
+                ${booking.notes ? `<div class="participant-notes">${_escHtml(booking.notes)}</div>` : ''}
             </div>
         </div>`;
 }

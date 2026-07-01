@@ -421,16 +421,19 @@ function _renderDebtPopupList(unpaid) {
         .forEach(booking => {
             const [y, m, d] = booking.date.split('-').map(Number);
             const dateDisplay = `${d}/${m}/${y}`;
+            const dateShort   = `${d}/${m}`;                      // compatto (full nel title)
+            const orario      = (booking.time || '').replace(' - ', '–');
             const price = getBookingPrice(booking);
             const el = document.createElement('div');
             el.className = 'debt-popup-item';
             if (bookingHasPassed(booking)) el.classList.add('debt-popup-item--past');
+            // Riga singola (anche mobile): data gg/mm + orario, tipo slot inline dopo "·". Niente emoji.
             el.innerHTML = `
                 <label class="debt-item-label">
                     <input type="checkbox" class="debt-item-check" data-id="${booking.id}"
                            data-sbid="${booking._sbId || ''}" data-price="${price}" onchange="updateDebtTotal()">
                     <div class="debt-item-info">
-                        <span class="debt-item-date">📅 ${dateDisplay} &nbsp;·&nbsp; 🕐 ${booking.time}</span>
+                        <span class="debt-item-date" title="${dateDisplay} ${_escHtml(booking.time)}">${dateShort} ${orario}</span>
                         <span class="debt-item-type">${SLOT_NAMES[booking.slotType] || booking.slotType}</span>
                     </div>
                     <span class="debt-item-price">€${Number(price).toFixed(2).replace('.', ',')}</span>

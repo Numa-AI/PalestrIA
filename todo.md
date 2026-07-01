@@ -81,6 +81,14 @@ Inizialmente segnato N/A, poi portato dalla **[GUIDA REPLICA]** aggiunta da Thom
 - [x] **Modifica prenotazione in POPUP** (`openBookingEditPopup`/`closeBookingEditPopup`, riusa overlay `.edit-client-popup-overlay`): stessi ID input `bedit-*` → `saveBookingRowEdit` (RPC `admin_pay_bookings`/`admin_update_booking`) **invariato**. Rimosso l'edit inline (`startEditBookingRow`/`cancelBookingRowEdit`) e la vecchia tabella `.client-bookings-table`.
 - [x] **Cache-bust**: `sw.js` `palestria-v572→v573`, `admin-clients.js` v13→**14**, `admin.css` v79→**80** (admin.html). `node --check` OK.
 
+### Card partecipante (tab Prenotazioni) — PORTATO (2026-07-01 pt.3)
+Cascata di ~8 voci Thomas (v817→v824) sulla card di ogni prenotato + popup "Registra incasso". Portato lo **stato finale cumulativo**, **omesso il "credito"** (§11 → chip a **2 stati**, non 3) e **N/A il fix plurali** (PalestrIA li aveva già corretti).
+- [x] **Chip saldo compatto** ([admin-calendar.js](js/admin-calendar.js) `_buildParticipantCard`): i due badge "⚠️ Da pagare: €X" (`.debt-warning`) + "✓ Pagato" (`.payment-status`) sostituiti da un unico **`.saldo-chip`** allineato a destra: **deve pagare** `−€X` (rosso, tap → `openDebtPopup`) / **`€0`** (grigio). Etichetta di stato sotto il nome ("Da pagare" ambra / "Pagato" verde) **decouplata** dal chip (`.participant-saldo-status`/`.participant-saldo-line`). Nessuno stato "credito" (rimosso §11).
+- [x] **✕ annullamento inline in alto a destra**: `.btn-delete-booking` da `position:absolute` a **flex-child** (`align-self:flex-start`); rimosso il `padding-right` che riservava spazio al vecchio ✕ assoluto.
+- [x] **Nome su una riga** (`.participant-name` nowrap + ellissi) e **note senza emoji 📝** (solo testo).
+- [x] **Popup "Registra incasso" su una riga** ([admin-payments.js](js/admin-payments.js) `_renderDebtPopupList`): data compatta `gg/mm` (+ `title` full `gg/mm/aaaa`), orario con `–`, **niente emoji** 📅🕐, tipo slot inline dopo separatore `·` (`.debt-item-info` da colonna a **riga**, tipo con ellissi). **Plurali già corretti** in PalestrIA (`lezione${>1?'i':''}` ecc.) → nessun fix necessario.
+- [x] **Cache-bust**: `sw.js` `v573→v574`, `admin-calendar.js` v21→**22**, `admin-payments.js` v17→**18**, `admin.css` v80→**81**. `node --check` OK.
+
 ### Non portato (N/A o coperto in forma diversa)
 - **Tab "Richieste" + carosello swipe** (4 voci: carosello aggiunto poi rimosso, ordine Richieste/Messaggi): PalestrIA **non ha** la tab Richieste né `admin-richieste.js`.
 - **More/debiti pill nello Storico** e **fix 403 RLS reset bonus**: crediti/bonus rimossi (§11).
