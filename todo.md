@@ -22,10 +22,10 @@ Portati da `fix.md` (guida di replica Thomas) **solo i finding realmente applica
   - `generate-monthly-report/index.ts` (3.2) — rate-limit `!isAdmin` letterale (difesa-in-profondità; consenso 3.1 e image-proxy config già a posto).
 - [x] **Già coperti / N/A** (non toccati): 1.1 (RLS bookings admin-only, baseline), 1.3 (workout_logs.rest_done, baseline), 1.4 (`admin_duplicate_plan.circuit_group`, mig.0001), 5.4 (`_localDateStr` grafico), 5.3 admin-payments/calendar (già `_escAttr`), 7.1 (`IMPORTA`), 8 (nessuna password `Maldive`), 1.6/1.9/7.2/7.3 (crediti rimossi), 7.4 (upsert onConflict:id sarebbe contro il multi-tenant), config `notify-access-request-update` (waitlist Thomas assente).
 - [x] **Cache-busting** — `sw.js` `CACHE_NAME` → **palestria-v575**; `data.js?v=95` (9 pagine), `admin-analytics.js?v=11`, `admin-backup.js?v=10`, `admin-clients.js?v=15`; `allenamento.html` (inline) rinfrescata dal bump `CACHE_NAME` (in APP_SHELL).
-- [ ] **DEPLOY DB**: applicare `00000000000023_code_review_fixes.sql` sul remoto (`supabase db push`, oppure SQL Editor come da §0.1). Migration idempotente, indipendente dalla 0022.
-- [ ] **DEPLOY Edge**: `supabase functions deploy generate-monthly-report`.
-- [ ] **DEPLOY asset GitHub Pages**: push branch per pubblicare JS/HTML/sw.js.
-- [ ] **QA staging** (checklist in `fix.md` §13): profilo non-admin non cambia `documento_firmato`; delete cliente per email **e** solo-whatsapp; prune server-side + reload; PDF con circuito; retry offline via `book_slot`; mask privacy analytics.
+- [x] **DEPLOY DB FATTO** (2026-07-02): `supabase db push` ha applicato **0022** (harden_anon_function_grants, era pendente) **+ 0023** sul remoto `rwaiekhllujximrqftmp`. `migration list` conferma entrambe registrate.
+- [x] **DEPLOY Edge FATTO** (2026-07-02): `supabase functions deploy generate-monthly-report` OK.
+- [x] **DEPLOY asset GitHub Pages FATTO** (2026-07-02): commit `a8d0ebc` pushato su `origin/main` (+ `origin/saas-main`) → workflow `deploy.yml` (Pages + supabase job, quest'ultimo no-op su db push / redeploy idempotente functions).
+- [ ] **QA produzione** (checklist in `fix.md` §13): profilo non-admin non cambia `documento_firmato`; delete cliente per email **e** solo-whatsapp; prune server-side + reload; PDF con circuito; retry offline via `book_slot`; mask privacy analytics.
 - [ ] **TODO futuro**: token QR tablet opaco a scadenza (cantiere DB org-aware: tabella `tablet_access_tokens` + `create/resolve_tablet_access_token` + adattamento delle 12 RPC `kiosk_*` da `p_uid` a token) — sostituisce l'UUID cliente permanente nel QR.
 - [ ] **TODO futuro**: `code-review2.md` di Thomas (20 item, tra cui 5 fix RPC denaro/prenotazioni) — rimandata su richiesta utente; da valutare separatamente.
 
