@@ -21,7 +21,7 @@
   sw-update.js/pull-to-refresh.js/pwa-install.js. CSS: style.css + login.css + admin.css
   + allenamento.css. Connesso a: super-admin.html (link piattaforma), index.html.
 -->
-<html lang="it">
+<html lang="it" class="adm-shell-page">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; img-src 'self' data: https:; media-src 'self' https://apilyfta.com; font-src 'self'; frame-src 'self' https://accounts.google.com; form-action 'self'">
@@ -37,9 +37,9 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://rwaiekhllujximrqftmp.supabase.co" crossorigin>
     <link rel="stylesheet" href="css/style.css?v=10">
-    <link rel="stylesheet" href="css/login.css?v=5">
-    <link rel="stylesheet" href="css/admin.css?v=81">
-    <link rel="stylesheet" href="css/allenamento.css?v=55">
+    <link rel="stylesheet" href="css/login.css?v=6">
+    <link rel="stylesheet" href="css/admin.css?v=82">
+    <link rel="stylesheet" href="css/allenamento.css?v=57">
     <script>
         // Anti-flash al refresh: legge il tab attivo dal sessionStorage e lo
         // espone come data-initial-tab su <html> prima che il body venga
@@ -802,6 +802,10 @@
                 <input type="checkbox" id="debtSelectAll" onchange="toggleAllDebts(this.checked)">
                 Seleziona tutto
             </label>
+            <label class="debt-select-all" id="debtSelectPastWrap">
+                <input type="checkbox" id="debtSelectPast" onchange="togglePastDebts(this.checked)">
+                Seleziona passate
+            </label>
             <div class="debt-popup-total">Dovuto: <strong id="debtSelectedTotal">€0</strong></div>
             <button class="debt-popup-pay-btn" id="debtPayBtn" onclick="paySelectedDebts()" disabled>✓ Conferma</button>
         </div>
@@ -925,139 +929,44 @@
             });
         }());
     </script>
-    <script>
-        // iOS PWA: durante il momentum scroll le barre fixed in basso (.adm-bottom-stack
-        // + FAB) ogni tanto si "staccano" dal fondo del viewport ancorandosi al document.
-        // Le compensiamo con --adm-fixed-correction-y SOLO mentre la pagina scorre.
-        // A RIPOSO (e al rientro in primo piano) la posizione naturale bottom:0 è già
-        // corretta, quindi la correzione torna SEMPRE a 0 senza rimisurare: così un
-        // valore stantio letto da visualViewport/getBoundingClientRect durante una
-        // transizione iOS non può lasciare il dock appeso a metà schermo dopo aver
-        // chiuso e riaperto l'app (bug "barra del menu spostata").
-        // Gemello in allenamento.html (#allBottomStack / --all-fixed-correction-y).
-        (function () {
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            var isStandalone = window.navigator.standalone === true ||
-                window.matchMedia('(display-mode: standalone)').matches;
-            if (!isIOS || !isStandalone || !window.visualViewport) return;
+    <!--
+      SHELL iOS PWA anti-detach (fix STRUTTURALE): la compensazione JS
+      (--adm-fixed-correction-y con measure/settle/nudgeRepaint) è stata RIMOSSA e
+      sostituita dalla shell in css/admin.css (sezione "SHELL MOBILE ANTI-DETACH"):
+      su iOS standalone ≤768px il root (html) non scrolla e lo scroller è il body,
+      così il dock `position:fixed; bottom:0` non può più staccarsi (il bug WebKit si
+      innesca solo col momentum del root scroller). Vantaggio: nessuna euristica a
+      riposo → il dock non resta più appeso dopo chiusura/riapertura app. Il re-assert
+      del meta-viewport su focus input (script sopra) RESTA. I transform inerti
+      translateY(var(--adm-fixed-correction-y,0px)) su dock/FAB in admin.css sono
+      lasciati (variabile mai settata = 0) per tenere il diff minimo.
+      NB: scopato a solo iOS-standalone (doppio gate @supports + @media) — su
+      Android/desktop la shell romperebbe il pull-to-refresh nativo del root scroller.
+    -->
 
-            var root = document.documentElement;
-            var PROP = '--adm-fixed-correction-y';
-            var ticking = false;
-            var settleTimer = null;
-
-            function isEditableFocused() {
-                var ae = document.activeElement;
-                return !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' ||
-                    ae.tagName === 'SELECT' || ae.isContentEditable);
-            }
-
-            function clearCorrection() { root.style.setProperty(PROP, '0px'); }
-
-            // Misura la posizione reale del dock vs visualViewport e applica la
-            // correzione. Chiamata SOLO durante lo scroll: il detachment avviene
-            // mentre la pagina si muove, mai a riposo.
-            function measure() {
-                ticking = false;
-                var dock = document.getElementById('admBottomStack');
-                if (!dock || window.innerWidth > 768 || dock.getClientRects().length === 0) {
-                    clearCorrection();
-                    return;
-                }
-                var vv = window.visualViewport;
-                clearCorrection();   // misura sempre da transform pulito (no drift)
-
-                // Tastiera a fuoco o viewport stantio (height ridotta): non correggere,
-                // produrrebbe offset enormi che restano appesi.
-                if (isEditableFocused() || (window.innerHeight - vv.height > 60)) return;
-
-                var rect = dock.getBoundingClientRect();
-                var targetBottom = vv.height + (vv.offsetTop || 0);
-                var delta = targetBottom - rect.bottom;
-                // Compensa i distacchi reali verso l'alto a QUALSIASI ampiezza (fino a
-                // vv.height): col vecchio cap al 35% i fling forti — che generano i
-                // distacchi più grandi — restavano non corretti. Scarta solo le anomalie.
-                var next = 0;
-                if (delta > 2 && delta <= vv.height) next = delta;      // distacco reale verso l'alto
-                else if (delta < -2 && delta > -40) next = delta;       // micro overshoot in basso
-                if (next !== 0) root.style.setProperty(PROP, next.toFixed(2) + 'px');
-            }
-
-            function onScroll() {
-                if (!ticking) { ticking = true; requestAnimationFrame(measure); }
-                // Quando lo scroll si ferma (anche momentum senza touchend) azzera:
-                // a riposo la barra non va corretta, così non resta mai appesa.
-                if (settleTimer) clearTimeout(settleTimer);
-                settleTimer = setTimeout(settle, 180);
-            }
-
-            // Forza il re-anchor del layer composito del dock: WebKit in standalone
-            // talvolta lo lascia agganciato a una posizione stantia anche dopo aver
-            // azzerato la correzione. Il toggle di will-change non tocca la transform
-            // (CSS-var) → nessun offset stantio. La FAB, che condivide la stessa custom
-            // property, si riallinea col dock.
-            function nudgeRepaint() {
-                var dock = document.getElementById('admBottomStack');
-                if (!dock) return;
-                dock.style.willChange = 'auto';
-                void dock.offsetHeight;      // reflow sincrono
-                dock.style.willChange = 'transform';
-            }
-
-            // Riposo / resume / rotazione / chiusura tastiera: forza 0 senza misurare
-            // (i valori iOS qui sono stantii) e ri-ancora il layer. Ripetuto per coprire
-            // il settling del viewport dopo pageshow/orientationchange.
-            function settle() {
-                if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
-                clearCorrection();
-                nudgeRepaint();
-                [80, 200, 400].forEach(function (ms) {
-                    setTimeout(function () { clearCorrection(); nudgeRepaint(); }, ms);
-                });
-            }
-
-            window.addEventListener('scroll', onScroll, { passive: true });
-            window.addEventListener('resize', onScroll, { passive: true });
-            window.visualViewport.addEventListener('scroll', onScroll, { passive: true });
-            window.visualViewport.addEventListener('resize', onScroll, { passive: true });
-            window.addEventListener('orientationchange', settle);
-            window.addEventListener('pageshow', settle);
-            window.addEventListener('touchend', function () {
-                if (settleTimer) clearTimeout(settleTimer);
-                settleTimer = setTimeout(settle, 180);
-            }, { passive: true });
-            document.addEventListener('visibilitychange', function () {
-                if (!document.hidden) settle();
-            });
-            document.addEventListener('DOMContentLoaded', settle);
-            document.addEventListener('focusout', settle);
-            setTimeout(settle, 300);
-        }());
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/egress-debug.js?v=1"></script>
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/entitlements.js?v=2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
-    <script src="js/ui.js?v=3"></script>
+    <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=95"></script>
+    <script src="js/data.js?v=96"></script>
     <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/push.js?v=24"></script>
     <script src="js/chart-mini.js?v=13"></script>
-    <script src="js/admin.js?v=120"></script>
+    <script src="js/admin.js?v=121"></script>
     <script src="js/admin-analytics.js?v=11"></script>
     <script src="js/admin-backup.js?v=10"></script>
-    <script src="js/admin-calendar.js?v=22"></script>
+    <script src="js/admin-calendar.js?v=23"></script>
     <script src="js/admin-schedule.js?v=11"></script>
     <script src="js/admin-settings.js?v=9"></script>
-    <script src="js/admin-payments.js?v=18"></script>
+    <script src="js/admin-payments.js?v=19"></script>
     <script src="js/admin-clients.js?v=15"></script>
-    <script src="js/admin-registro.js?v=10"></script>
+    <script src="js/admin-registro.js?v=11"></script>
     <script src="js/admin-messaggi.js?v=5"></script>
     <script src="js/admin-schede.js?v=51"></script>
     <script src="js/admin-health.js?v=2"></script>
@@ -1209,7 +1118,7 @@
         })();
     </script>
     <script src="js/sw-update.js"></script>
-    <script src="js/pull-to-refresh.js?v=1"></script>
+    <script src="js/pull-to-refresh.js?v=2"></script>
     <script src="js/pwa-install.js"></script>
 
     <!-- FAB Scroll to current slot -->

@@ -519,12 +519,20 @@ function _buildParticipantCard(booking) {
     const nm  = _escAttr(booking.name);
     const initials = _participantInitials(booking.name);
     const avatarHue = _participantAvatarHue(booking.name);
-    // Saldo (sistema credito rimosso §11): chip compatto a 2 stati — deve pagare (rosso, tap =
-    // incasso) / €0 (grigio). Etichetta di stato sotto il nome ("Da pagare"/"Pagato"), decouplata
-    // dal chip così riflette solo il pagamento.
-    const saldoStatus = hasDebts
-        ? `<span class="participant-saldo-status owes">Da pagare</span>`
-        : (!isCancelPending && isPaid ? `<span class="participant-saldo-status paid">Pagato</span>` : '');
+    // Etichetta di stato sotto il nome: riferita alla SINGOLA lezione di questa card,
+    // NON al saldo aggregato del contatto (code review 2 / port Thomas).
+    //   • "Pagato"  → questa prenotazione è saldata (booking.paid; niente creditApplied qui);
+    //   • "Da pagare" → SOLO se la lezione è già iniziata/passata (bookingHasPassed) e non pagata;
+    //   • lezione futura non pagata → nessuna etichetta (il debito pregresso non è dovuto
+    //     finché la lezione non è arrivata).
+    // Il chip del saldo a destra resta AGGREGATO (saldo complessivo del contatto, tap = incasso).
+    const saldoStatus = isCancelPending
+        ? ''
+        : (isPaid
+            ? `<span class="participant-saldo-status paid">Pagato</span>`
+            : (bookingHasPassed(booking)
+                ? `<span class="participant-saldo-status owes">Da pagare</span>`
+                : ''));
     const saldoChip = hasDebts
         ? `<span class="saldo-chip owes" onclick="openDebtPopup('${wa}','${em}','${nm}')">−€${unpaidAmount}</span>`
         : `<span class="saldo-chip zero">€0</span>`;
@@ -640,8 +648,12 @@ function _scrollToCurrentAdminSlot(container) {
                 _expandedAdminSlots.add(`${dateInfo.formatted}|${text}`);
             }
             setTimeout(() => {
-                const y = card.getBoundingClientRect().top + window.pageYOffset - window.innerHeight * 0.35;
+                // Dual-mode shell iOS: col body-scroller pageYOffset è 0 e lo scroll
+                // vero è su document.body → leggi e scrolla entrambi (l'inattivo è no-op).
+                const curScroll = window.pageYOffset || document.body.scrollTop || 0;
+                const y = card.getBoundingClientRect().top + curScroll - window.innerHeight * 0.35;
                 window.scrollTo({ top: y, behavior: 'smooth' });
+                document.body.scrollTo({ top: y, behavior: 'smooth' });
             }, 100);
             return;
         }

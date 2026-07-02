@@ -93,29 +93,6 @@ function showToast(message, type = 'error', duration = 3500) {
 
 // ─── INLINE ERRORS ────────────────────────────────────────────────────────────
 
-/**
- * Mostra un messaggio di errore inline in un elemento esistente.
- * @param {string} elementId
- * @param {string} message
- */
-function showInlineError(elementId, message) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    el.textContent = message;
-    el.style.display = 'block';
-}
-
-/**
- * Nasconde un messaggio di errore inline.
- * @param {string} elementId
- */
-function hideInlineError(elementId) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    el.style.display = 'none';
-    el.textContent = '';
-}
-
 // ─── HTML ESCAPING ─────────────────────────────────────────────────────────────
 // Usare sempre su dati utente interpolati in innerHTML per prevenire XSS.
 function _escHtml(str) {

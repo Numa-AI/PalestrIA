@@ -401,6 +401,14 @@ function openDebtPopup(whatsapp, email, name) {
     if (creditRow) creditRow.style.display = 'none';
 
     _renderDebtPopupList(unpaid);
+    // Toggle "Seleziona passate": visibile solo se ci sono voci passate; resettato pulito.
+    const pastWrap = document.getElementById('debtSelectPastWrap');
+    if (pastWrap) {
+        const hasPast = document.querySelector('.debt-popup-item--past') != null;
+        pastWrap.style.display = hasPast ? '' : 'none';
+        const sp = document.getElementById('debtSelectPast');
+        if (sp) { sp.checked = false; sp.indeterminate = false; }
+    }
     _updateDebtTotal();
 
     document.getElementById('debtPopupOverlay').classList.add('open');
@@ -448,11 +456,7 @@ function _updateDebtTotal() {
     const dueTotal = Array.from(checked).reduce((sum, cb) => sum + Number(cb.dataset.price), 0);
     document.getElementById('debtSelectedTotal').textContent = `€${Math.round(dueTotal * 100) / 100}`;
 
-    const selectAll = document.getElementById('debtSelectAll');
-    if (selectAll) {
-        selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
-        selectAll.checked = all.length > 0 && checked.length === all.length;
-    }
+    _syncDebtToggleStates();
     const methodSelect = document.getElementById('debtMethodSelect');
     const payBtn = document.getElementById('debtPayBtn');
     if (payBtn) payBtn.disabled = checked.length === 0 || !(methodSelect && methodSelect.value);
@@ -460,8 +464,35 @@ function _updateDebtTotal() {
 // alias retro-compat per gli oninline in admin.html
 function updateDebtTotal() { _updateDebtTotal(); }
 
+// Allinea checked/indeterminate di ENTRAMBI i toggle ("Seleziona tutto" e
+// "Seleziona passate") allo stato reale delle checkbox. Sostituisce la logica di
+// sync di "Seleziona tutto" che stava inline in _updateDebtTotal.
+function _syncDebtToggleStates() {
+    const all     = document.querySelectorAll('.debt-item-check');
+    const checked = document.querySelectorAll('.debt-item-check:checked');
+    const selectAll = document.getElementById('debtSelectAll');
+    if (selectAll) {
+        selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+        selectAll.checked = all.length > 0 && checked.length === all.length;
+    }
+    const pastAll     = document.querySelectorAll('.debt-popup-item--past .debt-item-check');
+    const pastChecked = document.querySelectorAll('.debt-popup-item--past .debt-item-check:checked');
+    const selectPast = document.getElementById('debtSelectPast');
+    if (selectPast) {
+        selectPast.indeterminate = pastChecked.length > 0 && pastChecked.length < pastAll.length;
+        selectPast.checked = pastAll.length > 0 && pastChecked.length === pastAll.length;
+    }
+}
+
 function toggleAllDebts(checked) {
     document.querySelectorAll('.debt-item-check').forEach(cb => { cb.checked = checked; });
+    _updateDebtTotal();
+}
+
+// Spunta/deseleziona SOLO le lezioni passate (il debito effettivo: voci .past =
+// lezioni già svolte), lasciando invariate le eventuali future già spuntate.
+function togglePastDebts(checked) {
+    document.querySelectorAll('.debt-popup-item--past .debt-item-check').forEach(cb => { cb.checked = checked; });
     _updateDebtTotal();
 }
 

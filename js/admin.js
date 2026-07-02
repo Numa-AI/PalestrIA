@@ -97,11 +97,17 @@ function setupAdminStickyOffsets() {
     _adminStickyResizeHandler = _apply;
     window.addEventListener('resize', _adminStickyResizeHandler);
 
-    // Hide week nav once scrolled past threshold, show only at top
-    if (_adminScrollHandler) window.removeEventListener('scroll', _adminScrollHandler);
+    // Hide week nav once scrolled past threshold, show only at top.
+    // Dual-mode shell iOS (admin.html): col body-scroller lo scroll event scatta su
+    // document.body (non su window) e window.scrollY vale 0 → aggancia entrambi e leggi
+    // window.scrollY || document.body.scrollTop.
+    if (_adminScrollHandler) {
+        window.removeEventListener('scroll', _adminScrollHandler);
+        document.body.removeEventListener('scroll', _adminScrollHandler);
+    }
     _adminScrollHandler = () => {
         if (!controls) return;
-        const sy = window.scrollY;
+        const sy = window.scrollY || document.body.scrollTop || 0;
         if (sy > 120 && !controls.classList.contains('scroll-hidden')) {
             controls.classList.add('scroll-hidden');
             if (daySelector && window.innerWidth > 768) {
@@ -114,6 +120,7 @@ function setupAdminStickyOffsets() {
         }
     };
     window.addEventListener('scroll', _adminScrollHandler, { passive: true });
+    document.body.addEventListener('scroll', _adminScrollHandler, { passive: true });
 }
 
 // Ruoli con accesso alla UI admin: owner/admin/staff (verificati server-side via
@@ -277,7 +284,10 @@ function switchTab(tabName) {
     const fab = document.getElementById('paymentsFab');
     if (fab) fab.style.display = tabName === 'payments' ? 'flex' : 'none';
 
+    // Dual-mode shell iOS: col body-scroller window.scrollTo è un no-op → scrolla
+    // anche document.body (sull'altro scroller è inerte).
     window.scrollTo({ top: 0 });
+    document.body.scrollTo({ top: 0 });
 
     // Mostra/nascondi FAB Slot Corrente (solo tab bookings)
     const scrollFab = document.getElementById('scrollToSlotFab');
@@ -305,6 +315,3 @@ function switchTab(tabName) {
     if (loader) setTimeout(loader, 0);
 }
 
-function hideDashboard() {
-    document.getElementById('dashboardSection').style.display = 'none';
-}

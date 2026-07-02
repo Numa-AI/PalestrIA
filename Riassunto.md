@@ -141,3 +141,36 @@ Portati da `fix.md` (guida di replica del gemello single-tenant Thomas) **solo i
 ### Follow-up aperti
 - DEPLOY: `supabase db push` (mig.0023) + `functions deploy generate-monthly-report` + push Pages + QA staging (checklist `fix.md` §13).
 - TODO futuro: token QR tablet opaco; `code-review2.md` (20 item, rimandata).
+
+## Task: Port "code review 2" + voci UI Thomas (2° batch)
+**Data:** 2026-07-02
+**Durata stimata:** ~2.5h lavoro Claude + ~10 min prompt utente
+
+### Modifiche effettuate
+Portati da `code-review2.md` e dalle voci nuove del changelog Thomas **solo i punti applicabili** (molti N/A: sistema crediti rimosso, flussi/tab Thomas assenti, funzioni morte già rimosse dall'audit). Ricognizione con 3 subagent paralleli.
+
+- **Migration `00000000000024_availability_capacity_coherence.sql`** (#1 HIGH) — `get_availability_range`/`get_slot_availability` contano `cancellation_requested` come `book_slot` (fix "posto fantasma" + "richiedi annullamento" rotto). Applicata sul remoto.
+- **data.js** — `getRemainingSpots` allineato (conta `cancellation_requested`); `getStats()` via `_lsGetJSON` (#4).
+- **admin-calendar.js** — badge "Pagato/Da pagare" per-lezione in `_buildParticipantCard` (era aggregato); `_scrollToCurrentAdminSlot` dual-mode (shell).
+- **admin-payments.js + admin.html** — toggle "Seleziona passate" in `openDebtPopup` (+ `_syncDebtToggleStates`).
+- **Shell iOS strutturale (solo admin.html)** — `css/admin.css` sezione shell scopata a `html.adm-shell-page`; rimossa IIFE `--adm-fixed-correction-y`; `pull-to-refresh.js`/`admin.js` dual-mode.
+- **Codice morto** rimosso (showInlineError/hideInlineError/weekHasSlots/hideDashboard/toggleRegistroFiltersPanel); **modulo_viewer.html** eliminato + tolto da APP_SHELL.
+- **CSS `?v=` allineati** (#6): login.css v6, allenamento.css v57. Cache-bust `sw.js` palestria-v576.
+
+### Decisioni prese
+- **Shell iOS strutturale portata (solo admin, come Thomas)** su richiesta utente; da testare su iPhone (io non posso). Scopata a iOS-standalone ≤768px + `html.adm-shell-page` (super-admin.html non toccata).
+- **Codice morto — rimozione selettiva**: rimosse le funzioni di puro cruft; TENUTI `exportRegistro` (export Excel latente, TB-branded), `_schedeViewProgress`/`_renderProgressView` (vista Progressi schede) e `openProfileModal` (profile-modal in 5 HTML) perché sono entry-point di feature latenti / catene la cui rimozione parziale lascerebbe più morto di quanto ne tolga. Segnalati come cleanup futuro.
+- **N/A confermati**: #2 accept_offered_request (flusso assente), #3 admin_pay_bookings/admin_add_credit (crediti rimossi), tab Richieste (modulo assente), client-credit items.
+
+### File toccati
+- `supabase/migrations/00000000000024_availability_capacity_coherence.sql` — nuovo
+- `js/data.js`, `js/admin-calendar.js`, `js/admin-payments.js`, `admin.html` — fix funzionali + shell
+- `css/admin.css` — sezione shell; `js/pull-to-refresh.js`, `js/admin.js` — dual-mode shell
+- `js/ui.js`, `js/calendar.js`, `js/admin-registro.js` — rimozione codice morto
+- `modulo_viewer.html` — eliminato; `sw.js` — APP_SHELL + CACHE_NAME v576
+- 11 pagine HTML — bump `?v=` asset; `todo.md`/memoria — tracking
+
+### Follow-up aperti
+- DEPLOY Pages: push branch (fatto in coda al task).
+- QA: **shell iOS su iPhone reale** (barra ferma su fling, cambio tab, PTR da cima, tastiera, chiusura/riapertura); capienza slot con annullamento pendente; badge per-lezione; "Seleziona passate".
+- Cleanup futuro opzionale: exportRegistro / vista Progressi schede / openProfileModal.

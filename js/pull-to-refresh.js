@@ -76,8 +76,17 @@
         }
     }
 
+    // Con la shell iOS strutturale (admin.html: html overflow:hidden, scroller = body)
+    // window.scrollY vale sempre 0 e lo scroll reale è su document.body. Leggendo
+    // entrambi il gesto si arma solo a pagina in cima anche col body-scroller (senza,
+    // un pull-down a metà pagina ricaricherebbe l'app). Sulle pagine col root scroller
+    // classico body.scrollTop è 0 → comportamento invariato.
+    function pageScrollTop() {
+        return window.scrollY || document.body.scrollTop || 0;
+    }
+
     function onTouchStart(e) {
-        if (e.touches.length !== 1 || window.scrollY > 0 || isInsideScrollable(e.target)) {
+        if (e.touches.length !== 1 || pageScrollTop() > 0 || isInsideScrollable(e.target)) {
             armed = false;
             return;
         }
@@ -89,7 +98,7 @@
 
     function onTouchMove(e) {
         if (!armed) return;
-        if (window.scrollY > 0) {
+        if (pageScrollTop() > 0) {
             armed = false;
             reset(true);
             return;

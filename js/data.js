@@ -1502,8 +1502,11 @@ class BookingStorage {
     // coerenti). Negli altri casi calcola capacity - confermati dalla cache.
     static getRemainingSpots(date, time, slotType) {
         const bookings = this.getBookingsForSlot(date, time);
-        // Filtra per tipo: ogni "categoria" ha la propria capacità indipendente
-        const confirmedCount = bookings.filter(b => b.status === 'confirmed' && (!b.slotType || b.slotType === slotType)).length;
+        // Filtra per tipo: ogni "categoria" ha la propria capacità indipendente.
+        // Conta anche 'cancellation_requested' (posti ancora occupati fino all'annullamento):
+        // allineato a book_slot / get_availability_range, altrimenti si mostra un "posto
+        // fantasma" che il server poi rifiuta con slot_full (code review 2, #1).
+        const confirmedCount = bookings.filter(b => (b.status === 'confirmed' || b.status === 'cancellation_requested') && (!b.slotType || b.slotType === slotType)).length;
         const maxCapacity = this.getEffectiveCapacity(date, time, slotType);
         const local = Math.max(0, maxCapacity - confirmedCount);
 
@@ -1771,13 +1774,16 @@ class BookingStorage {
     }
 
     static getStats() {
-        const data = localStorage.getItem(this.STATS_KEY);
-        return data ? JSON.parse(data) : {
+        // _lsGetJSON (try/catch) e NON JSON.parse grezzo: se 'gym_stats' è corrotto,
+        // updateStats() è chiamata da saveBooking DOPO che book_slot ha già confermato
+        // la prenotazione → un throw qui farebbe risultare "fallita" una prenotazione
+        // già creata sul server (rischio doppia prenotazione al retry) (code review 2, #4).
+        return _lsGetJSON(this.STATS_KEY, {
             totalBookings: 0,
             totalRevenue: 0,
             typeDistribution: {},
             dailyBookings: {}
-        };
+        });
     }
 
     // Teardown logout (H2): rimuove gym_stats da localStorage. Nessuna cache stats in

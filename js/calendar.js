@@ -255,10 +255,6 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
-function weekHasSlots(offset) {
-    return getWeekDates(offset).some(d => _daySlots(d.formatted).length > 0);
-}
-
 function weekHasSlotsDesktop(offset) {
     return getWeekDatesDesktop(offset).some(d => _daySlots(d.formatted).length > 0);
 }

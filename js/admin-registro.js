@@ -641,12 +641,6 @@ function toggleRegFilters(btn) {
     if (icon) icon.classList.toggle('open');
 }
 
-// Legacy alias
-function toggleRegistroFiltersPanel() {
-    const btn = document.querySelector('#tab-registro .reg-header-toggle');
-    if (btn) toggleRegFilters(btn);
-}
-
 // ── Sub-tab switching dentro Registro ────────────────────────────────────
 function switchRegistroSubtab(name, btn) {
     document.querySelectorAll('.registro-subtab').forEach(b => b.classList.remove('active'));

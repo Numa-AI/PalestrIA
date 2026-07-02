@@ -13637,3 +13637,46 @@ body.extra-picker-open .payments-fab {
     .sett-staff-row { align-items: flex-start; }
     .sett-staff-actions { width: 100%; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SHELL MOBILE ANTI-DETACH (iOS PWA) — fix STRUTTURALE della barra-menù che si stacca
+   (port dal gemello Thomas, adattato). Su iOS standalone ≤768px il root (html) NON
+   scrolla mai e lo scroller di pagina diventa il body: senza root scroller in
+   movimento, il bug WebKit che stacca i `position:fixed; bottom:0` (dock `.adm-bottom-stack`
+   + FAB) durante il momentum NON può innescarsi → barra/FAB/bottom-sheet fissi per
+   costruzione, senza più euristiche JS. Sostituisce la compensazione `--adm-fixed-correction-y`
+   rimossa da admin.html.
+
+   Scope: SOLO iOS standalone (doppio gate `@supports (-webkit-touch-callout)` + `@media
+   display-mode:standalone`) e SOLO admin.html (`html.adm-shell-page`, così super-admin.html —
+   che pure carica admin.css — resta col root scroller classico). Su Android/desktop la shell
+   NON serve (lì il dock non si stacca) e ROMPEREBBE il pull-to-refresh nativo di Chrome,
+   che funziona solo sul root scroller.
+
+   Righe OBBLIGATORIE per i quirk iOS/flex (viste su Thomas):
+   • body min-height:0 → altrimenti il `min-height:100vh` globale (style.css) vince su
+     height:100% (100vh > finestra reale su iOS standalone) e il fondo pagina finisce
+     clippato sotto il dock (irraggiungibile).
+   • #dashboardSection flex:1 0 auto → altrimenti il `flex:1` globale (basis 0) dimensiona
+     la sezione sullo spazio libero e il contenuto trabocca fuori dal box: gli ultimi
+     elementi finiscono sotto il dock. basis auto = altezza dal contenuto; grow 1 riempie
+     lo schermo se il contenuto è corto.
+   ══════════════════════════════════════════════════════════════════════════════ */
+@supports (-webkit-touch-callout: none) {
+    @media (display-mode: standalone) and (max-width: 768px) {
+        html.adm-shell-page {
+            height: 100%;
+            overflow: hidden;
+        }
+        html.adm-shell-page body {
+            height: 100%;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        html.adm-shell-page #dashboardSection,
+        html.adm-shell-page .login-page {
+            flex: 1 0 auto;
+        }
+    }
+}

@@ -1,11 +1,10 @@
-const CACHE_NAME = 'palestria-v575';
+const CACHE_NAME = 'palestria-v576';
 
 const APP_SHELL = [
     './',
     'chi-sono.html',
     'login.html',
     'prenotazioni.html',
-    'modulo_viewer.html',
     'dove-sono.html',
     'admin.html',
     'super-admin.html',

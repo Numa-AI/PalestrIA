@@ -6,6 +6,24 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
 
 ---
 
+## 🔧 Port "code review 2" + voci UI Thomas (2026-07-02, 2° batch) — FIX APPLICATI + DEPLOYATO DB
+Portati da `code-review2.md` (Thomas) e dalle voci nuove del changelog Thomas **solo i punti applicabili**: molti N/A (crediti rimossi, flussi/tab Thomas assenti) o già rimossi dal nostro audit. Decisioni utente: **shell iOS strutturale portata (solo admin)** — la testi tu su iPhone; **codice morto + modulo_viewer puliti**.
+
+- [x] **Migration `00000000000024_availability_capacity_coherence.sql`** (#1 HIGH) — `get_availability_range`/`get_slot_availability` ora contano `status in ('confirmed','cancellation_requested')` come `book_slot` (prima solo `confirmed` → "posto fantasma" non prenotabile + "richiedi annullamento" rotto). **Applicata sul remoto** (`supabase db push`).
+- [x] **data.js** — `getRemainingSpots` allineato (conta `cancellation_requested`) (#1 client); `getStats()` via `_lsGetJSON` (try/catch) invece di `JSON.parse` grezzo (#4: evita che un `gym_stats` corrotto faccia fallire una prenotazione già confermata).
+- [x] **admin-calendar.js** — badge "Pagato/Da pagare" **per-lezione** in `_buildParticipantCard` (era aggregato): "Pagato" se `booking.paid`, "Da pagare" solo se `bookingHasPassed`, lezione futura non pagata → niente etichetta. Chip saldo a destra invariato (aggregato).
+- [x] **admin-payments.js + admin.html** — toggle **"Seleziona passate"** in `openDebtPopup` (spunta solo `.debt-popup-item--past`), stato a 3 valori via `_syncDebtToggleStates`; visibile solo se ci sono voci passate.
+- [x] **Shell iOS strutturale (solo admin.html)** — su iOS standalone ≤768px il root non scrolla, scroller = body → il dock `.adm-bottom-stack` non si stacca più. `css/admin.css` (sezione "SHELL MOBILE ANTI-DETACH", scopata a `html.adm-shell-page` così super-admin.html non è toccata); `admin.html` (classe su `<html>`, rimossa la IIFE `--adm-fixed-correction-y`); `pull-to-refresh.js` (`pageScrollTop()` dual-mode); `admin.js` (hide-on-scroll + `switchTab` dual-mode); `admin-calendar.js` (`_scrollToCurrentAdminSlot` dual-mode). allenamento.html **lasciato** sul vecchio approccio (come Thomas). ⚠️ **DA TESTARE su iPhone PWA**.
+- [x] **Codice morto rimosso**: `showInlineError`/`hideInlineError` (ui.js), `weekHasSlots` (calendar.js), `hideDashboard` (admin.js), `toggleRegistroFiltersPanel` (admin-registro.js). **Tenuti e da valutare** (feature latenti / catene): `exportRegistro` (export Excel `TB_Registro_*` non wired), `_schedeViewProgress`/`_renderProgressView` (vista Progressi schede irraggiungibile), `openProfileModal` (profile-modal in 5 HTML).
+- [x] **modulo_viewer** (#5) — pagina orfana che puntava a un PDF inesistente: rimossa da `APP_SHELL` (sw.js) ed eliminato il file.
+- [x] **CSS `?v=` allineati** (#6): `login.css` → v6 su tutte le pagine (era admin v5 vs v4); `allenamento.css` → v57 (era admin v55 vs v56).
+- [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v576**; bump `?v=` di admin.css(82)/data.js(96)/admin-calendar(23)/admin-payments(19)/admin.js(121)/ui.js(4)/calendar.js(10)/admin-registro(11)/pull-to-refresh(2). `node --check` OK su tutti (JS + inline admin.html).
+- [x] **N/A** (non toccati): #2 `accept_offered_request` (flusso assente), #3 `admin_pay_bookings`/`admin_add_credit` (crediti rimossi; admin_pay_bookings già su ledger `payments`), tab Richieste (modulo assente), i client-credit items; codice morto già rimosso dall'audit (`_buildExercisePicker`, `calculateTotalWeeklySlots`, `hasPushEnabled`, ecc.).
+- [ ] **DEPLOY asset GitHub Pages**: push branch (cache-bust applicato, `CACHE_NAME palestria-v576`).
+- [ ] **QA produzione**: capienza slot con annullamento pendente (niente posto fantasma); badge per-lezione; "Seleziona passate"; **shell iOS su iPhone** (scroll+fling barra ferma, cambio tab torna in cima, PTR solo da cima, tastiera, chiusura/riapertura app; Android PTR nativo ancora ok).
+
+---
+
 ## 🔐 Port "code review 1" dal gemello Thomas (2026-07-02) — FIX APPLICATI (NON ancora deployato)
 Portati da `fix.md` (guida di replica Thomas) **solo i finding realmente applicabili**: molti erano già coperti dalla baseline SaaS o non applicabili (sistema crediti rimosso, feature Thomas assenti). `code-review2.md` **rimandata su richiesta utente**. Decisioni utente: tablet **resta editabile** (11.3 NON portato — kiosk editabile è voluto); token QR tablet (1.5/10.2/11.1/11.2) **rimandato a task dedicato**.
 
