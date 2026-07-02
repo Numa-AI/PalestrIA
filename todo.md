@@ -6,6 +6,31 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
 
 ---
 
+## 🔐 Port "code review 1" dal gemello Thomas (2026-07-02) — FIX APPLICATI (NON ancora deployato)
+Portati da `fix.md` (guida di replica Thomas) **solo i finding realmente applicabili**: molti erano già coperti dalla baseline SaaS o non applicabili (sistema crediti rimosso, feature Thomas assenti). `code-review2.md` **rimandata su richiesta utente**. Decisioni utente: tablet **resta editabile** (11.3 NON portato — kiosk editabile è voluto); token QR tablet (1.5/10.2/11.1/11.2) **rimandato a task dedicato**.
+
+- [x] **Migration `00000000000023_code_review_fixes.sql`** (incrementale sopra la baseline, org-scoped):
+  - **1.2** trigger `_trg_profiles_block_self_admin_flags` — blocca l'auto-assegnazione di `documento_firmato` (unico flag admin-only presente; `stripe_enabled`/`autonomia_enabled` del gemello non esistono qui). Admin passa, non-admin → revert silenzioso.
+  - **1.7** `admin_delete_client_data(p_email, p_whatsapp)` — firma estesa (match email **o** whatsapp) + delete cliente esteso a `client_memberships`/`client_packages`/`client_billing_profiles`/`client_notifications`; **payments preservato** (ledger). Droppata la vecchia `(text)`.
+  - **1.8** `admin_prune_old_data(p_cutoff date)` — prune server-side org-scoped (bookings `date<cutoff` + demo `local_id like 'demo-%'`); niente credit_history.
+- [x] **Frontend** (`node --check` OK su tutti):
+  - `admin-analytics.js` (5.2/5.3) — mask `***` importi (`_maskAmt`) + `_escHtml` sui nomi cliente in `renderClientiDetail`.
+  - `admin-clients.js` (6.1/6.2/6.3) — `_escAttr` sui 2 onclick popup; guard `data.success` in `saveClientEdit`; `deleteClientData` **server-first** (RPC per email+whatsapp, niente pulizia locale se fallisce).
+  - `admin-backup.js` (7.5) — `pruneOldData` chiama la RPC `admin_prune_old_data` (prima potava solo la cache locale → i dati tornavano al reload).
+  - `data.js` (9.1/9.2/9.3) — `,notes` nelle select log; `reorderExercises` base-min (no collisione tra giorni); `_retryPending` via RPC `book_slot` (non più insert diretto).
+  - `allenamento.html` (10.1/10.3) — dequeue coda offline su `deleteTodayLog`/`deleteStoricoLog`/`deleteStoricoDay`; blocco **CIRCUITO** nel PDF scheda (prima i circuiti erano stampati come esercizi singoli).
+  - `generate-monthly-report/index.ts` (3.2) — rate-limit `!isAdmin` letterale (difesa-in-profondità; consenso 3.1 e image-proxy config già a posto).
+- [x] **Già coperti / N/A** (non toccati): 1.1 (RLS bookings admin-only, baseline), 1.3 (workout_logs.rest_done, baseline), 1.4 (`admin_duplicate_plan.circuit_group`, mig.0001), 5.4 (`_localDateStr` grafico), 5.3 admin-payments/calendar (già `_escAttr`), 7.1 (`IMPORTA`), 8 (nessuna password `Maldive`), 1.6/1.9/7.2/7.3 (crediti rimossi), 7.4 (upsert onConflict:id sarebbe contro il multi-tenant), config `notify-access-request-update` (waitlist Thomas assente).
+- [x] **Cache-busting** — `sw.js` `CACHE_NAME` → **palestria-v575**; `data.js?v=95` (9 pagine), `admin-analytics.js?v=11`, `admin-backup.js?v=10`, `admin-clients.js?v=15`; `allenamento.html` (inline) rinfrescata dal bump `CACHE_NAME` (in APP_SHELL).
+- [ ] **DEPLOY DB**: applicare `00000000000023_code_review_fixes.sql` sul remoto (`supabase db push`, oppure SQL Editor come da §0.1). Migration idempotente, indipendente dalla 0022.
+- [ ] **DEPLOY Edge**: `supabase functions deploy generate-monthly-report`.
+- [ ] **DEPLOY asset GitHub Pages**: push branch per pubblicare JS/HTML/sw.js.
+- [ ] **QA staging** (checklist in `fix.md` §13): profilo non-admin non cambia `documento_firmato`; delete cliente per email **e** solo-whatsapp; prune server-side + reload; PDF con circuito; retry offline via `book_slot`; mask privacy analytics.
+- [ ] **TODO futuro**: token QR tablet opaco a scadenza (cantiere DB org-aware: tabella `tablet_access_tokens` + `create/resolve_tablet_access_token` + adattamento delle 12 RPC `kiosk_*` da `p_uid` a token) — sostituisce l'UUID cliente permanente nel QR.
+- [ ] **TODO futuro**: `code-review2.md` di Thomas (20 item, tra cui 5 fix RPC denaro/prenotazioni) — rimandata su richiesta utente; da valutare separatamente.
+
+---
+
 ## 🔍 Audit completo `dasistemare.md` (2026-06-17) — FIX APPLICATI (2026-06-18)
 Tutte le voci dell'audit risolte **tranne C1** (super-admin, rinviato su richiesta utente). Branch `saas-main`.
 

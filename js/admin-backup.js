@@ -839,7 +839,37 @@ async function pruneOldData() {
         confirmText: 'Elimina', danger: true,
     })) return;
 
-    // 1. Rimuovi prenotazioni demo (sempre) + prenotazioni reali più vecchie del cutoff
+    // 1. Server FIRST — prune reale su Supabase (org-scoped via RPC admin). Senza questo,
+    //    la vecchia pulizia toccava solo le cache locali e al reload i dati vecchi
+    //    tornavano dal DB. Se la RPC fallisce → abort, niente successo fittizio.
+    if (typeof supabaseClient !== 'undefined') {
+        try {
+            const { data, error } = await _rpcWithTimeout(
+                supabaseClient.rpc('admin_prune_old_data', { p_cutoff: cutoffStr })
+            );
+            if (error) {
+                console.error('[pruneOldData] RPC error:', error.message);
+                await showAlert('Errore lato server durante il prune: ' + error.message + '\nNessun dato è stato eliminato.', { type: 'error' });
+                return;
+            }
+            if (data && data.success === false) {
+                console.error('[pruneOldData] RPC rejected:', data);
+                await showAlert('Prune rifiutato dal server (' + (data.error || 'motivo sconosciuto') + '). Nessun dato eliminato.', { type: 'error' });
+                return;
+            }
+            console.log('[pruneOldData] Supabase:', data);
+        } catch (e) {
+            console.error('[pruneOldData] Supabase error:', e);
+            const isTimeout = e && e.message === 'rpc_timeout';
+            await showAlert(isTimeout
+                ? 'Timeout durante il prune. Nessun dato è stato eliminato — riprova.'
+                : 'Errore di rete durante il prune. Nessun dato è stato eliminato — riprova.', { type: 'error' });
+            return;
+        }
+        BookingStorage.invalidateDelta(); // hard-delete: forza FULL al prossimo sync
+    }
+
+    // 2. Server OK (o offline) → pota anche le cache locali: demo (sempre) + reali < cutoff
     const bookings = BookingStorage.getAllBookings();
     BookingStorage.replaceAllBookings(
         bookings.filter(b => !b.id?.startsWith('demo-') && b.date >= cutoffStr)

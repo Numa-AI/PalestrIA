@@ -1264,29 +1264,37 @@ class BookingStorage {
     // Ogni insert è protetto da timeout 12s: senza, le promise fire-and-forget su rete
     // lenta restano appese e saturano la microtask queue, ritardando il booking successivo.
     static async _retryPending(pending, user) {
+        // Server-authoritative: ritenta via la RPC atomica `book_slot`, NON con un insert
+        // diretto su `bookings`. L'insert diretto bypassava org_id/capienza/advisory-lock e,
+        // con la RLS SaaS (bookings scrivibili solo da admin o via RPC), fallisce comunque
+        // per l'utente normale. book_slot risolve org/tipo/prezzo/user server-side (auth.uid()).
+        const orgSlug = _resolveOrgSlug();
         for (const b of pending) {
-            console.warn('[Supabase] retry insert booking pending:', b.id);
+            console.warn('[Supabase] retry book_slot per booking pending:', b.id);
             try {
-                const { error } = await _rpcWithTimeout(supabaseClient.from('bookings').insert({
-                    local_id:     b.id,
-                    user_id:      user?.id || b.userId || null,
-                    date:         b.date,
-                    time:         b.time,
-                    slot_type:    b.slotType,
-                    name:         b.name,
-                    email:        b.email,
-                    whatsapp:     b.whatsapp,
-                    notes:        b.notes || '',
-                    status:       b.status || 'confirmed',
-                    created_at:   b.createdAt,
-                    date_display: b.dateDisplay || '',
+                const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('book_slot', {
+                    p_org_slug:     orgSlug,
+                    p_local_id:     b.id,
+                    p_date:         b.date,
+                    p_time:         b.time,
+                    p_name:         b.name,
+                    p_email:        b.email,
+                    p_whatsapp:     b.whatsapp,
+                    p_notes:        b.notes || '',
+                    p_date_display: b.dateDisplay || '',
                 }), 12000);
-                if (error && error.code !== '23505')
-                    console.error('[Supabase] retry insert error:', error.message);
-                else if (!error)
-                    console.log('[Supabase] retry insert OK:', b.id);
+                if (error) {
+                    console.error('[Supabase] retry book_slot error:', error.message);
+                } else if (data && data.success) {
+                    b._sbId = data.booking_id || b._sbId || null;
+                    if (typeof data.paid === 'boolean') b.paid = data.paid;
+                    console.log('[Supabase] retry book_slot OK:', b.id);
+                } else {
+                    // rifiutato (già presente / slot pieno / cutoff): logga, non ri-ciclare all'infinito
+                    console.warn('[Supabase] retry book_slot rifiutato:', data?.error || 'unknown', b.id);
+                }
             } catch (e) {
-                console.error('[Supabase] retry insert timeout/exception:', b.id, e && e.message);
+                console.error('[Supabase] retry book_slot timeout/exception:', b.id, e && e.message);
             }
             // Piccola pausa tra i retry per non saturare la microtask queue su molti pending
             await new Promise(r => setTimeout(r, 100));
@@ -2955,17 +2963,26 @@ class WorkoutPlanStorage {
     }
 
     static async reorderExercises(planId, orderedIds) {
-        const updates = orderedIds.map((id, i) => ({ id, sort_order: i }));
+        // Riordina SOLO gli esercizi passati (di norma quelli di un singolo giorno del
+        // piano multi-giorno). La vecchia versione riscriveva sort_order da 0..N-1 sui
+        // soli id del giorno attivo → collideva con gli altri giorni. Ora la nuova
+        // numerazione parte dal MINIMO sort_order tra gli esercizi riordinati, così
+        // resta nel loro intervallo e non tocca gli altri giorni.
+        const plan = this.getPlanById(planId);
+        const planExs = plan?.workout_exercises || [];
+        const reordered = orderedIds.map(id => planExs.find(e => e.id === id)).filter(Boolean);
+        const base = reordered.length
+            ? Math.min(...reordered.map(e => (typeof e.sort_order === 'number' ? e.sort_order : 0)))
+            : 0;
+        const updates = orderedIds.map((id, i) => ({ id, sort_order: base + i }));
         for (const u of updates) {
             await _queryWithTimeout(supabaseClient.from('workout_exercises').update({ sort_order: u.sort_order }).eq('id', u.id), 15000);
+            const ex = planExs.find(e => e.id === u.id);
+            if (ex) ex.sort_order = u.sort_order;
         }
-        const plan = this.getPlanById(planId);
+        // Riordina l'INTERO piano per sort_order (tutti i giorni), non solo il giorno mosso.
         if (plan && plan.workout_exercises) {
-            plan.workout_exercises.sort((a, b) => {
-                const ai = orderedIds.indexOf(a.id);
-                const bi = orderedIds.indexOf(b.id);
-                return ai - bi;
-            });
+            plan.workout_exercises.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
         }
     }
 
@@ -3002,7 +3019,7 @@ class WorkoutLogStorage {
             // Tiebreaker .order('id') = pagine stabili (log_date/set_number non sono univoci).
             const { data, error } = await fetchAllPaginated(() => supabaseClient
                 .from('workout_logs')
-                .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rest_done,rpe')
+                .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rest_done,rpe,notes')
                 .in('exercise_id', exIds)
                 .order('log_date', { ascending: false })
                 .order('set_number', { ascending: true })
@@ -3021,7 +3038,7 @@ class WorkoutLogStorage {
             // troncato. Tiebreaker .order('id') = pagine stabili.
             const { data, error } = await fetchAllPaginated(() => supabaseClient
                 .from('workout_logs')
-                .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rest_done,rpe')
+                .select('id,exercise_id,user_id,log_date,set_number,reps_done,weight_done,rest_done,rpe,notes')
                 .eq('user_id', userId)
                 .order('log_date', { ascending: false })
                 .order('set_number', { ascending: true })

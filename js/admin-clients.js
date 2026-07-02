@@ -1053,9 +1053,9 @@ function openEditClientPopup(index, whatsapp, email, name) {
                 </div>
             </div>
             <div class="edit-client-popup-actions">
-                <button class="btn-delete-client" onclick="event.stopPropagation(); deleteClientData(${index}, '${_escHtml(whatsapp)}', '${_escHtml(email)}')" title="Elimina tutti i dati del cliente">🗑️ Elimina</button>
+                <button class="btn-delete-client" onclick="event.stopPropagation(); deleteClientData(${index}, '${_escAttr(whatsapp)}', '${_escAttr(email)}')" title="Elimina tutti i dati del cliente">🗑️ Elimina</button>
                 <button class="btn-cancel-edit" onclick="closeEditClientPopup()">Annulla</button>
-                <button class="btn-save-edit" onclick="saveClientEdit(${index}, '${_escHtml(whatsapp)}', '${_escHtml(email)}')">Salva</button>
+                <button class="btn-save-edit" onclick="saveClientEdit(${index}, '${_escAttr(whatsapp)}', '${_escAttr(email)}')">Salva</button>
             </div>
         </div>
     `;
@@ -1223,6 +1223,12 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
                 }
                 return;
             }
+            // Guard difensivo: la RPC può tornare {success:false} senza errore di trasporto.
+            if (data && data.success === false) {
+                console.error('[admin_rename_client] rejected:', data);
+                showAlert('Aggiornamento rifiutato dal server. Riprova.', { type:'error' });
+                return;
+            }
             console.log('[admin_rename_client]', data);
             renameOk = true;
         } catch (e) {
@@ -1298,7 +1304,45 @@ async function deleteClientData(index, whatsapp, email) {
 
     if (!await showConfirm(`Confermi l'eliminazione di TUTTI i dati di ${clientName}?\n\nPrenotazioni e dati associati verranno eliminati permanentemente.`)) return;
 
-    // 1. Elimina prenotazioni
+    // Server-first: senza email né WhatsApp non c'è modo di risolvere il cliente lato server.
+    if (!clientEmail && !clientPhone) {
+        showAlert('Cliente senza email né WhatsApp: impossibile eliminare i dati server-side.', { type:'error' });
+        return;
+    }
+
+    // 1. Supabase FIRST — elimina i dati dal DB via RPC admin (per email e/o WhatsApp).
+    //    Solo se il server conferma passiamo alla pulizia locale: niente successo fittizio
+    //    con il DB ancora sporco (al reload i dati tornerebbero da Supabase).
+    if (typeof supabaseClient !== 'undefined') {
+        try {
+            const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_delete_client_data', {
+                p_email:    clientEmail || null,
+                p_whatsapp: clientPhone || null,
+            }));
+            if (error) {
+                console.error('[deleteClientData] RPC error:', error.message);
+                showAlert('Errore lato server: ' + error.message + '\nNessun dato è stato rimosso.', { type:'error' });
+                return;
+            }
+            if (data && data.success === false) {
+                console.error('[deleteClientData] RPC rejected:', data);
+                showAlert('Eliminazione rifiutata dal server (' + (data.error || 'motivo sconosciuto') + '). Nessun dato rimosso.', { type:'error' });
+                return;
+            }
+            console.log('[deleteClientData] Supabase:', data);
+        } catch (e) {
+            console.error('[deleteClientData] Supabase error:', e);
+            const isTimeout = e && e.message === 'rpc_timeout';
+            showAlert(isTimeout
+                ? 'Timeout durante l\'eliminazione. Nessun dato è stato rimosso — riprova.'
+                : 'Errore di rete durante l\'eliminazione. Nessun dato è stato rimosso — riprova.', { type:'error' });
+            return;
+        }
+        // Hard-delete confermato: forza un FULL al prossimo sync (il delta non vede i DELETE).
+        BookingStorage.invalidateDelta();
+    }
+
+    // 2. Server OK (o offline) → pulizia cache locale: prenotazioni del cliente per email o telefono.
     const allBookings = BookingStorage.getAllBookings();
     const kept = allBookings.filter(b => {
         if (clientEmail && b.email?.toLowerCase() === clientEmail) return false;
@@ -1307,17 +1351,6 @@ async function deleteClientData(index, whatsapp, email) {
     });
     const removedBookings = allBookings.length - kept.length;
     BookingStorage.replaceAllBookings(kept);
-
-    // 2. Supabase: elimina dati dal DB via RPC admin
-    if (typeof supabaseClient !== 'undefined' && clientEmail) {
-        try {
-            const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_delete_client_data', { p_email: clientEmail }));
-            if (error) console.error('[deleteClientData] RPC error:', error.message);
-            else console.log('[deleteClientData] Supabase:', data);
-        } catch (e) { console.error('[deleteClientData] Supabase error:', e); }
-        // Hard-delete: forza un FULL al prossimo sync (il delta non vede i DELETE).
-        BookingStorage.invalidateDelta();
-    }
 
     showToast(`Dati di ${clientName} eliminati (${removedBookings} prenotazioni rimosse).`, 'success');
     renderClientsTab();

@@ -1596,11 +1596,13 @@ function renderClientiDetail(panel) {
             .sort((a, b) => a.name.localeCompare(b.name));
     }
 
+    // Privacy: nasconde gli importi (***); i nomi vanno sempre escapati (XSS stored).
+    const _maskAmt = txt => _sensitiveHidden ? '***' : txt;
     const _emptyRow = '<div class="sdb-row"><span class="sdb-label" style="color:#9ca3af">Nessun dato</span></div>';
     const _clientRows = (list, valueFn) => list.length === 0 ? _emptyRow :
         list.map((c, i) => `
             <div class="sdb-row">
-                <span class="sdb-label">${i + 1}. ${c.name}</span>
+                <span class="sdb-label">${i + 1}. ${_escHtml(c.name)}</span>
                 <span class="sdb-value">${valueFn(c)}</span>
             </div>`).join('');
 
@@ -1632,7 +1634,7 @@ function renderClientiDetail(panel) {
             <div class="stat-detail-breakdown">
                 <h4>💰 Maggior fatturato (versato)</h4>
                 <div class="sdb-rows">
-                    ${_clientRows(topCash, c => `€${c.cash}`)}
+                    ${_clientRows(topCash, c => _maskAmt(`€${c.cash}`))}
                 </div>
             </div>
             <div class="stat-detail-breakdown">
@@ -1666,14 +1668,14 @@ function renderClientiDetail(panel) {
                 </div>
             </div>
             <div class="stat-detail-breakdown">
-                <h4>💸 Pagamento more (${moraUsersList.length}) — €${moraTotalAmount}</h4>
+                <h4>💸 Pagamento more (${moraUsersList.length}) — ${_maskAmt(`€${moraTotalAmount}`)}</h4>
                 <div class="sdb-rows">
                     ${moraUsersList.length === 0
                         ? '<div class="sdb-row"><span class="sdb-label" style="color:#9ca3af">Nessuna mora nel periodo</span></div>'
                         : moraUsersList.map((c, i) => `
                             <div class="sdb-row">
-                                <span class="sdb-label">${i + 1}. ${c.name}</span>
-                                <span class="sdb-value">${c.count} more — €${c.total}</span>
+                                <span class="sdb-label">${i + 1}. ${_escHtml(c.name)}</span>
+                                <span class="sdb-value">${c.count} more — ${_maskAmt(`€${c.total}`)}</span>
                             </div>`).join('')
                     }
                 </div>
@@ -1688,7 +1690,7 @@ function renderClientiDetail(panel) {
                         ? '<div class="sdb-row"><span class="sdb-label" style="color:#9ca3af">Nessun nuovo cliente nel periodo</span></div>'
                         : newClients.map((c, i) => `
                             <div class="sdb-row">
-                                <span class="sdb-label">${i + 1}. ${c.name}</span>
+                                <span class="sdb-label">${i + 1}. ${_escHtml(c.name)}</span>
                                 <span class="sdb-value" style="color:#9ca3af;font-size:0.8rem">${c.date.getDate()}/${c.date.getMonth()+1}/${c.date.getFullYear()}</span>
                             </div>`).join('')
                     }
@@ -1701,7 +1703,7 @@ function renderClientiDetail(panel) {
                         ? '<div class="sdb-row"><span class="sdb-label" style="color:#9ca3af">Nessun cliente perso</span></div>'
                         : lostClients.map((c, i) => `
                             <div class="sdb-row">
-                                <span class="sdb-label">${i + 1}. ${c.name}</span>
+                                <span class="sdb-label">${i + 1}. ${_escHtml(c.name)}</span>
                             </div>`).join('')
                     }
                 </div>

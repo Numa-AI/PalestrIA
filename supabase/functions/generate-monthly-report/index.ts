@@ -634,8 +634,10 @@ Deno.serve(async (req) => {
 
         // ── Rate limit: max 3 report con status='generated' per (user, year_month)
         // Non conta i 'failed' (potrebbero essere stati errori AI non attribuibili all'utente).
-        // Admin può comunque bypassare (utile per testing / supporto).
-        if (force_regenerate && !isAdmin) {
+        // Vale per TUTTI i non-admin (non solo su force_regenerate): difesa-in-profondità.
+        // Di fatto un non-admin genera ex-novo solo con force_regenerate (l'idempotenza
+        // sopra ritorna l'esistente), ma non ci affidiamo a quello. Admin bypassa (testing/supporto).
+        if (!isAdmin) {
             const { count: existingCount } = await supabase
                 .from("monthly_reports")
                 .select("id", { count: "exact", head: true })

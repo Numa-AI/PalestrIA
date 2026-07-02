@@ -106,3 +106,38 @@ Verificato localmente (deno installato apposta): guard passa, `deno check --no-l
 - `.github/workflows/ci.yml` — guard ignora i commenti SQL
 - `supabase/functions/{billing-checkout,billing-portal,create-checkout,stripe-connect,stripe-webhook}/index.ts` — cast apiVersion
 - `supabase/functions/image-proxy/index.ts` — catch unknown-safe
+
+## Task: Port "code review 1" dal gemello Thomas (fix.md)
+**Data:** 2026-07-02
+**Durata stimata:** ~2h lavoro Claude + ~5 min prompt utente
+
+### Modifiche effettuate
+Portati da `fix.md` (guida di replica del gemello single-tenant Thomas) **solo i finding realmente applicabili** a PalestrIA: dei 23 finding, la maggior parte era già coperta dalla baseline SaaS o non applicabile (sistema crediti rimosso, feature Thomas assenti). Ricognizione fatta con 3 subagent paralleli (DB, frontend, HTML/edge) per mappare ogni fix allo stato reale. `code-review2.md` rimandata su richiesta utente.
+
+- **Migration `00000000000023_code_review_fixes.sql`** (incrementale, org-scoped, idempotente):
+  - 1.2 — trigger `_trg_profiles_block_self_admin_flags` anti self-update di `documento_firmato` (unico flag admin-only presente).
+  - 1.7 — `admin_delete_client_data(p_email, p_whatsapp)`: firma estesa + delete cliente esteso alle tabelle billing/notifiche (payments preservato).
+  - 1.8 — `admin_prune_old_data(cutoff)`: prune server-side org-scoped.
+- **Frontend**: `admin-analytics.js` (mask `***` importi + escape nomi in renderClientiDetail), `admin-clients.js` (escAttr onclick + guard data.success + deleteClientData server-first/whatsapp), `admin-backup.js` (prune via RPC), `data.js` (`,notes` select log + reorderExercises base-min + `_retryPending` via `book_slot`), `allenamento.html` (dequeue coda offline su delete log + blocco CIRCUITO nel PDF), `generate-monthly-report/index.ts` (rate-limit `!isAdmin`).
+- **Cache-busting**: `sw.js` v574→v575; `data.js?v=94→95` (9 pagine); admin-analytics v10→11, backup v9→10, clients v14→15.
+
+### Decisioni prese
+- **Tablet resta editabile** (11.3 NON portato): il kiosk di PalestrIA è editabile per scelta (migration 00016 con RPC `kiosk_*` + ownership); portare il read-only del gemello avrebbe rimosso una feature voluta. Decisione utente.
+- **Token QR tablet rimandato** (1.5/10.2/11.1/11.2): sostituire l'UUID permanente nel QR con token opaco a scadenza è hardening reale ma richiede un cantiere DB org-aware (tabella + 2 RPC + adattamento delle 12 RPC kiosk da `p_uid` a token). Task separato. Decisione utente.
+- **Delete cliente conservativo**: cancella dati operativi + artefatti billing, ma NON la riga `profiles` né il ledger `payments` (storico fatturato), coerente con il pattern esistente.
+- **Non toccati i punti già coperti/N/A**: RLS bookings, workout_logs.rest_done, circuit_group in duplicate_plan, `_localDateStr`, escaping admin-payments/calendar, conferme IMPORTA/ELIMINA/BLOCCA, tutto ciò che dipendeva da crediti/credit_history/stripe_topup (rimossi).
+
+### File toccati
+- `supabase/migrations/00000000000023_code_review_fixes.sql` — nuovo (trigger + 2 RPC)
+- `supabase/functions/generate-monthly-report/index.ts` — rate-limit `!isAdmin`
+- `js/admin-analytics.js` — mask importi + escape nomi (v11)
+- `js/admin-clients.js` — escAttr + guard data.success + deleteClientData server-first (v15)
+- `js/admin-backup.js` — pruneOldData via RPC (v10)
+- `js/data.js` — select notes + reorder base-min + retry via book_slot (v95, 9 pagine)
+- `allenamento.html` — dequeue offline + PDF circuiti
+- `sw.js` — CACHE_NAME v575
+- `todo.md`, memoria `stato-progetto` — tracking
+
+### Follow-up aperti
+- DEPLOY: `supabase db push` (mig.0023) + `functions deploy generate-monthly-report` + push Pages + QA staging (checklist `fix.md` §13).
+- TODO futuro: token QR tablet opaco; `code-review2.md` (20 item, rimandata).

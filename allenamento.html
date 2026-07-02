@@ -274,7 +274,7 @@
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=3"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=94"></script>
+    <script src="js/data.js?v=95"></script>
     <script src="js/auth.js?v=33"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
@@ -1665,6 +1665,9 @@
                 for (const log of todayForEx) {
                     await WorkoutLogStorage.deleteLog(log.id);
                 }
+                // Se un salvataggio di oggi era rimasto in coda offline, toglilo: senza dequeue
+                // il flush successivo ricreerebbe il log appena cancellato.
+                _dequeueOp(exerciseId + ':' + today);
                 _allLogs = _allLogs.filter(l => !(l.exercise_id === exerciseId && l.log_date === today));
                 if (typeof showToast === 'function') showToast('Log eliminato', 'success');
                 // Se sono in un overlay dettaglio, chiudilo per tornare alla scheda
@@ -1932,7 +1935,11 @@
             if (!await showConfirm('Eliminare questo set?')) return;
             btn.disabled = true;
             try {
+                // Trova il log PRIMA di cancellarlo, per poter togliere l'eventuale
+                // salvataggio pendente in coda offline (chiave exercise_id:log_date).
+                const _log = _storicoLogsCache.find(l => l.id === logId);
                 await WorkoutLogStorage.deleteLog(logId);
+                if (_log) _dequeueOp(_log.exercise_id + ':' + _log.log_date);
                 _storicoLogsCache = _storicoLogsCache.filter(l => l.id !== logId);
                 _allLogs = _allLogs.filter(l => l.id !== logId);
                 if (typeof showToast === 'function') showToast('Set eliminato', 'success');
@@ -1951,6 +1958,8 @@
                 for (const l of toDel) {
                     await WorkoutLogStorage.deleteLog(l.id);
                 }
+                // Togli l'eventuale salvataggio pendente in coda offline per quel giorno.
+                _dequeueOp(exerciseId + ':' + logDate);
                 _storicoLogsCache = _storicoLogsCache.filter(l => !(l.exercise_id === exerciseId && l.log_date === logDate));
                 _allLogs = _allLogs.filter(l => !(l.exercise_id === exerciseId && l.log_date === logDate));
                 if (typeof showToast === 'function') showToast('Giornata eliminata', 'success');
@@ -4537,6 +4546,17 @@
                         }
                     }
 
+                    // Build circuit groups map (come i superset): senza questo i membri
+                    // del circuito venivano stampati come esercizi singoli, perdendo il
+                    // raggruppamento "CIRCUITO" (giri + pausa finale) della vista scheda.
+                    const ccMap = {}, ccRendered = new Set();
+                    for (const e of dayEx) {
+                        if (e.circuit_group) {
+                            if (!ccMap[e.circuit_group]) ccMap[e.circuit_group] = [];
+                            ccMap[e.circuit_group].push(e);
+                        }
+                    }
+
                     // Misura altezza approssimata di un esercizio (immagine+titolo+note+tabella)
                     // Serve per fare il page-break PRIMA del divider, così numero+immagine
                     // restano sempre sulla stessa pagina. Il caller garantisce lo spazio,
@@ -4567,6 +4587,16 @@
                     function _measureSuperset(pair) {
                         let h = _dividerH() + 3 + 11;
                         pair.forEach((e, idx) => {
+                            if (idx > 0) h += 3;
+                            h += 4;
+                            h += _measureExBlock(e, 4);
+                        });
+                        return h + 2;
+                    }
+
+                    function _measureCircuit(items) {
+                        let h = _dividerH() + 3 + 11;
+                        items.forEach((e, idx) => {
                             if (idx > 0) h += 3;
                             h += 4;
                             h += _measureExBlock(e, 4);
@@ -4721,6 +4751,57 @@
                             continue;
                         }
                         if (ex.superset_group && ssRendered.has(ex.superset_group)) continue;
+
+                        // ── Circuit block ──
+                        if (ex.circuit_group && !ccRendered.has(ex.circuit_group)) {
+                            ccRendered.add(ex.circuit_group);
+                            const items   = ccMap[ex.circuit_group] || [ex];
+                            const rounds  = items[0].sets || 1;                       // giri = sets del 1° esercizio
+                            const restSec = items[items.length - 1].rest_seconds || 0; // pausa finale = rest dell'ultimo
+                            // Pre-check: tutto il circuito deve stare sulla stessa pagina
+                            const ccH = _measureCircuit(items);
+                            if (y + ccH > ph - m - 10 && y > m) { doc.addPage(); y = m; }
+
+                            _pdfDivider();
+
+                            // CC accent bar + intestazione "CIRCUITO"
+                            doc.setFillColor(...CYAN);
+                            doc.roundedRect(m, y, cw, 0.8, 0, 0, 'F');
+                            y += 3;
+                            doc.setFont('helvetica', 'bold');
+                            doc.setFontSize(10);
+                            doc.setTextColor(...CYAN);
+                            doc.text('CIRCUITO', m, y + 4);
+                            doc.setFontSize(9);
+                            doc.setTextColor(...NAVY);
+                            doc.text(items.map(e => e.exercise_name).join('  ·  '), m + 24, y + 4);
+                            doc.setFont('helvetica', 'normal');
+                            doc.setFontSize(8);
+                            doc.setTextColor(...GRAY);
+                            doc.text(rounds + ' giri' + (restSec ? ' · ' + restSec + 's pausa finale' : ''), m, y + 9);
+                            y += 11;
+
+                            items.forEach((ccEx, idx) => {
+                                if (idx > 0) {
+                                    // separatore tratteggiato tra gli esercizi del circuito
+                                    doc.setDrawColor(...CYAN);
+                                    doc.setLineWidth(0.3);
+                                    doc.setLineDashPattern([2, 2], 0);
+                                    doc.line(m + 4, y, pw - m, y);
+                                    doc.setLineDashPattern([], 0);
+                                    y += 3;
+                                }
+                                doc.setFont('helvetica', 'bold');
+                                doc.setFontSize(8);
+                                doc.setTextColor(...CYAN);
+                                doc.text(String.fromCharCode(65 + idx) + '.', m + 4, y + 3);
+                                y += 4;
+                                _pdfExBlock(ccEx, 4);
+                            });
+                            y += 2;
+                            continue;
+                        }
+                        if (ex.circuit_group && ccRendered.has(ex.circuit_group)) continue;
 
                         // ── Normal single exercise ──
                         // Pre-check: numero + immagine + tabella devono stare insieme
