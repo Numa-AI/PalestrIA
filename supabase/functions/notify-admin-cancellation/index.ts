@@ -59,15 +59,19 @@ Deno.serve(async (req) => {
         // 1) dalla prenotazione cancellata (bookings.org_id, server-authoritative);
         // 2) fallback dal chiamante: profiles → org_members.
         let orgId: string | null = null;
+        // Anti-spoofing: il `name` del body è forgiabile; preferisci il nome scritto da
+        // book_slot sulla riga bookings (server-authoritative). Body come fallback.
+        let bookingName: string | null = null;
 
         if (booking_id) {
             const { data: bk, error: bkErr } = await supabase
                 .from("bookings")
-                .select("org_id")
+                .select("org_id, name")
                 .eq("id", booking_id)
                 .maybeSingle();
             if (bkErr) throw bkErr;
             orgId = bk?.org_id ?? null;
+            bookingName = bk?.name ?? null;
         }
 
         if (!orgId && callerId) {
@@ -111,7 +115,8 @@ Deno.serve(async (req) => {
         const capacity = max_capacity ?? occupancy;
         const startTime = time.split(" - ")[0]?.trim() ?? time;
 
-        const title = "❌ " + name;
+        const displayName = (bookingName && bookingName.trim()) ? bookingName : name;
+        const title = "❌ " + displayName;
         const body = `${date_display} alle ${startTime} (${occupancy}/${capacity})`;
         const payload = JSON.stringify({
             title,

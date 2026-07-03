@@ -174,3 +174,39 @@ Portati da `code-review2.md` e dalle voci nuove del changelog Thomas **solo i pu
 - DEPLOY Pages: push branch (fatto in coda al task).
 - QA: **shell iOS su iPhone reale** (barra ferma su fling, cambio tab, PTR da cima, tastiera, chiusura/riapertura); capienza slot con annullamento pendente; badge per-lezione; "Seleziona passate".
 - Cleanup futuro opzionale: exportRegistro / vista Progressi schede / openProfileModal.
+
+---
+
+## Task: Port "security review" dal gemello Thomas (XSS admin, blocco email, edge notify)
+**Data:** 2026-07-03
+**Durata stimata:** ~40 min lavoro Claude + ~5 min prompt utente
+
+Portati dall'entry `2026-07-03 — Security review` del changelog Thomas **solo i finding applicabili**. Ricognizione con 3 subagent paralleli (XSS admin / RPC SQL / edge notify) prima di toccare codice. La maggioranza dei fix SQL del gemello è **N/A**: agiscono sul sistema crediti rimosso in PalestrIA o su feature/flussi assenti.
+
+### Modifiche effettuate
+- **Migration `00000000000025_profiles_block_self_email.sql`** (incrementale sopra 0023) — estende la trigger function `_trg_profiles_block_self_admin_flags` per bloccare anche il **self-change di `profiles.email`** verso un valore diverso. Vettore: un cliente non-admin che via PostgREST cambia la propria email in quella di un altro utente della org per agganciarne le prenotazioni guest (link per email+org). Blocco non distruttivo (revert del valore) mirato a `auth.uid() = old.id AND NOT is_org_admin`; esenti prima-assegnazione, admin e contesti server (service_role → `auth.uid()` NULL). `documento_firmato` invariato.
+- **XSS frontend (3 sink residui)** — gli altri 8 sink del gemello erano già `_escAttr`/`_escHtml` in PalestrIA:
+  - `js/admin-settings.js` (health-check) — `item.email`/`booking_email`/`profile_email`/`date` (dati cliente) finivano grezzi in innerHTML → `_escHtml`. Unico vero vettore cliente→admin ancora aperto.
+  - `js/admin-schede.js` ×2 — `_escHtml(name).replace(/'/g,"\\'")` (solo-apice, breakout via `\`) → `_escAttr`.
+  - `js/admin-clients.js` 713/715 (`plan.name` in onclick) — 715 non escapava l'apice (XSS + bug reale su nomi con apostrofo) → `_escAttr`.
+- **Edge notify anti-spoofing** — `name` mostrato agli admin (push + `admin_messages`) non più dal body forgiabile ma server-side:
+  - `notify-admin-new-client` — dal profilo del chiamante (`select org_id, name where id = auth.uid()`); body fallback.
+  - `notify-admin-booking` / `notify-admin-cancellation` — dalla riga `bookings` (`select org_id, name` via `booking_id`, scritto da `book_slot`); body fallback. Adattamento chiave rispetto al gemello: qui il client autentica con **anon key** (no `auth.uid()`), quindi la fonte server è la prenotazione, non il profilo.
+- **Fix UI plurali** (`admin-payments.js` `openDebtPopup`) — il sottotitolo del popup "Registra incasso" appendeva una lettera invece di sostituire la vocale finale → per il plurale mostrava "lezione**i**/pagata**e**/passata**e**/futura**e**". Ora forma corretta "lezioni/pagate/passate/future". (Unico gap UI reale emerso dal check completo del changelog Thomas: tutto il resto — redesign tab Clienti, card partecipante, popup nuovo cliente, stats anti-skeleton, SW no-reload, registro fetch autoritativo — è già presente o N/A per crediti/Richieste assenti.)
+- **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v577**; `admin.html` `?v=` admin-settings 9→10 / admin-clients 15→16 / admin-schede 51→52 / admin-payments 19→20. `node --check` OK su tutti i JS.
+
+### Decisioni prese
+- **Scope guidato dall'architettura, non copia alla cieca**: il `.lnk` `Aggiornamenti Thomas.md` aveva TargetPath vuoto (creato su altra macchina, utente `andrea`) → letto il file vero (`Thomas Bresciani/Aggiornamenti.md`). Verificato ogni finding nel codice PalestrIA prima di decidere.
+- **N/A confermati**: `apply_credit_on_booking`/`apply_credit_to_past_bookings`/`fulfill_pending_cancellation` (crediti rimossi, refund già server-side, niente grant anon), `book_slot_atomic` identity-spoofing (`book_slot` usa già `p_for_user_id` dietro `is_org_admin`+appartenenza org), `notify-access-request-update`/git-history purge/repo privato (feature Thomas assenti o fuori scope PalestrIA).
+- **Blocco email mirato a self-update** (`auth.uid()=old.id`) invece del solo `NOT is_org_admin`: evita di rompere admin, signup (INSERT) e edge/service-role, che sono i soli flussi legittimi di cambio email.
+
+### File toccati
+- `supabase/migrations/00000000000025_profiles_block_self_email.sql` — nuovo (blocco self-change email)
+- `js/admin-settings.js`, `js/admin-schede.js`, `js/admin-clients.js` — escaping XSS sink
+- `supabase/functions/notify-admin-{booking,cancellation,new-client}/index.ts` — nome server-side anti-spoofing
+- `sw.js` (CACHE_NAME v577), `admin.html` (bump `?v=`) — cache-busting
+- `todo.md`, memoria `stato-progetto` — tracking
+
+### Follow-up aperti
+- **DEPLOY**: `supabase db push` (0025) + `supabase functions deploy notify-admin-booking notify-admin-cancellation notify-admin-new-client` + push branch (Pages, cache-bust v577). `deno check` da far girare in CI (deno non installato in locale).
+- **QA produzione**: (1) cliente non-admin non cambia la propria `profiles.email` via PostgREST, admin sì, signup/edit-admin OK; (2) nome-body forgiato ≠ nome booking → la notifica admin mostra quello della prenotazione; (3) health-check settings con email cliente contenente HTML → nessuna esecuzione.

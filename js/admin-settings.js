@@ -1754,7 +1754,9 @@ async function runHealthCheck() {
                 html += `<div style="font-size:0.8rem;color:#6b7280;padding:0.2rem 0 0.2rem 1.75rem;">${c.desc}</div>`;
                 html += `<div style="font-size:0.8rem;color:#2563eb;padding:0 0 0.5rem 1.75rem;">Correzione: ${c.fix}</div>`;
                 items.slice(0, 10).forEach(item => {
-                    html += `<div style="font-size:0.8rem;color:#6b7280;padding:0.15rem 0 0.15rem 1.75rem;">• ${item.email || item.booking_email || '—'}${item.date ? ' (' + item.date + ')' : ''}${item.profile_email ? ' → profilo: ' + item.profile_email : ''}</div>`;
+                    // XSS: email/date arrivano dai dati cliente (prenotazioni orfane/mismatch)
+                    // e finiscono in innerHTML → sempre escapati.
+                    html += `<div style="font-size:0.8rem;color:#6b7280;padding:0.15rem 0 0.15rem 1.75rem;">• ${_escHtml(item.email || item.booking_email || '—')}${item.date ? ' (' + _escHtml(item.date) + ')' : ''}${item.profile_email ? ' → profilo: ' + _escHtml(item.profile_email) : ''}</div>`;
                 });
                 if (items.length > 10) html += `<div style="font-size:0.8rem;color:#6b7280;padding:0.15rem 0 0.15rem 1.75rem;">... e altri ${items.length - 10}</div>`;
             }

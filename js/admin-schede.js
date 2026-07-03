@@ -1607,7 +1607,7 @@ var _schedeQuickSearchClient = _debounce(function() {
         dropdown.innerHTML = '<div class="dropdown-no-results">Nessun cliente trovato</div>';
     } else {
         dropdown.innerHTML = matches.slice(0, 10).map(u =>
-            `<div class="dropdown-item" onclick="_schedeQuickSelectClient('${u.userId}', '${_escHtml(u.name || u.email).replace(/'/g, "\\'")}')">
+            `<div class="dropdown-item" onclick="_schedeQuickSelectClient('${_escAttr(u.userId)}', '${_escAttr(u.name || u.email)}')">
                 <span class="dropdown-item-name">${_escHtml(u.name || 'Senza nome')}</span>
             </div>`
         ).join('');
@@ -2597,7 +2597,7 @@ var _schedeSearchClient = _debounce(function() {
         dropdown.innerHTML = '<div class="dropdown-no-results">Nessun cliente registrato trovato</div>';
     } else {
         dropdown.innerHTML = matches.slice(0, 10).map(u =>
-            `<div class="dropdown-item" onclick="_schedeSelectClient('${u.userId}', '${_escHtml(u.name || u.email).replace(/'/g, "\\'")}')">
+            `<div class="dropdown-item" onclick="_schedeSelectClient('${_escAttr(u.userId)}', '${_escAttr(u.name || u.email)}')">
                 <span class="dropdown-item-name">${_escHtml(u.name || 'Senza nome')}</span>
             </div>`
         ).join('');

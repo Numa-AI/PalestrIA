@@ -29,21 +29,22 @@ const corsHeaders = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Ricava la org_id da fonti server-authoritative: la prenotazione (booking_id)
-// oppure, in fallback, il chiamante autenticato (callerId). MAI dal body.
-async function resolveOrgId(input: {
+// Ricava la org_id (e, se disponibile, il nome server-authoritative della
+// prenotazione) da fonti server-authoritative: la prenotazione (booking_id) oppure,
+// in fallback, il chiamante autenticato (callerId). MAI dal body.
+async function resolveOrg(input: {
     booking_id?: string;
     callerId?: string | null;
-}): Promise<string | null> {
-    // 1) dalla prenotazione (bookings.org_id, settato da book_slot lato server)
+}): Promise<{ orgId: string | null; bookingName: string | null }> {
+    // 1) dalla prenotazione (bookings.org_id/name, settati da book_slot lato server)
     if (input.booking_id) {
         const { data, error } = await supabase
             .from("bookings")
-            .select("org_id")
+            .select("org_id, name")
             .eq("id", input.booking_id)
             .maybeSingle();
         if (error) throw error;
-        if (data?.org_id) return data.org_id;
+        if (data?.org_id) return { orgId: data.org_id, bookingName: data.name ?? null };
     }
 
     // 2) fallback dal chiamante: profiles (cliente) → org_members (staff/admin)
@@ -53,7 +54,7 @@ async function resolveOrgId(input: {
             .select("org_id")
             .eq("id", input.callerId)
             .maybeSingle();
-        if (prof?.org_id) return prof.org_id;
+        if (prof?.org_id) return { orgId: prof.org_id, bookingName: null };
 
         const { data: mem } = await supabase
             .from("org_members")
@@ -61,10 +62,10 @@ async function resolveOrgId(input: {
             .eq("user_id", input.callerId)
             .eq("status", "active")
             .maybeSingle();
-        if (mem?.org_id) return mem.org_id;
+        if (mem?.org_id) return { orgId: mem.org_id, bookingName: null };
     }
 
-    return null;
+    return { orgId: null, bookingName: null };
 }
 
 Deno.serve(async (req) => {
@@ -94,7 +95,10 @@ Deno.serve(async (req) => {
         }
 
         // Risolvi la org della prenotazione: i push andranno SOLO agli admin di questa org.
-        const orgId = await resolveOrgId({ booking_id, callerId });
+        // Anti-spoofing: il `name` del body è forgiabile (chi ha la anon key + un
+        // booking_id può inviare un nome arbitrario mostrato agli admin). Preferisci il
+        // nome scritto da book_slot sulla riga bookings; il body è solo fallback.
+        const { orgId, bookingName } = await resolveOrg({ booking_id, callerId });
         if (!orgId) {
             return new Response(JSON.stringify({ ok: false, error: "Impossibile determinare la org della prenotazione" }), {
                 status: 400,
@@ -118,7 +122,8 @@ Deno.serve(async (req) => {
         const capacity = max_capacity ?? occupancy;
         const startTime = time.split(" - ")[0]?.trim() ?? time;
 
-        const title = "✔️ " + name;
+        const displayName = (bookingName && bookingName.trim()) ? bookingName : name;
+        const title = "✔️ " + displayName;
         const body  = `${date_display} alle ${startTime} (${occupancy}/${capacity})`;
 
         const payload = JSON.stringify({
@@ -175,7 +180,7 @@ Deno.serve(async (req) => {
             body,
         });
 
-        console.log(`[notify-admin-booking] org=${orgId} ${sent} notifiche inviate per ${name} — ${date_display} ${startTime}`);
+        console.log(`[notify-admin-booking] org=${orgId} ${sent} notifiche inviate per ${displayName} — ${date_display} ${startTime}`);
         return new Response(JSON.stringify({ ok: true, sent }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

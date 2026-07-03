@@ -384,10 +384,12 @@ function openDebtPopup(whatsapp, email, name) {
     const pastCount   = unpaid.filter(b => bookingHasPassed(b)).length;
     const futureCount = unpaid.length - pastCount;
     const parts = [];
-    if (pastCount   > 0) parts.push(`${pastCount} passata${pastCount   > 1 ? 'e' : ''}`);
-    if (futureCount > 0) parts.push(`${futureCount} futura${futureCount > 1 ? 'e' : ''}`);
+    // Plurali corretti: la forma plurale sostituisce l'ultima vocale (non aggiunge
+    // una lettera → niente "lezionei/pagatae/passatae/futurae").
+    if (pastCount   > 0) parts.push(`${pastCount} ${pastCount   > 1 ? 'passate' : 'passata'}`);
+    if (futureCount > 0) parts.push(`${futureCount} ${futureCount > 1 ? 'future' : 'futura'}`);
     document.getElementById('debtPopupSubtitle').textContent =
-        `${unpaid.length} lezione${unpaid.length > 1 ? 'i' : ''} non pagata${unpaid.length > 1 ? 'e' : ''} (${parts.join(', ')})`;
+        `${unpaid.length} ${unpaid.length > 1 ? 'lezioni' : 'lezione'} non ${unpaid.length > 1 ? 'pagate' : 'pagata'} (${parts.join(', ')})`;
 
     const debtSelect = document.getElementById('debtMethodSelect');
     if (debtSelect) debtSelect.value = '';

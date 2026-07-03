@@ -710,9 +710,9 @@ function createClientCard(client, index) {
                     <span class="client-scheda-meta">${exCount} esercizi · ${days.length} giorn${days.length === 1 ? 'o' : 'i'}</span>
                 </div>
                 <div class="client-scheda-actions">
-                    <button class="btn-row-edit" onclick="event.stopPropagation(); clientSaveAsTemplate('${plan.id}', '${_escHtml(plan.name).replace(/'/g, "\\'")}')" title="Salva come template">📋</button>
-                    <button class="btn-row-edit" onclick="event.stopPropagation(); clientGoToEditScheda('${plan.id}')" title="Modifica scheda">✏️</button>
-                    <button class="btn-row-delete" onclick="event.stopPropagation(); clientDeleteScheda('${plan.id}', '${_escHtml(plan.name)}')" title="Rimuovi scheda">🗑️</button>
+                    <button class="btn-row-edit" onclick="event.stopPropagation(); clientSaveAsTemplate('${_escAttr(plan.id)}', '${_escAttr(plan.name)}')" title="Salva come template">📋</button>
+                    <button class="btn-row-edit" onclick="event.stopPropagation(); clientGoToEditScheda('${_escAttr(plan.id)}')" title="Modifica scheda">✏️</button>
+                    <button class="btn-row-delete" onclick="event.stopPropagation(); clientDeleteScheda('${_escAttr(plan.id)}', '${_escAttr(plan.name)}')" title="Rimuovi scheda">🗑️</button>
                 </div>
             </div>`;
         }).join('');

@@ -61,13 +61,17 @@ Deno.serve(async (req) => {
         }
 
         // ── 1) Org del nuovo cliente = org del PROFILO del chiamante ───────────
+        // Anti-spoofing: il `name` del body è forgiabile (finisce nelle push e in
+        // admin_messages mostrate agli admin). Preferisci SEMPRE il nome server-side
+        // dal profilo del chiamante (l'utente appena registrato); il body è solo fallback.
         const { data: prof, error: profErr } = await supabase
             .from("profiles")
-            .select("org_id")
+            .select("org_id, name")
             .eq("id", callerId)
             .maybeSingle();
         if (profErr) throw profErr;
         const orgId: string | null = prof?.org_id ?? null;
+        const displayName = (prof?.name && String(prof.name).trim()) ? prof.name : name;
 
         if (!orgId) {
             // Senza org non sappiamo a quali admin notificare: usciamo senza errore.
@@ -97,8 +101,8 @@ Deno.serve(async (req) => {
 
         const payload = JSON.stringify({
             title: "🆕 New entry!",
-            body:  `${name} iscritto`,
-            tag:   `admin-new-client-${name}`.replace(/\s/g, "-"),
+            body:  `${displayName} iscritto`,
+            tag:   `admin-new-client-${displayName}`.replace(/\s/g, "-"),
             url:   `/admin.html`,
         });
 
@@ -132,10 +136,10 @@ Deno.serve(async (req) => {
             org_id: orgId,
             kind:  "new_client",
             title: "🆕 New entry!",
-            body:  `${name} iscritto`,
+            body:  `${displayName} iscritto`,
         });
 
-        console.log(`[notify-admin-new-client] org ${orgId} — ${sent} notifiche inviate per ${name}`);
+        console.log(`[notify-admin-new-client] org ${orgId} — ${sent} notifiche inviate per ${displayName}`);
         return new Response(JSON.stringify({ ok: true, sent }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
