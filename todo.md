@@ -14,7 +14,7 @@ Comparse 3 voci nuove **2026-07-04** in cima al changelog Thomas. **2 sono sul s
   - **[booking.js](js/booking.js)**: nuova `_renderSlotAttendees(list,data,currentType)` — raggruppa per `slot_type` (fallback `currentType` per booking legacy); ≤1 tipo → lista piatta. **Adattato multi-tenant**: pallino colore **inline via `getSlotColor()`** (org-aware, non le var CSS fisse di Thomas) e nome via `getSlotName()`. `_loadSlotAttendees` ora riceve `slotType` (threadato nei retry + call site). booking.js v23→**24** (index.html).
   - **[style.css](css/style.css)**: `.slot-attendees-group`/`.slot-attendees-name`/`.sa-dot` (colore pallino inline, nessuna classe `.sa-dot.<tipo>` fissa). style.css v10→**11** (tutti gli HTML).
   - **Cache-bust**: `sw.js` `CACHE_NAME` → **palestria-v580**. `node --check` booking.js OK.
-- [ ] **DEPLOY**: `supabase db push` per **`00000000000027`** (cambio firma RPC — finché la vecchia è attiva, `data[].slot_type` è undefined → lista piatta, degrada pulito); push branch per Pages (cache-bust v580).
+- [x] **DEPLOY FATTO** (2026-07-04): `supabase db push --yes` → **`00000000000027`** applicata sul remoto; commit **4d25d75** pushato su `origin/saas-main` **+ `origin/main`** → Pages (cache-bust v580). Nessuna edge (le 2 voci crediti N/A).
 - [ ] **QA**: slot con 2+ tipi (Gruppo + Autonomia) → iscritti raggruppati con pallino del colore giusto per tipo; slot mono-tipo → lista piatta invariata; privacy attiva → messaggio invariato.
 
 ---
