@@ -280,12 +280,12 @@
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=96"></script>
-    <script src="js/auth.js?v=33"></script>
+    <script src="js/data.js?v=97"></script>
+    <script src="js/auth.js?v=34"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <script src="js/maintenance.js?v=3"></script>
-    <script src="js/push.js?v=24"></script>
+    <script src="js/push.js?v=25"></script>
     <script>
         // Prevent iOS Safari auto-zoom on input focus.
         // touchstart fires before iOS decides to zoom, so setting
@@ -429,7 +429,13 @@
             try {
                 const result = await registerUser(name, email, whatsapp, password, codiceFiscale, { via, paese, cap });
                 if (result.ok) {
-                    notifyAdminNewClient(name);
+                    // Conferma email OFF: la sessione esiste già → notifica subito. Con
+                    // conferma ON la sessione è null qui e maybeNotifyNewClient esce: la
+                    // copre l'anchor in initAuth al ritorno dal link di conferma.
+                    try {
+                        const { data: { session } } = await supabaseAuth.auth.getSession();
+                        await maybeNotifyNewClient(session);
+                    } catch (_) {}
                     document.getElementById('registerForm').style.display = 'none';
                     document.getElementById('registerSuccess').style.display = 'block';
                 } else {
@@ -673,6 +679,29 @@
             if (error) showAlert('Errore durante il login con Google: ' + error.message, { type:'error' });
         }
 
+        // ── Notifica admin "nuovo iscritto" — anchor unico, indipendente dal flusso auth ──
+        // La push admin va inviata quando la sessione del NUOVO account è disponibile, NON
+        // al submit: con conferma email ON, al submit non c'è ancora sessione →
+        // notifyAdminNewClient (che richiede un access_token) esce subito. Il progetto usa
+        // PKCE: la conferma email torna come ?code= (consumato in silenzio dal client),
+        // l'hash non contiene mai type=signup → gateare sull'hash perderebbe la notifica.
+        // Qui invece: invia se l'account è stato creato da < 120s, con dedup su localStorage
+        // (chiave new_client_notified = user.id) per non ripetere ai login successivi.
+        // Chiamato in 2 punti (initAuth prima di ogni redirect; submit con conferma OFF).
+        async function maybeNotifyNewClient(session) {
+            try {
+                const user = session?.user;
+                if (!user) return;
+                if (localStorage.getItem('new_client_notified') === user.id) return;
+                const createdAt = user.created_at ? new Date(user.created_at).getTime() : 0;
+                if (!createdAt || (Date.now() - createdAt) > 120000) return;   // solo account appena creati
+                localStorage.setItem('new_client_notified', user.id);          // dedup PRIMA dell'await (no doppioni tra gli anchor)
+                const name = (typeof getCurrentUser === 'function' && getCurrentUser()?.name)
+                    || user.user_metadata?.full_name || user.email || 'Nuovo cliente';
+                await notifyAdminNewClient(name);
+            } catch (e) { console.warn('[login] maybeNotifyNewClient:', e?.message || e); }
+        }
+
         // ── Detect PASSWORD_RECOVERY event from Supabase ─────────────────
         // Supabase emits this when the user clicks the reset link in the email.
         // We listen BEFORE initAuth() so we catch it immediately.
@@ -710,6 +739,10 @@
         // ── Init: redirect se già loggato, oppure gestisci OAuth return ──
         initAuth().then(async session => {
             if (window._isPasswordRecovery) return; // Non redirigere durante il reset
+
+            // Notifica admin "nuovo iscritto" PRIMA di ogni redirect (l'attesa evita che la
+            // navigazione annulli la fetch). Copre conferma email PKCE/implicit + OAuth.
+            await maybeNotifyNewClient(session);
 
             // Email confirmation: l'utente ha cliccato il link di conferma
             // Supabase ha già consumato il token e creato la sessione

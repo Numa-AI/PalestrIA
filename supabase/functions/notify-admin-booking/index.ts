@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
 
         const adminIds = (members ?? []).map((m) => m.user_id);
 
-        let sent = 0;
+        let sent = 0, failed = 0;
         if (adminIds.length > 0) {
             // 2) Push subscriptions di quegli admin, sempre scoping per org_id.
             const { data: subs, error: subsErr } = await supabase
@@ -157,16 +157,34 @@ Deno.serve(async (req) => {
             if (subsErr) throw subsErr;
 
             for (const sub of subs ?? []) {
+                const _tail = sub.endpoint.slice(-30);
                 try {
-                    await webpush.sendNotification(
+                    // web-push NON lancia sempre su endpoint scaduto: può risolvere con uno
+                    // statusCode non-2xx (es. 410/404). Validiamo l'esito HTTP esplicitamente,
+                    // così `sent` conta solo le consegne riuscite e gli endpoint morti vengono
+                    // rimossi sia da eccezione sia da status code.
+                    const result: any = await webpush.sendNotification(
                         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
                         payload,
                     );
-                    sent++;
+                    const statusCode = result?.statusCode ?? 201;
+                    if (statusCode >= 200 && statusCode < 300) {
+                        sent++;
+                        console.log(`[Push] OK ${_tail} (${statusCode})`);
+                    } else {
+                        failed++;
+                        console.warn(`[Push] Errore HTTP ${statusCode} ${_tail}`);
+                        if (statusCode === 410 || statusCode === 404) {
+                            await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+                            console.log(`[Push] Cancellata subscription morta: ${_tail}`);
+                        }
+                    }
                 } catch (e: any) {
-                    console.error(`[Push] Errore ${sub.endpoint.slice(-30)}:`, e.message);
+                    failed++;
+                    console.error(`[Push] Errore ${_tail}:`, e.message);
                     if (e.statusCode === 410 || e.statusCode === 404) {
                         await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+                        console.log(`[Push] Cancellata subscription morta: ${_tail}`);
                     }
                 }
             }
@@ -180,8 +198,8 @@ Deno.serve(async (req) => {
             body,
         });
 
-        console.log(`[notify-admin-booking] org=${orgId} ${sent} notifiche inviate per ${displayName} — ${date_display} ${startTime}`);
-        return new Response(JSON.stringify({ ok: true, sent }), {
+        console.log(`[notify-admin-booking] org=${orgId} ${sent} inviate, ${failed} fallite per ${displayName} — ${date_display} ${startTime}`);
+        return new Response(JSON.stringify({ ok: true, sent, failed }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
     } catch (e: any) {

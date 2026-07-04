@@ -4835,3 +4835,41 @@ body.all-view-pdf-fixed #allContent {
     padding-top: 0.2rem;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SHELL MOBILE ANTI-DETACH (iOS PWA) — fix STRUTTURALE del dock/FAB che si staccano
+   (port dal gemello Thomas, adattato). Su iOS standalone ≤768px il root
+   (html.all-shell-page) NON scrolla mai e lo scroller di pagina diventa il body:
+   senza root scroller in movimento il bug WebKit che sgancia i `position:fixed;
+   bottom:0` (dock .all-bottom-stack + .all-fab + FAB PDF/filtro) durante il momentum
+   NON può innescarsi → barra/FAB fissi per costruzione, senza euristiche JS. Sostituisce
+   la compensazione `--all-fixed-correction-y` rimossa da allenamento.html (le `transform:
+   translateY(var(--all-fixed-correction-y,0px))` restano inerti: variabile mai settata).
+
+   Scope: SOLO iOS standalone (doppio gate `@supports (-webkit-touch-callout)` + `@media
+   display-mode:standalone`) e SOLO allenamento.html (`html.all-shell-page`). ⚠️ admin.html
+   carica ANCHE allenamento.css (riusa le card .all-*-card nell'editor schede mobile): la
+   classe `all-shell-page` NON è su <html> di admin (che usa `adm-shell-page`), quindi
+   questa regola non tocca admin (che ha già la sua shell in admin.css). Su Android/desktop
+   la shell NON serve e ROMPEREBBE il pull-to-refresh nativo di Chrome (funziona solo sul
+   root scroller). Lo scroller che cresce è .all-page (flex:1 = basis 0) → flex:1 0 auto,
+   sennò gli ultimi esercizi + FAB finiscono sotto il dock. body ha min-height:0 per
+   vincere sul min-height:100vh di .allenamento-body (sennò il fondo è irraggiungibile).
+   ══════════════════════════════════════════════════════════════════════════════ */
+@supports (-webkit-touch-callout: none) {
+    @media (display-mode: standalone) and (max-width: 768px) {
+        html.all-shell-page {
+            height: 100%;
+            overflow: hidden;
+        }
+        html.all-shell-page body {
+            height: 100%;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        html.all-shell-page .all-page {
+            flex: 1 0 auto;
+        }
+    }
+}
+

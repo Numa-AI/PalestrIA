@@ -42,8 +42,40 @@
     const ICON_WA  = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51l-.57-.01c-.2 0-.52.07-.8.37-.27.3-1.05 1.02-1.05 2.49 0 1.47 1.08 2.89 1.23 3.09.15.2 2.11 3.22 5.12 4.51.71.31 1.27.49 1.7.63.72.23 1.37.2 1.88.12.57-.09 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.07-.12-.27-.2-.57-.35z"/><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.38 5.07L2 22l5.05-1.32A9.96 9.96 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18.2c-1.68 0-3.24-.49-4.55-1.34l-.33-.2-2.99.78.8-2.9-.21-.34A8.16 8.16 0 0 1 3.8 12 8.2 8.2 0 1 1 12 20.2z"/></svg>';
     // Cornetta telefono (glifo bianco su bottone viola).
     const ICON_TEL = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.18 2.18z"/></svg>';
+    // Icona "i" (cerchio + gambo + puntino) per il bottone info.
+    const ICON_INFO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="11"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 
     function esc(s) { return typeof _escHtml === 'function' ? _escHtml(s) : String(s ?? ''); }
+
+    // ── Parsing codice fiscale → { sesso, eta } (campi null se non ricavabili) ────────
+    // Struttura CF (car. 1-based): 7-8 anno (2 cifre), 9 mese (lettera), 10-11 giorno
+    // (per le donne = giorno + 40). Secolo (euristica): prova 2000+YY, se la data cade nel
+    // futuro usa 1900+YY (nessun cliente ha >100 anni). Il sesso resta noto anche se il
+    // giorno è implausibile; l'età si omette se mese/giorno non validi.
+    function parseCF(cf) {
+        const s = String(cf || '').toUpperCase().trim();
+        const out = { sesso: null, eta: null };
+        if (s.length < 11) return out;
+        let day = parseInt(s.slice(9, 11), 10);
+        if (!Number.isNaN(day)) {
+            out.sesso = day > 40 ? 'Donna' : 'Uomo';
+            if (day > 40) day -= 40;
+        }
+        const yy = parseInt(s.slice(6, 8), 10);
+        const monthMap = { A:1, B:2, C:3, D:4, E:5, H:6, L:7, M:8, P:9, R:10, S:11, T:12 };
+        const mo = monthMap[s.charAt(8)];
+        if (!Number.isNaN(yy) && mo && !Number.isNaN(day) && day >= 1 && day <= 31) {
+            const now = new Date();
+            let year = 2000 + yy;
+            let birth = new Date(year, mo - 1, day);
+            if (birth > now) { year = 1900 + yy; birth = new Date(year, mo - 1, day); }
+            let age = now.getFullYear() - year;
+            const mDiff = now.getMonth() - (mo - 1);
+            if (mDiff < 0 || (mDiff === 0 && now.getDate() < day)) age--;
+            if (age >= 0 && age <= 120) out.eta = age;
+        }
+        return out;
+    }
 
     // ── Gate ambiente ─────────────────────────────────────────────────────────────
     function isAdmin() {
@@ -134,8 +166,30 @@
 .ncp-title { font-size: 1.15rem; font-weight: 800; color: #1a1a1a; }
 .ncp-sub { font-size: .9rem; color: #666; margin-top: 4px; }
 .ncp-list { display: flex; flex-direction: column; gap: 12px; }
-.ncp-item { border: 1px solid #eceff1; border-radius: 14px; padding: 14px; background: #fafbfc; }
-.ncp-item__name { font-weight: 800; color: #1a1a1a; font-size: 1.05rem; }
+.ncp-item { position: relative; border: 1px solid #eceff1; border-radius: 14px; padding: 14px; background: #fafbfc; }
+.ncp-item__name { font-weight: 800; color: #1a1a1a; font-size: 1.05rem; padding-right: 36px; }
+.ncp-info-btn {
+    position: absolute; top: 12px; right: 12px;
+    width: 28px; height: 28px; border: none; border-radius: 50%;
+    background: rgba(139,92,246,0.10); color: #8B5CF6; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background-color .2s, transform .1s;
+}
+.ncp-info-btn svg { width: 16px; height: 16px; }
+.ncp-info-btn:hover { background: rgba(139,92,246,0.18); }
+.ncp-info-btn:active { transform: scale(.92); }
+.ncp-info-btn.is-active { background: #8B5CF6; color: #fff; }
+.ncp-info {
+    display: none; margin-top: 10px;
+    background: #f6f4fb; border: 1px solid #ece7f6; border-radius: 10px;
+    padding: 10px 12px;
+}
+.ncp-info.is-open { display: block; animation: ncpInfo .18s ease; }
+@keyframes ncpInfo { from { opacity: 0; transform: translateY(-4px) } to { opacity: 1; transform: none } }
+.ncp-info__row { display: flex; align-items: center; gap: 8px; font-size: .92rem; color: #34404b; }
+.ncp-info__row + .ncp-info__row { margin-top: 7px; }
+.ncp-info__ico { font-size: 1rem; line-height: 1; width: 20px; text-align: center; flex: 0 0 auto; }
+.ncp-info__val { font-weight: 700; color: #1a1a1a; }
 .ncp-item__phone { font-size: .95rem; color: #5a6672; margin-top: 3px; letter-spacing: .2px; }
 .ncp-item__actions { display: flex; gap: 8px; margin-top: 12px; }
 .ncp-btn {
@@ -181,10 +235,21 @@ body.ncp-open { overflow: hidden; }`;
             const phone = String(c.whatsapp || '').trim();
             const telHref = 'tel:' + phone.replace(/[^\d+]/g, '');       // solo + e cifre
             const waHref  = 'https://wa.me/' + phone.replace(/\D/g, ''); // solo cifre
+            // Pannello info (👤 sesso / 🎂 età dal CF, 📍 comune dall'anagrafica)
+            const cf = parseCF(c.codiceFiscale);
+            const comune = String(c.indirizzoPaese || '').trim();
+            const rows = [];
+            if (cf.sesso)      rows.push(`<div class="ncp-info__row"><span class="ncp-info__ico">👤</span><span class="ncp-info__val">${esc(cf.sesso)}</span></div>`);
+            if (cf.eta != null) rows.push(`<div class="ncp-info__row"><span class="ncp-info__ico">🎂</span><span class="ncp-info__val">${esc(cf.eta + ' anni')}</span></div>`);
+            if (comune)        rows.push(`<div class="ncp-info__row"><span class="ncp-info__ico">📍</span><span class="ncp-info__val">${esc(comune)}</span></div>`);
+            const infoHTML = rows.length ? rows.join('')
+                : `<div class="ncp-info__row"><span class="ncp-info__val" style="color:#8a95a1;font-weight:600">Dati non disponibili</span></div>`;
             return `
                 <div class="ncp-item">
+                    <button class="ncp-info-btn" type="button" aria-label="Info cliente" aria-expanded="false">${ICON_INFO}</button>
                     <div class="ncp-item__name">${esc(name)}</div>
                     <div class="ncp-item__phone">${esc(phone)}</div>
+                    <div class="ncp-info">${infoHTML}</div>
                     <div class="ncp-item__actions">
                         <a class="ncp-btn ncp-btn--wa" href="${esc(waHref)}" target="_blank" rel="noopener">${ICON_WA}WhatsApp</a>
                         <a class="ncp-btn ncp-btn--tel" href="${esc(telHref)}">${ICON_TEL}Telefono</a>
@@ -202,6 +267,17 @@ body.ncp-open { overflow: hidden; }`;
                 <div class="ncp-list">${items}</div>
             </div>`;
         root.querySelector('.ncp-close').addEventListener('click', closePopup);
+        // Toggle del pannello info (delegato): apre/chiude e sincronizza stato del bottone.
+        const list = root.querySelector('.ncp-list');
+        if (list) list.addEventListener('click', (e) => {
+            const btn = e.target.closest('.ncp-info-btn');
+            if (!btn) return;
+            const panel = btn.closest('.ncp-item')?.querySelector('.ncp-info');
+            if (!panel) return;
+            const open = panel.classList.toggle('is-open');
+            btn.classList.toggle('is-active', open);
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
     }
 
     function openPopup(clients) {

@@ -855,7 +855,7 @@ class BookingStorage {
             // Purga sia la cache bookings persistita sia lo snapshot stats admin
             // (gym_stats_cache_v1:*, admin-analytics.js) → i dati economici non
             // sopravvivono a logout / clear globale sul dispositivo.
-            const prefixes = [this._PERSIST_KEY + ':', 'gym_stats_cache_v1:'];
+            const prefixes = [this._PERSIST_KEY + ':', 'gym_stats_cache_v1:', 'gym_users_cache_v1'];
             for (let i = localStorage.length - 1; i >= 0; i--) {
                 const k = localStorage.key(i);
                 if (k && prefixes.some(p => k.startsWith(p))) localStorage.removeItem(k);
@@ -2017,6 +2017,27 @@ class BookingStorage {
     static _scheduleOverridesCache = null;
     static _scheduleOverridesCacheOrg = null;   // org cui appartiene la cache in memoria
 
+    // Cutoff data per il fetch di schedule_overrides (egress: la tabella cresce per sempre,
+    // una riga per slot/data personalizzata, ed era scaricata INTERA ad ogni boot di OGNI
+    // utente — anche anonimo). Finestra bounded:
+    //  - admin: dal 1° gennaio dell'anno precedente (copre il filtro stats "Anno precedente"
+    //    e i 12 mesi di occupazione; ≤24 mesi, niente aritmetica sui mesi → nessun overflow);
+    //  - altri (cliente/anon): oggi − 30gg (il calendario cliente non naviga nel passato:
+    //    prevWeek disabilitato a offset 0; le conversioni di slot toccano solo date future).
+    // Lo STESSO cutoff scopa il confronto del ramo full-sync di saveScheduleOverrides
+    // (delete-compare) → le righe più vecchie del cutoff, assenti in locale, non possono
+    // essere cancellate dal server.
+    static _overridesCutoff() {
+        const isAdmin = (typeof window !== 'undefined') &&
+            (window._orgRole === 'owner' || window._orgRole === 'admin' ||
+             (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('adminAuth') === 'true'));
+        const now = new Date();
+        if (isAdmin) return `${now.getFullYear() - 1}-01-01`;
+        const d = new Date(now);
+        d.setDate(d.getDate() - 30);
+        return _localDateStr(d);
+    }
+
     static getScheduleOverrides() {
         const oid = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
         // Invalida la cache in memoria se l'org è cambiata (logout A → login B sullo
@@ -2097,10 +2118,13 @@ class BookingStorage {
                         }
                     }
                 } else {
-                    // Sync completo (importa settimana, clear, ecc.)
+                    // Sync completo (importa settimana, clear, ecc.). Nessun caller attuale
+                    // passa null (tutti usano changedDates), ma per sicurezza col fetch
+                    // finestrato limitiamo il confronto allo STESSO cutoff: le righe più
+                    // vecchie del cutoff, assenti in locale, non devono essere cancellate.
                     const activeKeys = new Set(rows.map(r => `${r.date}|${r.time}`));
                     const { data: existing } = await _queryWithTimeout(supabaseClient.from('schedule_overrides')
-                        .select('id, date, time'), 15000);
+                        .select('id, date, time').gte('date', BookingStorage._overridesCutoff()), 15000);
                     if (existing) {
                         const toDelete = existing
                             .filter(r => !activeKeys.has(`${r.date}|${r.time}`))
@@ -2165,8 +2189,10 @@ class BookingStorage {
                         ? supabaseClient.rpc('get_public_org_settings', { p_org_slug: slug })
                         : Promise.resolve({ data: null, error: null });
                 })();
+            // Egress: finestra schedule_overrides al cutoff (admin=1° gen anno prec., altri=oggi−30gg).
+            const _ovCutoff = BookingStorage._overridesCutoff();
             const _results = await Promise.allSettled([
-                fetchAllPaginated(() => supabaseClient.from('schedule_overrides').select('date, time, slot_type, slot_type_id, capacity, client_name, client_email, client_whatsapp, booking_id').order('date').order('time')),
+                fetchAllPaginated(() => supabaseClient.from('schedule_overrides').select('date, time, slot_type, slot_type_id, capacity, client_name, client_email, client_whatsapp, booking_id').gte('date', _ovCutoff).order('date').order('time')),
                 _queryWithTimeout(_settingsQuery),
             ]);
             const _syncLabels = ['schedule_overrides', 'org_settings'];
@@ -2492,6 +2518,52 @@ class UserStorage {
     static _profilesLastFullFetch = 0;
     static _PROFILES_RECONCILE_MS = 5 * 60 * 1000;
 
+    // ── Snapshot profili cross-pagina (egress: il TTL 5min vive solo in RAM, azzerato dalla
+    //    navigazione MPA → ~260 profili rifetchati ad ogni pagina admin). Persistiamo la cache
+    //    (org-scoped, admin-only) su localStorage così l'hydrate ad inizio pagina fa valere il
+    //    TTL cross-pagina: dentro i 5min basta il fingerprint (1 query) invece del full. ─────
+    static _USERS_SNAP_KEY = 'gym_users_cache_v1';
+    static _usersSnapHydrated = false;
+
+    static _persistUsersSnapshot() {
+        try {
+            if (typeof sessionStorage === 'undefined' || sessionStorage.getItem('adminAuth') !== 'true') return;
+            // Non persistere una cache mai sincronizzata in pagina (un write dal modal cert su
+            // cache vuota scriverebbe uno snapshot da 1 solo profilo, idratato dopo).
+            if (!this._profilesLastFullFetch || !Array.isArray(this._cache) || !this._cache.length) return;
+            const payload = {
+                cache: this._cache,
+                fp: this._profilesFingerprint,
+                savedAt: this._profilesLastFullFetch,
+                clearedAt: (typeof localStorage !== 'undefined' && localStorage.getItem('dataLastCleared')) || '0',
+                org: (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon',
+            };
+            localStorage.setItem(this._USERS_SNAP_KEY, JSON.stringify(payload));
+        } catch (_) {}
+    }
+    static persistSnapshot() { this._persistUsersSnapshot(); }   // API pubblica per i write admin
+
+    static _hydrateUsersSnapshot() {
+        if (this._usersSnapHydrated) return;
+        this._usersSnapHydrated = true;
+        try {
+            if (typeof sessionStorage === 'undefined' || sessionStorage.getItem('adminAuth') !== 'true') return;
+            if (Array.isArray(this._cache) && this._cache.length) return;   // già popolata in pagina
+            const raw = localStorage.getItem(this._USERS_SNAP_KEY);
+            if (!raw) return;
+            const snap = JSON.parse(raw);
+            if (!snap || !Array.isArray(snap.cache) || !snap.cache.length) return;
+            const org = (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon';
+            if (snap.org && snap.org !== org) return;                       // altro tenant
+            const clearedAt = (typeof localStorage !== 'undefined' && localStorage.getItem('dataLastCleared')) || '0';
+            if ((snap.clearedAt || '0') !== clearedAt) return;             // dati azzerati dopo lo snapshot
+            if (!snap.savedAt || (Date.now() - snap.savedAt) > 24 * 60 * 60 * 1000) return;  // >24h
+            this._cache = snap.cache;
+            this._profilesFingerprint = snap.fp || null;
+            this._profilesLastFullFetch = snap.savedAt;                    // TTL 5min valido cross-pagina
+        } catch (_) {}
+    }
+
     static async _profilesFingerprintFetch() {
         try {
             const { data, count, error } = await _queryWithTimeout(
@@ -2510,6 +2582,7 @@ class UserStorage {
     // Returns all known contacts: registered accounts first, then unique clients from booking history.
     // Deduplicates by email (case-insensitive) and phone (last 10 digits).
     static getAll() {
+        this._hydrateUsersSnapshot();   // picker istantanei: cache pronta cross-pagina
         const seenEmails = new Set();
         const seenPhones = new Set();
         const result = [];
@@ -2558,6 +2631,9 @@ class UserStorage {
     static async syncUsersFromSupabase() {
         if (typeof supabaseClient === 'undefined') return;
         try {
+            // Idrata lo snapshot cross-pagina PRIMA di decidere: così il fingerprint-skip
+            // sotto vede una cache già popolata e un _profilesLastFullFetch recente.
+            this._hydrateUsersSnapshot();
             // Fingerprint-skip: salta il re-fetch dei profili se nulla è cambiato (wake
             // veloce). Reconcile periodico (5 min) come safety net per il caso limite.
             const _reconcileDue = !this._profilesLastFullFetch || (Date.now() - this._profilesLastFullFetch > this._PROFILES_RECONCILE_MS);
@@ -2642,6 +2718,7 @@ class UserStorage {
             this._cache = [...merged, ...localOnly];
             this._profilesFingerprint = _fp;
             this._profilesLastFullFetch = Date.now();
+            this._persistUsersSnapshot();   // aggiorna lo snapshot cross-pagina
             console.log(`[Supabase] syncUsersFromSupabase: ${data.length} da Supabase, ${localOnly.length} solo locali`);
         } catch (e) {
             console.error('[Supabase] syncUsersFromSupabase exception:', e);

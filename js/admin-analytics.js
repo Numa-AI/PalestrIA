@@ -1723,6 +1723,8 @@ function _getUsersFull() {
 }
 function _saveUsers(users) {
     UserStorage._cache = users;
+    // Ri-persisti lo snapshot cross-pagina con la cache appena mutata (post-write admin).
+    try { if (typeof UserStorage.persistSnapshot === 'function') UserStorage.persistSnapshot(); } catch (_) {}
 }
 async function _updateSupabaseProfile(email, whatsapp, fields) {
     if (typeof supabaseClient === 'undefined') return { ok: true };
@@ -1808,7 +1810,7 @@ function closeMissingDataPopup() {
 async function saveMissingData() {
     const cf    = document.getElementById('mdCodiceFiscale').value.trim().toUpperCase();
     const via   = document.getElementById('mdVia').value.trim();
-    const paese = document.getElementById('mdPaese').value.trim();
+    const paese = normalizeComune(document.getElementById('mdPaese').value);
     const cap   = document.getElementById('mdCAP').value.trim();
     const errEl = document.getElementById('mdError');
 

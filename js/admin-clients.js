@@ -557,6 +557,34 @@ const CV2_PHONE_SVG = '<svg class="cv2-contact-ic" width="14" height="14" viewBo
 const CV2_MAIL_SVG = '<svg class="cv2-contact-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>';
 const CV2_EDIT_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>';
 const CV2_TRASH_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
+// Icone meta header (età/residenza): grigie (.cv2-meta-ic), coerenti con telefono/email.
+const CV2_CAL_SVG = '<svg class="cv2-meta-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+const CV2_PIN_SVG = '<svg class="cv2-meta-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+
+// Età (anni) ricavata dal codice fiscale, o null se non ricavabile. Euristica identica
+// a parseCF (new-client-popup.js): car. 7-8 anno, 9 mese-lettera, 10-11 giorno (−40 per
+// le donne); secolo: prova 2000+YY, se cade nel futuro usa 1900+YY. Helper LOCALE di
+// proposito → la feature "età nella card" è autosufficiente e replicabile da sola.
+function _ageFromCF(cf) {
+    const s = String(cf || '').toUpperCase().trim();
+    if (s.length < 11) return null;
+    const yy = parseInt(s.slice(6, 8), 10);
+    const monthMap = { A:1, B:2, C:3, D:4, E:5, H:6, L:7, M:8, P:9, R:10, S:11, T:12 };
+    const mo = monthMap[s.charAt(8)];
+    let day = parseInt(s.slice(9, 11), 10);
+    if (Number.isNaN(yy) || !mo || Number.isNaN(day)) return null;
+    if (day > 40) day -= 40;               // donne: giorno + 40
+    if (day < 1 || day > 31) return null;
+    const now = new Date();
+    let year = 2000 + yy;
+    let birth = new Date(year, mo - 1, day);
+    if (birth > now) { year = 1900 + yy; birth = new Date(year, mo - 1, day); }
+    let age = now.getFullYear() - year;
+    const mDiff = now.getMonth() - (mo - 1);
+    if (mDiff < 0 || (mDiff === 0 && now.getDate() < day)) age--;
+    if (age < 0 || age > 120) return null;
+    return age;
+}
 
 function createClientCard(client, index) {
     const card = document.createElement('div');
@@ -754,19 +782,38 @@ function createClientCard(client, index) {
             <div class="client-economy-body">Caricamento…</div>
         </div>`;
 
+    // ── Età (dal CF) + residenza nell'header. Doppia resa: frammenti "--inline" dentro
+    //    .client-info-block (visibili su mobile) e blocco .cv2-meta a destra dell'header
+    //    (visibile su desktop). Se un dato manca (CF assente/malformato o residenza vuota)
+    //    la riga non viene renderizzata.
+    const cfAge = _ageFromCF(userRecord?.codiceFiscale);
+    const residenza = (userRecord?.indirizzoPaese || '').trim();
+    const ageInlineHTML = cfAge != null
+        ? `<div class="cv2-age cv2-age--inline">${CV2_CAL_SVG}<span>${cfAge} anni</span></div>` : '';
+    const resInlineHTML = residenza
+        ? `<div class="cv2-residence cv2-residence--inline">${CV2_PIN_SVG}<span class="cv2-res-txt">${_escHtml(residenza)}</span></div>` : '';
+    const metaHTML = (cfAge != null || residenza)
+        ? `<div class="cv2-meta">
+                ${cfAge != null ? `<div class="cv2-age">${CV2_CAL_SVG}<span>${cfAge} anni</span></div>` : ''}
+                ${residenza ? `<div class="cv2-residence">${CV2_PIN_SVG}<span class="cv2-res-txt">${_escHtml(residenza)}</span></div>` : ''}
+           </div>` : '';
+
     card.innerHTML = `
         <div class="client-card-header" onclick="toggleClientCard('client-card-${index}', ${index})">
             <div class="cv2-avatar" aria-hidden="true">${initials || '?'}</div>
             <div class="client-info-block">
                 <div class="client-name">${_escHtml(client.name)} <button class="btn-edit-contact-icon" onclick="event.stopPropagation(); openEditClientPopup(${index}, '${wEsc}', '${emEsc}', '${nEsc}')" title="Modifica contatto">✏️</button></div>
+                ${ageInlineHTML}
                 <div class="client-contacts">
                     ${phoneRaw ? `<a class="cv2-contact-link" href="https://wa.me/${_escHtml(phoneWa)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${CV2_PHONE_SVG}<span class="cv2-contact-txt">${_escHtml(phoneRaw)}</span></a>` : ''}
                     ${client.email ? `<a class="cv2-contact-link" href="mailto:${_escHtml(client.email)}" onclick="event.stopPropagation()">${CV2_MAIL_SVG}<span class="cv2-contact-txt">${_escHtml(client.email)}</span></a>` : ''}
                 </div>
+                ${resInlineHTML}
                 <div class="cv2-badges-row">
                     ${certDisplay}${assicDisplay}${anagDisplay}${docDisplay}
                 </div>
             </div>
+            ${metaHTML}
             <div class="client-chevron">▼</div>
         </div>
         <div class="client-stats-block cv2-stats-grid" onclick="toggleClientCard('client-card-${index}', ${index})">${statsGridHTML}</div>
@@ -1170,7 +1217,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
     const newAssic    = document.getElementById(`cedit-assic-${index}`).value;
     const newCf       = (document.getElementById(`cedit-cf-${index}`)?.value || '').trim().toUpperCase();
     const newVia      = (document.getElementById(`cedit-via-${index}`)?.value || '').trim();
-    const newPaese    = (document.getElementById(`cedit-paese-${index}`)?.value || '').trim();
+    const newPaese    = normalizeComune(document.getElementById(`cedit-paese-${index}`)?.value || '');
     const newCap      = (document.getElementById(`cedit-cap-${index}`)?.value || '').trim();
     const newDocFirmato = document.getElementById(`cedit-docfirmato-${index}`)?.checked || false;
     const newStripeEn   = document.getElementById(`cedit-stripe-${index}`)?.checked || false;

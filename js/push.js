@@ -48,11 +48,27 @@ function _getPushAuthToken() {
     return typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : null;
 }
 
+// Diagnostica uniforme dell'esito di una notifica admin (la edge ritorna { ok, sent, failed }).
+// Rende visibili nei log del browser sia gli errori HTTP sia i casi "0 inviate" (nessuna
+// subscription o tutti gli endpoint falliti), che prima passavano silenziosi.
+function _logNotifyResult(label, resp, result) {
+    const sent = (result && result.sent) || 0;
+    const failed = (result && result.failed) || 0;
+    if (resp.ok && sent > 0) {
+        console.log(`[Push] ${label}: ✓ ${sent} inviate${failed ? `, ${failed} fallite` : ''}`);
+    } else if (!resp.ok) {
+        console.error(`[Push] ${label}: HTTP ${resp.status} — ${(result && result.error) || 'errore'}`);
+    } else {
+        console.warn(`[Push] ${label}: nessuna notifica inviata (subscription non trovate o tutte fallite)`);
+    }
+}
+
 // Cleanup push al logout: rimuove il backup locale e (best-effort) annulla la
 // subscription attiva del browser, così l'endpoint push del tenant A non resta legato
 // all'identità di A su un device condiviso. Funziona anche con PUSH_ENABLED false.
 async function teardownPushOnLogout() {
     try { localStorage.removeItem('push_subscription'); } catch (_) {}
+    try { localStorage.removeItem('push_subscribed_at'); } catch (_) {}
     try {
         if (('PushManager' in window) && navigator.serviceWorker) {
             const reg = await navigator.serviceWorker.getRegistration();
@@ -127,9 +143,24 @@ async function registerPushSubscription() {
                     await sub.unsubscribe();
                     sub = null;
                 }
+                // Age check: gli endpoint web push scadono nel tempo; rigenera se > 30 giorni
+                // per ripristinare subscription che diventerebbero invalide (410/404). Se il
+                // timestamp manca (subscription pre-esistente a questa logica) avvia il clock
+                // senza rigenerare, evitando un rinnovo di massa al primo deploy.
+                if (sub) {
+                    const subAt = parseInt(localStorage.getItem('push_subscribed_at') || '0', 10);
+                    if (!subAt) {
+                        try { localStorage.setItem('push_subscribed_at', String(Date.now())); } catch (_) {}
+                    } else if (Date.now() - subAt > 30 * 24 * 60 * 60 * 1000) {
+                        console.log('[Push] Subscription troppo vecchia (>30gg) — rigenero');
+                        await sub.unsubscribe();
+                        sub = null;
+                    }
+                }
             }
             if (!sub) {
                 sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+                try { localStorage.setItem('push_subscribed_at', String(Date.now())); } catch (_) {}
             }
             return sub;
         }
@@ -319,7 +350,7 @@ async function notifyAdminBooking(booking) {
             }),
         });
         const result = await resp.json();
-        console.log('[Push] notifyAdminBooking response:', resp.status, result);
+        _logNotifyResult('notifyAdminBooking', resp, result);
     } catch (e) {
         console.warn('[Push] notifyAdminBooking error:', e);
     }
@@ -363,7 +394,7 @@ async function notifyAdminCancellation(booking) {
             }),
         });
         const result = await resp.json();
-        console.log('[Push] notifyAdminCancellation response:', resp.status, result);
+        _logNotifyResult('notifyAdminCancellation', resp, result);
     } catch (e) {
         console.warn('[Push] notifyAdminCancellation error:', e);
     }
@@ -398,7 +429,7 @@ async function notifyAdminNewClient(name) {
             body: JSON.stringify({ name }),
         });
         const result = await resp.json();
-        console.log('[Push] notifyAdminNewClient response:', resp.status, result);
+        _logNotifyResult('notifyAdminNewClient', resp, result);
     } catch (e) {
         console.warn('[Push] notifyAdminNewClient error:', e);
     }

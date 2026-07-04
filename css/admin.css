@@ -1440,6 +1440,23 @@ canvas {
 }
 .client-card.open .cv2-avatar { background: #ddd6fe; }
 
+/* ── Età (dal CF) + residenza nell'header card. Doppia resa: inline (mobile) dentro
+      .client-info-block, blocco .cv2-meta a destra (desktop). ──────────────────── */
+.cv2-age, .cv2-residence {
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.82rem; color: #64748b; min-width: 0;
+}
+.cv2-meta-ic { color: #94a3b8; flex-shrink: 0; }
+.cv2-res-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv2-age--inline { margin-top: 0.15rem; }
+.cv2-residence--inline { margin-top: 0.2rem; }
+.cv2-age--inline, .cv2-residence--inline { display: none; }   /* visibili solo su mobile */
+.cv2-meta {
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: 0.2rem; flex-shrink: 0; text-align: right;
+}
+.cv2-meta .cv2-res-txt { max-width: 170px; }
+
 .client-card .client-contacts {
     flex-direction: column;
     gap: 0.18rem;
@@ -6098,6 +6115,9 @@ button.cedit-cert-badge {
     .client-info-block { width: 100%; }
     .client-name { font-size: 0.95rem; }
     .client-contacts { font-size: 0.8rem; gap: 0.3rem; }
+    /* Età/residenza: su mobile scendono inline sotto nome/contatti; nascondi il blocco desktop */
+    .cv2-meta { display: none; }
+    .cv2-age--inline, .cv2-residence--inline { display: flex; font-size: 0.8rem; }
     .client-stats-block {
         width: 100%;
         justify-content: flex-start;

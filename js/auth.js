@@ -37,6 +37,48 @@ function normalizePhone(raw) {
     return n;
 }
 
+// ── Comune di residenza: normalizzazione title-case italiano ───────────────────
+// Alcuni clienti inseriscono il comune tutto minuscolo o tutto maiuscolo. Lo
+// normalizziamo a title-case IT: prima lettera di ogni parola maiuscola, ma
+// preposizioni/articoli minuscoli se NON prima parola. Es:
+//   "sant'ambrogio di valpolicella" → "Sant'Ambrogio di Valpolicella"
+//   "reggio nell'emilia"            → "Reggio nell'Emilia"
+//   "VERONA"                        → "Verona"
+// La regola è replicata IDENTICA lato SQL (funzione normalize_comune nella
+// migration 00000000000026) per il backfill dei dati già presenti.
+// Connettivi (parole intere) che restano minuscoli se non sono la prima parola:
+const _COMUNE_CONN = new Set([
+    'di','del','dei','della','delle','dello','degli','da','dal','dai','dalle','dagli','dallo',
+    'in','nel','nei','nella','nelle','nello','negli','a','ai','al','alla','alle','allo','agli',
+    'e','ed','con','su','sul','sui','sulla','sulle','sullo','sugli','per','tra','fra',
+    'la','le','lo','il','i','gli','l'
+]);
+// Prefissi con apostrofo: minuscolo solo il prefisso, la parte dopo resta maiuscola
+// (es. "nell'Emilia"). Ordinati dal più lungo al più corto per un match corretto.
+const _COMUNE_CONN_AP = ["dell'", "nell'", "sull'", "dall'", "all'", "d'", "l'"];
+
+function normalizeComune(input) {
+    if (!input) return '';
+    // 1) apostrofo curvo → dritto, trim, collapse spazi multipli.
+    let s = String(input).replace(/[’‘ʼ]/g, "'").trim().replace(/\s+/g, ' ');
+    if (!s) return '';
+    // 2) title-case: minuscolo tutto, poi maiuscola a inizio/dopo spazio/apostrofo/trattino.
+    s = s.toLowerCase().replace(/(^|[\s'\-])([a-zàèéìòùäöüç])/g,
+        (_m, sep, ch) => sep + ch.toUpperCase());
+    // 3) minuscolo sui connettivi quando NON prima parola.
+    const words = s.split(' ');
+    for (let i = 1; i < words.length; i++) {
+        const w = words[i];
+        const lw = w.toLowerCase();
+        if (_COMUNE_CONN.has(lw)) { words[i] = lw; continue; }
+        for (const ap of _COMUNE_CONN_AP) {
+            if (lw.startsWith(ap)) { words[i] = ap + w.slice(ap.length); break; }
+        }
+    }
+    return words.join(' ');
+}
+window.normalizeComune = normalizeComune;
+
 function isAnagraficaComplete(user) {
     return !!(
         user &&
@@ -634,7 +676,7 @@ async function registerUser(name, email, whatsapp, password, codiceFiscale, indi
                 whatsapp,
                 codice_fiscale: (codiceFiscale || '').toUpperCase() || null,
                 indirizzo_via: addr.via || null,
-                indirizzo_paese: addr.paese || null,
+                indirizzo_paese: normalizeComune(addr.paese) || null,
                 indirizzo_cap: addr.cap || null,
             }
         }
@@ -743,7 +785,7 @@ async function updateUserProfile(currentEmail, updates, newPassword) {
 
     // Indirizzo di residenza
     if (updates.indirizzoVia !== undefined)   profileUpdate.indirizzo_via   = updates.indirizzoVia || null;
-    if (updates.indirizzoPaese !== undefined) profileUpdate.indirizzo_paese = updates.indirizzoPaese || null;
+    if (updates.indirizzoPaese !== undefined) profileUpdate.indirizzo_paese = normalizeComune(updates.indirizzoPaese) || null;
     if (updates.indirizzoCap !== undefined)   profileUpdate.indirizzo_cap   = updates.indirizzoCap || null;
 
     // Certificato medico: aggiorna scadenza e mantieni storico
