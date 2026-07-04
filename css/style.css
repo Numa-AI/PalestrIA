@@ -1484,6 +1484,31 @@ body.nav-open {
     padding: 0;
     list-style: none;
 }
+/* Iscritti raggruppati per tipo di lezione (slot con 2+ tipi). Intestazione di gruppo
+   + pallino colore-tipo. Il colore del pallino è ORG-AWARE: impostato inline dal JS via
+   getSlotColor() (slot_types.color del tenant), NON da classi fisse — PalestrIA è
+   multi-tenant e i tipi/colori sono definiti per-org. */
+.slot-attendees-list li.slot-attendees-group {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 700;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #6b7280;
+    padding: 0.55rem 0 0.3rem;
+    border-bottom: none;
+}
+.slot-attendees-list li.slot-attendees-group:first-child { padding-top: 0.15rem; }
+.slot-attendees-list li.slot-attendees-name { padding-left: 0.9rem; }
+.sa-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #9ca3af;
+    flex-shrink: 0;
+}
 
 .modal-box .booking-form {
     display: flex;

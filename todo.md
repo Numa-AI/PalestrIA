@@ -6,6 +6,19 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
 
 ---
 
+## 🔁 Port 2026-07-04 dal gemello Thomas (voci nuove comparse dopo il batch precedente)
+Comparse 3 voci nuove **2026-07-04** in cima al changelog Thomas. **2 sono sul sistema crediti → N/A** (§11: crediti/bonus rimossi): "Notifica ricarica sul pagamento lezioni" (`💰 Ricarica credito`/`credit_delta`) e "Notifica al cliente: ricarica credito fatta dall'admin" (nuova edge `notify-client-credit`, `notifyClientCreditAdded`, `RechargeBonusStorage`/bonus, `admin_credit_added`). Portata **solo la terza**, applicabile.
+
+- [x] **"Persone iscritte" raggruppate per tipo di lezione** (popup prenotazione cliente): quando uno slot ospita **2+ tipi** (es. Lezione di Gruppo + un posto Autonomia extra), l'elenco iscritti si raggruppa per tipo (intestazione: pallino colore-tipo + nome tipo + conteggio); con **un solo tipo** resta la lista piatta.
+  - **Migration `00000000000027_get_slot_attendees_slot_type.sql`** (DROP+CREATE, la firma di ritorno cambia): `get_slot_attendees(p_org_slug,p_date,p_time)` ora ritorna `table(name, slot_type)`. Postura invariata (`SECURITY DEFINER STABLE`, `search_path=public`, org-scoping via `org_id_for_slug`, privacy→'Anonimo', grant anon/authenticated della allowlist 0022).
+  - **[booking.js](js/booking.js)**: nuova `_renderSlotAttendees(list,data,currentType)` — raggruppa per `slot_type` (fallback `currentType` per booking legacy); ≤1 tipo → lista piatta. **Adattato multi-tenant**: pallino colore **inline via `getSlotColor()`** (org-aware, non le var CSS fisse di Thomas) e nome via `getSlotName()`. `_loadSlotAttendees` ora riceve `slotType` (threadato nei retry + call site). booking.js v23→**24** (index.html).
+  - **[style.css](css/style.css)**: `.slot-attendees-group`/`.slot-attendees-name`/`.sa-dot` (colore pallino inline, nessuna classe `.sa-dot.<tipo>` fissa). style.css v10→**11** (tutti gli HTML).
+  - **Cache-bust**: `sw.js` `CACHE_NAME` → **palestria-v580**. `node --check` booking.js OK.
+- [ ] **DEPLOY**: `supabase db push` per **`00000000000027`** (cambio firma RPC — finché la vecchia è attiva, `data[].slot_type` è undefined → lista piatta, degrada pulito); push branch per Pages (cache-bust v580).
+- [ ] **QA**: slot con 2+ tipi (Gruppo + Autonomia) → iscritti raggruppati con pallino del colore giusto per tipo; slot mono-tipo → lista piatta invariata; privacy attiva → messaggio invariato.
+
+---
+
 ## 🔁 Port batch 2026-07-03 dal gemello Thomas (7 voci nuove) — FIX APPLICATI (deploy da fare)
 Portate le **7 voci NUOVE** del changelog Thomas sopra la "Security review" (già portata prima). Cache-bust **`palestria-v578`**. `node --check` OK su tutti i JS.
 

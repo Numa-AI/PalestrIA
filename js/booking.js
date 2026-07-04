@@ -86,7 +86,34 @@ function initBookingForm() {
 //    tab può tornare da background con token scaduto); al secondo mostra "Riprova";
 //  - timeout RPC 8s: col token già letto da storage, una RPC appesa è inutile.
 let _attendeesLoadSeq = 0;
-function _loadSlotAttendees(attendeesList, slotDate, slotTime, isRetry) {
+// Rende la lista iscritti. Quando lo slot ospita 2+ tipi di lezione (es. Lezione di
+// Gruppo + un posto Autonomia extra) raggruppa per tipo con un'intestazione (pallino
+// colore-tipo ORG-AWARE via getSlotColor + nome tipo via getSlotName + conteggio); con
+// un solo tipo resta la lista piatta di prima. Fallback a currentType (il tipo dello
+// slot toccato) per prenotazioni legacy senza slot_type.
+function _renderSlotAttendees(attendeesList, data, currentType) {
+    const groups = new Map();   // slot_type → [names], in ordine di prima comparsa (DB già ordina per slot_type)
+    for (const a of data) {
+        const t = a.slot_type || currentType || '';
+        if (!groups.has(t)) groups.set(t, []);
+        groups.get(t).push(a.name);
+    }
+    if (groups.size <= 1) {
+        // Un solo tipo (o slot_type assente): lista piatta come prima, nessuna intestazione.
+        attendeesList.innerHTML = data.map(a => `<li>👤 ${_escHtml(a.name)}</li>`).join('');
+        return;
+    }
+    let html = '';
+    for (const [type, names] of groups) {
+        const color = (typeof getSlotColor === 'function' && type) ? getSlotColor(type) : '#9ca3af';
+        const label = (typeof getSlotName === 'function' && type) ? getSlotName(type) : (type || 'Altro');
+        html += `<li class="slot-attendees-group"><span class="sa-dot" style="background:${_escAttr(color)}"></span>${_escHtml(label)} · ${names.length}</li>`;
+        html += names.map(n => `<li class="slot-attendees-name">👤 ${_escHtml(n)}</li>`).join('');
+    }
+    attendeesList.innerHTML = html;
+}
+
+function _loadSlotAttendees(attendeesList, slotDate, slotTime, slotType, isRetry) {
     if (!attendeesList) return;
     const mySeq = ++_attendeesLoadSeq;
     attendeesList.innerHTML = '<li style="color:#9ca3af;font-style:italic">Caricamento...</li>';
@@ -105,7 +132,7 @@ function _loadSlotAttendees(attendeesList, slotDate, slotTime, isRetry) {
         if (!data || data.length === 0) {
             attendeesList.innerHTML = '<li class="slot-attendees-empty">Nessuna persona visibile per questo slot.</li>';
         } else {
-            attendeesList.innerHTML = data.map(a => `<li>👤 ${_escHtml(a.name)}</li>`).join('');
+            _renderSlotAttendees(attendeesList, data, slotType);
         }
     }).catch(async (err) => {
         clearTimeout(_t);
@@ -118,7 +145,7 @@ function _loadSlotAttendees(attendeesList, slotDate, slotTime, isRetry) {
                 try { await ensureValidSession(); } catch (_) {}
             }
             if (mySeq !== _attendeesLoadSeq) return; // slot cambiato durante il refresh
-            _loadSlotAttendees(attendeesList, slotDate, slotTime, true);
+            _loadSlotAttendees(attendeesList, slotDate, slotTime, slotType, true);
             return;
         }
         // Secondo fallimento: messaggio + link "Riprova" che rilancia il load da capo.
@@ -126,7 +153,7 @@ function _loadSlotAttendees(attendeesList, slotDate, slotTime, isRetry) {
         const _retry = attendeesList.querySelector('.slot-attendees-retry');
         if (_retry) _retry.addEventListener('click', (e) => {
             e.preventDefault();
-            _loadSlotAttendees(attendeesList, slotDate, slotTime);
+            _loadSlotAttendees(attendeesList, slotDate, slotTime, slotType);
         });
     });
 }
@@ -223,7 +250,7 @@ function openBookingModal(dateInfo, timeSlot, slotType, remainingSpots) {
         if (user.privacy_prenotazioni !== false) {
             attendeesList.innerHTML = '<li class="slot-attendees-empty">Disattiva la privacy per vedere chi è iscritto.</li>';
         } else {
-            _loadSlotAttendees(attendeesList, selectedSlot ? selectedSlot.date : dateInfo.formatted, timeSlot);
+            _loadSlotAttendees(attendeesList, selectedSlot ? selectedSlot.date : dateInfo.formatted, timeSlot, slotType);
         }
     } else if (attendeesContainer) {
         attendeesContainer.style.display = 'none';
