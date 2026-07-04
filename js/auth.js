@@ -480,7 +480,14 @@ async function initAuth() {
     });
 
     if (session) {
-        const ok = await _loadProfile(session.user.id);
+        // _loadProfile (query profiles) e _applyOrgContext (claim org, con eventuale
+        // fallback org_members) sono INDIPENDENTI: girano in parallelo per non pagare
+        // due round-trip in serie sul path della gate "verifica accesso". _applyOrgContext
+        // non tocca _currentUser, quindi il fallback metadata sotto resta corretto.
+        const [ok] = await Promise.all([
+            _loadProfile(session.user.id),
+            _applyOrgContext(session.user),   // imposta org context + propaga adminAuth
+        ]);
         if (!ok && !window._currentUser) {
             // Fallback: profilo non trovato (trigger fallito) — usa user_metadata
             const meta = session.user.user_metadata || {};
@@ -497,8 +504,6 @@ async function initAuth() {
                 insurance_expiry:    null,
             };
         }
-        // Imposta org context (org_id/org_role dai claim) e propaga adminAuth
-        await _applyOrgContext(session.user);
     } else {
         window._currentUser = null;
         window._orgId = null;
