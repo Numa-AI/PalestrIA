@@ -11,5 +11,5 @@ class AppConfig {
   /// Deve combaciare con il deploy GitHub Pages e con `SITE_URL` delle edge
   /// function (vedi supabase/functions/stripe-connect/index.ts).
   /// ⚠️ Cambierà quando si passerà al dominio proprietario: aggiornare qui + SITE_URL.
-  static const webBaseUrl = 'https://renumaa.github.io/PalestrIA';
+  static const webBaseUrl = 'https://numa-ai.github.io/PalestrIA';
 }

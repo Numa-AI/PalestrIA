@@ -66,6 +66,15 @@ class AuthRepository {
     final phone =
         (whatsapp == null || whatsapp.trim().isEmpty) ? null : normalizePhone(whatsapp);
     try {
+      // Verifica che lo studio esista PRIMA di creare l'account: se lo slug non
+      // corrisponde a nessuna org l'utente nascerebbe orfano (nessuna palestra).
+      final orgCheck = await _client
+          .rpc('get_public_org_settings', params: {'p_org_slug': slug});
+      if (orgCheck is! Map || orgCheck.isEmpty) {
+        return AuthResult.fail(
+            'Palestra non riconosciuta (codice "$slug"). Controlla il link di invito.');
+      }
+
       if (phone != null) {
         final taken = await _client
             .rpc('is_whatsapp_taken', params: {'phone': phone});

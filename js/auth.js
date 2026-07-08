@@ -669,6 +669,18 @@ async function registerUser(name, email, whatsapp, password, codiceFiscale, indi
         return { ok: false, error: 'Studio non identificato. Apri il link di registrazione del tuo studio (es. ?org=nome-studio) e riprova.' };
     }
 
+    // Verifica che lo studio ESISTA davvero PRIMA di creare l'account: se lo slug
+    // non corrisponde a nessuna org, handle_new_user non crea il profilo e l'utente
+    // nascerebbe orfano (nessuna palestra). Meglio bloccare qui con un errore chiaro.
+    try {
+        const { data: orgCheck } = await supabaseClient.rpc('get_public_org_settings', { p_org_slug: orgSlug });
+        if (!orgCheck || Object.keys(orgCheck).length === 0) {
+            return { ok: false, error: `Palestra non riconosciuta (codice "${orgSlug}"). Controlla il link di invito del tuo studio.` };
+        }
+    } catch (_) {
+        return { ok: false, error: 'Impossibile verificare lo studio in questo momento. Riprova tra qualche istante.' };
+    }
+
     const { data, error } = await supabaseAuth.auth.signUp({
         email,
         password,

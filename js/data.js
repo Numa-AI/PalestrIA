@@ -686,15 +686,25 @@ function getWeeklySchedule(dateStr) {
 }
 
 // Risolve lo slug org per le RPC pubbliche (book_slot, availability, attendees).
-// Fonti in ordine: window._orgSlug (settato da auth.js), sottodominio, ?org=.
-// Ritorna null se non risolvibile (la RPC fa fallback su current_org_id() per gli autenticati).
+// Fonti in ordine: window._orgSlug (settato da auth.js), ?org=<slug> (link
+// d'invito, PRIORITÀ), sottodominio <slug>.dominio SOLO su domini tenant reali.
+// ⚠️ Su host di piattaforma (github.io / localhost / IP) il primo label del
+// dominio NON è uno studio (es. numa-ai.github.io → "numa-ai"): va escluso,
+// altrimenti l'org anonima si risolverebbe sempre sbagliata e il ?org= verrebbe
+// ignorato. Ritorna null se non risolvibile (RPC fa fallback su current_org_id()).
 function _resolveOrgSlug() {
     if (typeof window !== 'undefined' && window._orgSlug) return window._orgSlug;
     try {
-        const host = location.hostname.split('.');
-        if (host.length > 2 && !['www', 'app'].includes(host[0])) return host[0];
         const qs = new URLSearchParams(location.search).get('org');
-        if (qs) return qs;
+        if (qs) return qs.trim().toLowerCase();
+        const host = location.hostname;
+        const isPlatformHost = host.endsWith('github.io')
+            || host === 'localhost' || host === '127.0.0.1'
+            || /^\d+\.\d+\.\d+\.\d+$/.test(host);
+        if (!isPlatformHost) {
+            const parts = host.split('.');
+            if (parts.length > 2 && !['www', 'app'].includes(parts[0])) return parts[0];
+        }
     } catch (_) {}
     return null;
 }
