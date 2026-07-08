@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/auth_providers.dart';
 import '../../core/auth/auth_repository.dart';
 import '../../core/theme/tokens.dart';
 
@@ -28,13 +29,119 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   bool _loading = false;
   String? _error;
   late final bool _lockedSlug;
+  // null = in caricamento/errore (mostra il campo codice); '' = slug non valido
+  // (avviso); valorizzato = nome studio risolto (banner, nasconde il codice).
+  String? _studioName;
 
   @override
   void initState() {
     super.initState();
     final slug = widget.orgSlug?.trim().toLowerCase();
     _lockedSlug = slug != null && slug.isNotEmpty;
-    if (_lockedSlug) _orgSlug.text = slug!;
+    if (_lockedSlug) {
+      _orgSlug.text = slug!;
+      _loadStudioName(slug);
+    }
+  }
+
+  /// Risolve il NOME della palestra dallo slug (RPC pubblica) per mostrarlo in
+  /// chiaro al cliente: dà fiducia e verifica che il link sia valido.
+  Future<void> _loadStudioName(String slug) async {
+    try {
+      final res = await ref
+          .read(supabaseProvider)
+          .rpc('get_public_org_settings', params: {'p_org_slug': slug});
+      final name = (res is Map) ? res['branding.studio_name'] as String? : null;
+      if (mounted) {
+        setState(() => _studioName =
+            (name != null && name.trim().isNotEmpty) ? name.trim() : '');
+      }
+    } catch (_) {
+      if (mounted) setState(() => _studioName = null);
+    }
+  }
+
+  /// Header org: banner col nome studio (se risolto) o campo "Codice palestra".
+  Widget _orgHeader() {
+    if (_lockedSlug && (_studioName?.isNotEmpty ?? false)) {
+      return _studioBanner(
+        icon: Icons.verified,
+        color: AppColors.primary,
+        bg: const Color(0xFFF5F3FF),
+        title: 'Ti stai iscrivendo a',
+        value: _studioName!,
+      );
+    }
+    final children = <Widget>[];
+    if (_lockedSlug && _studioName == '') {
+      children.add(_studioBanner(
+        icon: Icons.error_outline,
+        color: AppColors.dangerDark,
+        bg: const Color(0xFFFEF2F2),
+        title: '⚠️ Palestra non riconosciuta',
+        value: 'Codice: ${widget.orgSlug}',
+      ));
+      children.add(const SizedBox(height: AppSpacing.sm));
+    }
+    children.add(TextFormField(
+      controller: _orgSlug,
+      readOnly: _lockedSlug,
+      decoration: InputDecoration(
+        labelText: 'Codice palestra',
+        prefixIcon: _lockedSlug ? const Icon(Icons.verified_outlined) : null,
+        helperText: _lockedSlug
+            ? 'Ti stai iscrivendo a questo studio.'
+            : 'Te lo fornisce il tuo trainer (es. "studio-rossi").',
+      ),
+      validator: (v) => (v == null || v.trim().isEmpty)
+          ? 'Inserisci il codice della tua palestra.'
+          : null,
+    ));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+
+  Widget _studioBanner({
+    required IconData icon,
+    required Color color,
+    required Color bg,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: color)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.navy)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -87,22 +194,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextFormField(
-                      controller: _orgSlug,
-                      readOnly: _lockedSlug,
-                      decoration: InputDecoration(
-                        labelText: 'Codice palestra',
-                        prefixIcon: _lockedSlug
-                            ? const Icon(Icons.verified_outlined)
-                            : null,
-                        helperText: _lockedSlug
-                            ? 'Ti stai iscrivendo a questo studio.'
-                            : 'Te lo fornisce il tuo trainer (es. "studio-rossi").',
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Inserisci il codice della tua palestra.'
-                          : null,
-                    ),
+                    _orgHeader(),
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _name,

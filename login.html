@@ -157,6 +157,12 @@
             <div id="panelRegistrati" style="display:none;">
                 <p class="login-subtitle">Crea il tuo account per prenotare le lezioni</p>
 
+                <!-- Nome della palestra a cui ci si iscrive (popolato da _resolveStudioName) -->
+                <div id="registerStudioBanner" style="display:none; margin-bottom:1rem; padding:12px 14px; border-radius:12px; background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6; font-size:0.9rem;">
+                    <span id="registerStudioLabel" style="opacity:.8;">Ti stai iscrivendo a</span>
+                    <div id="registerStudioName" style="font-size:1.1rem; font-weight:800; color:#6d28d9; margin-top:2px;"></div>
+                </div>
+
                 <div id="registerSuccess" style="display:none; text-align:center; padding: 1.5rem 0;">
                     <div style="font-size:2.5rem; margin-bottom:0.75rem;">📧</div>
                     <p style="font-weight:600; margin-bottom:0.5rem;">Controlla la tua email!</p>
@@ -217,6 +223,13 @@
                     <div id="registerError" class="login-error" style="display:none;"></div>
                     <button type="submit" class="btn-primary" style="width:100%">Registrati</button>
                 </form>
+            </div>
+
+            <!-- CTA trainer: crea un nuovo studio (parità con l'app Flutter) -->
+            <div style="text-align:center; margin-top:1.25rem; padding-top:1rem; border-top:1px solid #eee;">
+                <a href="signup-trainer.html" style="display:inline-block; color:#7C3AED; font-weight:700; text-decoration:none; font-size:0.95rem;">
+                    🏋️ Sei un personal trainer? <span style="text-decoration:underline;">Crea il tuo studio</span>
+                </a>
             </div>
 
         </div>
@@ -329,6 +342,41 @@
             document.getElementById('tabRegistrati').classList.toggle('active', tab === 'registrati');
             // Nascondi le tabs quando si è su forgot/reset
             document.querySelector('.login-tabs').style.display = (tab === 'forgot' || tab === 'reset') ? 'none' : 'flex';
+            if (tab === 'registrati') _resolveStudioName();
+        }
+
+        // ── Nome della palestra a cui ci si iscrive (fiducia + verifica link) ──
+        // Risolve il NOME dello studio dallo slug (?org= / sottodominio) via la
+        // RPC pubblica get_public_org_settings e lo mostra nel pannello Registrati.
+        // Se lo slug non esiste, avvisa che la palestra non è riconosciuta.
+        let _studioNameResolved = false;
+        async function _resolveStudioName() {
+            if (_studioNameResolved) return;
+            const slug = (typeof _resolveOrgSlug === 'function')
+                ? _resolveOrgSlug()
+                : new URLSearchParams(location.search).get('org');
+            const banner = document.getElementById('registerStudioBanner');
+            const nameEl = document.getElementById('registerStudioName');
+            const lblEl = document.getElementById('registerStudioLabel');
+            if (!slug || !banner || !nameEl || !lblEl || typeof supabaseClient === 'undefined') return;
+            _studioNameResolved = true;
+            try {
+                const { data } = await supabaseClient.rpc('get_public_org_settings', { p_org_slug: slug });
+                const name = data && data['branding.studio_name'];
+                if (name) {
+                    lblEl.textContent = 'Ti stai iscrivendo a';
+                    nameEl.textContent = name;
+                } else {
+                    banner.style.background = '#fef2f2';
+                    banner.style.borderColor = '#fecaca';
+                    banner.style.color = '#b91c1c';
+                    lblEl.textContent = '⚠️ Palestra non riconosciuta';
+                    nameEl.textContent = 'Codice: ' + slug;
+                }
+                banner.style.display = 'block';
+            } catch (_) {
+                _studioNameResolved = false; // riprova alla prossima apertura
+            }
         }
 
         // ── Deep link "Iscriviti a questo studio" ─────────────────────────────
