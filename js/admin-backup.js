@@ -755,27 +755,10 @@ async function exportData() {
     }
 }
 
-async function resetDemoData() {
-    if (await showConfirm({
-        title: 'Rigenera dati demo',
-        message: 'ATTENZIONE: Questo cancellerà tutti i dati esistenti e genererà nuovi dati demo da Gennaio al 15 Marzo. Continuare?',
-        confirmText: 'Continua', danger: true,
-    })) {
-        BookingStorage._cache = [];
-        BookingStorage._clearPersistedCache(); // snapshot pre-reset → via dalla localStorage
-        localStorage.removeItem(BookingStorage.STATS_KEY);
-        localStorage.removeItem('scheduleOverrides');
-        localStorage.removeItem('dataClearedByUser');
-        BookingStorage.initializeDemoData();
-        await showAlert('Dati demo rigenerati con successo!', { type: 'success' });
-        location.reload();
-    }
-}
-
 async function clearAllData() {
     if (!await showConfirm({
         title: 'Elimina tutti i dati',
-        message: 'ATTENZIONE: Questo eliminerà definitivamente tutte le prenotazioni e i dati sia localmente che su Supabase. NON verranno generati nuovi dati demo. Continuare?',
+        message: 'ATTENZIONE: Questo eliminerà definitivamente tutte le prenotazioni e i dati sia localmente che su Supabase. Continuare?',
         confirmText: 'Elimina tutto', danger: true,
     })) return;
 
@@ -823,7 +806,7 @@ async function clearAllData() {
 
 async function pruneOldData() {
     const months = parseInt(await showPrompt(
-        'Eliminare dati demo e prenotazioni più vecchie di quanti mesi?',
+        'Eliminare le prenotazioni più vecchie di quanti mesi?',
         '12',
         { numeric: true, subtitle: 'es. 6 = tutto ciò che precede 6 mesi fa', confirmText: 'Avanti' }
     ));
@@ -835,7 +818,7 @@ async function pruneOldData() {
 
     if (!await showConfirm({
         title: 'Elimina dati storici',
-        message: `Verranno eliminati definitivamente:\n• Tutte le prenotazioni DEMO\n• Prenotazioni reali con data precedente al ${cutoff.toLocaleDateString('it-IT')}\n\nContinuare?`,
+        message: `Verranno eliminate definitivamente le prenotazioni con data precedente al ${cutoff.toLocaleDateString('it-IT')}.\n\nContinuare?`,
         confirmText: 'Elimina', danger: true,
     })) return;
 
@@ -869,16 +852,15 @@ async function pruneOldData() {
         BookingStorage.invalidateDelta(); // hard-delete: forza FULL al prossimo sync
     }
 
-    // 2. Server OK (o offline) → pota anche le cache locali: demo (sempre) + reali < cutoff
+    // 2. Server OK (o offline) → pota anche la cache locale: prenotazioni < cutoff
     const bookings = BookingStorage.getAllBookings();
     BookingStorage.replaceAllBookings(
-        bookings.filter(b => !b.id?.startsWith('demo-') && b.date >= cutoffStr)
+        bookings.filter(b => b.date >= cutoffStr)
     );
-    // Impedisci che initializeDemoData rigeneri i dati al prossimo reload
     localStorage.setItem('dataClearedByUser', 'true');
     BookingStorage._clearPersistedCache(); // lo snapshot conteneva le righe ora prunate
 
-    await showAlert('Dati storici e demo eliminati.', { type: 'success' });
+    await showAlert('Dati storici eliminati.', { type: 'success' });
     location.reload();
 }
 
