@@ -33,6 +33,15 @@ Speculare a §0.1 ma in **uscita**. Quando l'utente fa modifiche/aggiornamenti *
 - Cosa NON va in `Aggiornamento.md`: ciò che hai **portato da** Thomas (è già nel suo `Aggiornamenti.md`); le modifiche puramente di tracciamento/meta (todo, memoria).
 - `Aggiornamento.md` è un changelog di porting-in-uscita: non sostituisce `todo.md` (attività residue) né la memoria `stato-progetto` (stato), che vanno comunque aggiornati come da §0.
 
+### 0.3 — ⚠️ Parità Flutter ↔ PWA (REGOLA PERMANENTE)
+
+PalestrIA ha **due frontend sullo stesso backend Supabase**: la **PWA web** (`/*.html` + `/js`, fonte storica) e l'**app Flutter Android** (`Flutter/palestria_app/`). **Ogni feature/fix funzionale aggiunto a uno dei due va replicato nell'altro** (adattato alle convenzioni di ciascuno), salvo che sia intrinsecamente specifico di piattaforma (es. shell iOS, App Link Android, plugin nativi) — in tal caso annotalo come "N/A altro lato" nel `todo.md`.
+
+- Quando implementi qualcosa nell'**app Flutter**, verifica/porta l'equivalente nella **PWA** (e viceversa) **nella stessa sessione**, o lascialo tracciato in `todo.md` come voce di parità esplicita.
+- Rispetta le differenze: la PWA risolve l'org da `window._orgSlug`/`_resolveOrgSlug()` (sottodominio o `?org=`); l'app Flutter dai claim JWT con fallback `org_members`/`profiles`, e dai deep link (`/join/<slug>`, schema `palestria://`, App Link `https`).
+- La **fonte di verità** dell'app Flutter è `Flutter/MIGRATION_PLAN.md`; quella delle attività resta `todo.md`.
+- **Onboarding multi-tenant** (rif. 2026-07-08): il trainer crea lo studio (`create_organization`, web `signup-trainer.html` / Flutter `registerTrainer`); il cliente si iscrive a uno studio esistente col **codice palestra = slug** (web `?org=<slug>` / Flutter `/join/<slug>`, campo codice precompilato e bloccato). Un link/QR d'invito porta il cliente direttamente sulla registrazione dello studio.
+
 ---
 
 ## 1. Cos'è PalestrIA e visione SaaS

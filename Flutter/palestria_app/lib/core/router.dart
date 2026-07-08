@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../features/admin/admin_shell.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/signup_screen.dart';
+import '../features/auth/signup_trainer_screen.dart';
 import '../features/auth/splash_gate.dart';
 import '../features/client/client_shell.dart';
 import '../features/client/booking/booking_screen.dart';
@@ -39,7 +40,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = client.auth.currentSession;
       final onAuthPages = state.matchedLocation == '/login' ||
-          state.matchedLocation.startsWith('/signup');
+          state.matchedLocation.startsWith('/signup') ||
+          state.matchedLocation.startsWith('/join');
 
       // Non autenticato: solo pagine auth.
       if (session == null) return onAuthPages ? null : '/login';
@@ -53,6 +55,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (_, _) => const SplashGate()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (_, _) => const SignupScreen()),
+      GoRoute(
+          path: '/signup-trainer',
+          builder: (_, _) => const SignupTrainerScreen()),
+      // Deep link "iscriviti a questo studio": codice palestra dal link
+      // (path /join/<codice> o query /join?code=<codice>) → registrazione
+      // cliente precompilata. Ingresso: App Link https o schema palestria://.
+      GoRoute(
+        path: '/join/:code',
+        builder: (_, state) =>
+            SignupScreen(orgSlug: state.pathParameters['code']),
+      ),
+      GoRoute(
+        path: '/join',
+        builder: (_, state) =>
+            SignupScreen(orgSlug: state.uri.queryParameters['code']),
+      ),
       GoRoute(path: '/admin', builder: (_, _) => const AdminShell()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => ClientShell(shell: shell),

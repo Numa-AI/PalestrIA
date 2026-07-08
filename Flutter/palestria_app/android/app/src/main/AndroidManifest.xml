@@ -27,12 +27,39 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Deep link "Iscriviti a questo studio" (codice palestra dal link).
+                 Schema custom palestria://app/join/<codice>: funziona SUBITO se
+                 l'app è installata (nessuna verifica dominio). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="palestria" android:host="app"/>
+            </intent-filter>
+            <!-- App Link https UNIVERSALE (stesso link web+app). Si ATTIVA quando
+                 il dominio palestria.app è live e serve
+                 https://app.palestria.app/.well-known/assetlinks.json con
+                 l'impronta SHA-256 della firma (Play App Signing → la fornisce
+                 la Console). Fino ad allora resta inerte (nessun danno). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="app.palestria.app"
+                      android:pathPrefix="/join"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Deep link gestiti da Flutter/go_router: l'URI in ingresso (/join/...)
+             viene instradato dal router invece che aprire solo la home. -->
+        <meta-data
+            android:name="flutter_deeplinking_enabled"
+            android:value="true" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

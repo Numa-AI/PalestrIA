@@ -150,9 +150,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: const Text('Password dimenticata?'),
                       ),
                       const Divider(height: AppSpacing.xxl),
-                      OutlinedButton(
+                      Text('Non hai ancora un account?',
+                          style: AppText.meta, textAlign: TextAlign.center),
+                      const SizedBox(height: AppSpacing.md),
+                      OutlinedButton.icon(
                         onPressed: () => context.go('/signup'),
-                        child: const Text('Registrati'),
+                        icon: const Icon(Icons.badge_outlined),
+                        label: const Text(
+                            'Sono un cliente — ho un codice palestra'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      OutlinedButton.icon(
+                        onPressed: () => context.go('/signup-trainer'),
+                        icon: const Icon(Icons.storefront_outlined),
+                        label: const Text(
+                            'Sono un personal trainer — crea studio'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                        ),
                       ),
                     ],
                   ),

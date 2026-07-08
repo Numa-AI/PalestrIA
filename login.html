@@ -331,6 +331,16 @@
             document.querySelector('.login-tabs').style.display = (tab === 'forgot' || tab === 'reset') ? 'none' : 'flex';
         }
 
+        // ── Deep link "Iscriviti a questo studio" ─────────────────────────────
+        // Un link d'invito con ?org=<slug> (o ?join / ?register) apre DIRETTAMENTE
+        // la scheda Registrati: il cliente non deve cercarla. L'org di iscrizione
+        // la risolve _resolveOrgSlug() (?org= o sottodominio). Parità con l'app
+        // Flutter (rotta /join/<slug> → registrazione precompilata).
+        try {
+            const _iq = new URLSearchParams(location.search);
+            if (_iq.get('org') || _iq.get('join') || _iq.has('register')) switchTab('registrati');
+        } catch (_) {}
+
         // ── Manual login ──────────────────────────────────────────────────
         document.getElementById('manualLoginForm').addEventListener('submit', async e => {
             e.preventDefault();

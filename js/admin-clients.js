@@ -78,6 +78,98 @@ function _clearOtherFilters(keep) {
     if (keep !== 'push')    clientPushFilter = false;
 }
 
+// ── Invita clienti: link d'invito allo studio (codice palestra incluso) + QR.
+// Il link apre la registrazione cliente precompilata (login.html?org=<slug>).
+// Parità con l'app Flutter (invite_clients_sheet.dart) — CLAUDE.md §0.3.
+function openInviteClientsModal() {
+    _inviteResolveSlug().then(function (slug) {
+        if (!slug) {
+            if (typeof showAlert === 'function') showAlert('Studio non identificato: riprova tra qualche secondo.');
+            return;
+        }
+        const link = new URL('login.html', location.href);
+        link.search = '?org=' + encodeURIComponent(slug);
+        const url = link.href;
+        const waText = encodeURIComponent('Iscriviti al mio studio su PalestrIA: ' + url);
+
+        const ov = document.createElement('div');
+        ov.id = 'inviteClientsOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML =
+            '<div style="background:#fff;border-radius:18px;max-width:400px;width:100%;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.35);">' +
+              '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+                '<h3 style="margin:0;font-size:19px;color:#0f172a;">Invita i tuoi clienti</h3>' +
+                '<button id="inviteCloseBtn" style="border:0;background:none;font-size:24px;color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>' +
+              '</div>' +
+              '<p style="margin:0 0 16px;color:#64748b;font-size:13.5px;">Condividi questo link: i clienti si iscrivono al tuo studio con il codice palestra gi&agrave; inserito.</p>' +
+              '<div style="display:flex;justify-content:center;margin-bottom:14px;"><canvas id="inviteQrCanvas" width="220" height="220" style="border:1px solid #e2e8f0;border-radius:12px;"></canvas></div>' +
+              '<div style="display:flex;align-items:center;gap:8px;background:#f1f5f9;border-radius:10px;padding:10px 12px;margin-bottom:14px;">' +
+                '<span style="flex:1;font-size:12.5px;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="inviteUrlText"></span>' +
+                '<strong style="font-size:12px;color:#7C3AED;white-space:nowrap;" id="inviteCodeText"></strong>' +
+              '</div>' +
+              '<div style="display:flex;gap:10px;">' +
+                '<button id="inviteCopyBtn" style="flex:1;padding:11px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;font-weight:700;font-size:14px;cursor:pointer;">📋 Copia</button>' +
+                '<a id="inviteWaBtn" href="https://wa.me/?text=' + waText + '" target="_blank" rel="noopener" style="flex:1;padding:11px;border:0;border-radius:10px;background:#25D366;color:#fff;font-weight:700;font-size:14px;text-align:center;text-decoration:none;">WhatsApp</a>' +
+              '</div>' +
+            '</div>';
+        document.body.appendChild(ov);
+        // slug/url via textContent (difesa XSS anche se lo slug è validato dal DB)
+        document.getElementById('inviteUrlText').textContent = url;
+        document.getElementById('inviteCodeText').textContent = 'Codice: ' + slug;
+        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+        document.getElementById('inviteCloseBtn').addEventListener('click', function () { ov.remove(); });
+        document.getElementById('inviteCopyBtn').addEventListener('click', async function () {
+            try { await navigator.clipboard.writeText(url); } catch (_) {}
+            const b = document.getElementById('inviteCopyBtn');
+            if (b) { b.textContent = '✓ Copiato'; setTimeout(function () { b.textContent = '📋 Copia'; }, 1500); }
+        });
+        _inviteDrawQR(document.getElementById('inviteQrCanvas'), url);
+    });
+}
+
+// Slug della org corrente. Per l'admin window._orgSlug è spesso null (org via
+// claim org_id) → lo ricava dalla tabella organizations.
+async function _inviteResolveSlug() {
+    if (window._orgSlug) return window._orgSlug;
+    if (window._orgId && typeof supabaseClient !== 'undefined') {
+        try {
+            const { data } = await supabaseClient
+                .from('organizations').select('slug').eq('id', window._orgId).maybeSingle();
+            if (data && data.slug) return data.slug;
+        } catch (_) {}
+    }
+    return null;
+}
+
+// QR su canvas (riusa qrcode-generator come allenamento.html §Tablet).
+function _inviteDrawQR(canvas, data) {
+    if (!canvas) return;
+    const size = 220;
+    const render = function () {
+        try {
+            const qr = qrcode(0, 'M'); qr.addData(data); qr.make();
+            const modules = qr.getModuleCount(), cell = size / modules;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+            ctx.fillStyle = '#0f172a';
+            for (let r = 0; r < modules; r++) for (let c = 0; c < modules; c++)
+                if (qr.isDark(r, c)) ctx.fillRect(c * cell, r * cell, cell + 0.5, cell + 0.5);
+        } catch (_) {}
+    };
+    if (window._qrLib && typeof qrcode === 'function') { render(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+    s.onload = function () { window._qrLib = true; render(); };
+    s.onerror = function () {
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#f1f5f9'; ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#64748b'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText('QR non disponibile', size / 2, size / 2 - 6);
+        ctx.fillText('Copia il link sotto', size / 2, size / 2 + 12);
+    };
+    document.head.appendChild(s);
+}
+
 function toggleCertFilter() {
     clientCertFilter = !clientCertFilter;
     if (clientCertFilter) _clearOtherFilters('cert');

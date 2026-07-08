@@ -21,6 +21,16 @@ parlando con lo **stesso backend Supabase** (org_id + RLS, nessuna modifica serv
 | Prenotazione anonima | Resta **solo web** (nell'app si è sempre loggati) |
 | Toolchain | Installato in locale: Flutter stable in `C:\Users\andrea\flutter`, JDK 17 portable in `C:\Users\andrea\jdk-17`, Android SDK in `C:\Users\andrea\Android\Sdk` |
 
+## Aggiornamento strategico (2026-07-08)
+
+Go-to-market confermato dall'utente: **lancio entro fine 2026 su ENTRAMBI gli store** (Google Play + Apple App Store) con un **sito web marketing "fatto bene"** + campagna marketing. Sequenza e regole:
+
+- **Android prima** (già in **test interno** sul Play Store dal 2026-07-08; account pagato/verificato, package `com.palestria.app` bloccato). Si porta a **produzione**, POI si affronta iOS.
+- **iOS (App Store) = IN SCOPE ma DIFFERITO** finché Android non è stabile in produzione. Con Flutter è ~1.3× (stesso codice Dart), non una riscrittura. Prerequisiti: **macOS** per build/firma/upload (l'utente se lo può procurare), **Apple Developer** 99$/anno, **bundle id iOS** da bloccare insieme all'`applicationId` Android. Accorgimento: al primo Mac, fare subito un **build iOS "usa e getta"** per far emergere i quirk plugin, prima di rifinire la UI.
+- **PWA/web → MODALITÀ MANUTENZIONE**: resta viva per **prenotazione pubblica anonima** (link, nessuna install), **super-admin** e fallback web/admin da desktop; **congelato lo sviluppo di nuove feature** lì. Le feature nuove nascono in Flutter; dei port dal gemello Thomas si portano in Dart **solo i rilevanti** (niente doppio lavoro sistematico).
+- **IAP**: l'abbonamento SaaS del trainer resta gestito su **web** (evita la regola IAP Apple/Google); i pagamenti-cliente sono servizi del mondo reale (lezioni) → esenti, restano su Stripe esterno.
+- **Account Play = Organizzazione (Numa AI) ⇒ ESENTE** dal closed testing 12-tester/14gg (quel vincolo vale solo per account **personali** aperti dopo il 13/11/2023). Si va **dritti alla produzione** dopo config scheda + review Google — **nessun muro a tempo Android**. Il long-pole del calendario diventa quindi **iOS** (Mac + Apple Developer + primo build).
+
 ## Architettura scelta
 
 - **Progetto**: `Flutter/palestria_app/` (dentro questo repo). `applicationId`: `com.palestria.app`
@@ -297,11 +307,11 @@ parlando con lo **stesso backend Supabase** (org_id + RLS, nessuna modifica serv
 - [ ] Versioning, proguard/shrink, test su device
 - [ ] Checklist Play Console (privacy policy URL, data safety)
 
-### Fase 5 (post-lancio, fuori scope attuale)
+### Fase 5 — dopo il lancio Android
 
-- [ ] Push FCM + adeguamento edge functions
+- [ ] **iOS (App Store)** — **IN SCOPE, differito a dopo il lancio Android in produzione** (vedi "Aggiornamento strategico 2026-07-08"). Riusa lo stesso codice Dart (~1.3×); serve **macOS** per build/firma/upload + **Apple Developer** + **bundle id** definitivo. Primo passo: build iOS "usa e getta" per far emergere i quirk plugin.
+- [ ] Push FCM + adeguamento edge functions (vale sia Android sia iOS)
 - [ ] Deep link / App Links per inviti org
-- [ ] iOS
 
 ## Gap admin noti (da chiudere) — rilevati 2026-07-07
 
@@ -321,6 +331,7 @@ Schede+Importa editor. Buchi principali ancora aperti:
 
 ## Diario di bordo
 
+- **2026-07-08** — **Decisione strategica go-to-market** (dettaglio in "Aggiornamento strategico 2026-07-08" in cima). Lancio **fine 2026 su Play + App Store** + sito marketing "fatto bene" + campagna. **Android prima** (test interno già pubblicato l'8/07), **iOS differito ma in scope** (dopo Android stabile; serve Mac + Apple Developer + bundle id). **PWA→manutenzione** (resta per booking pubblico anonimo, super-admin e fallback web; feature nuove solo in Flutter, port da Thomas selettivi). Nessuna modifica di codice in questa sessione: solo indirizzo strategico registrato qui + in memoria `stato-progetto`. Prossimi blocchi verso la produzione Android (account **Organizzazione Numa AI → ESENTE** dal 12-tester/14gg): "Configurare l'app" su Play Console, asset scheda, commit/push del ramo Flutter, deploy mig.0028 + parità web, poi promozione a produzione + review Google.
 - **2026-07-07 (loop autonomo /loop)** — **Chiusura gap admin+cliente vs PWA.** Completate in
   sequenza, una sezione per iterazione, con `flutter analyze` pulito ad ogni step (mai committato/
   buildato — lo fa l'utente):

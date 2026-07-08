@@ -10,6 +10,7 @@ import '../shared/area_switch.dart';
 import 'analytics/analytics_tab.dart';
 import 'bookings/admin_bookings_tab.dart';
 import 'clients/clients_tab.dart';
+import 'clients/invite_clients_sheet.dart';
 import 'messaggi/messaggi_tab.dart';
 import 'payments/payments_tab.dart';
 import 'registro/registro_tab.dart';
@@ -68,6 +69,11 @@ class _AdminShellState extends ConsumerState<AdminShell> {
       appBar: AppBar(
         title: Text(_tab.label),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_add_alt_1),
+            tooltip: 'Invita clienti',
+            onPressed: () => showInviteClientsSheet(context),
+          ),
           const UserAreaButton(),
           IconButton(
             icon: const Icon(Icons.logout),

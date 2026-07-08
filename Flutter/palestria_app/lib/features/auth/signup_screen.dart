@@ -8,7 +8,11 @@ import '../../core/theme/tokens.dart';
 /// Registrazione CLIENTE nel contesto di una palestra: nell'app (senza slug
 /// nell'URL come sul web) il codice palestra viene chiesto esplicitamente.
 class SignupScreen extends ConsumerStatefulWidget {
-  const SignupScreen({super.key});
+  const SignupScreen({super.key, this.orgSlug});
+
+  /// Se valorizzato (deep link "iscriviti a questo studio"), il codice palestra
+  /// è pre-compilato e bloccato: il cliente non deve digitarlo.
+  final String? orgSlug;
 
   @override
   ConsumerState<SignupScreen> createState() => _SignupScreenState();
@@ -23,6 +27,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _password = TextEditingController();
   bool _loading = false;
   String? _error;
+  late final bool _lockedSlug;
+
+  @override
+  void initState() {
+    super.initState();
+    final slug = widget.orgSlug?.trim().toLowerCase();
+    _lockedSlug = slug != null && slug.isNotEmpty;
+    if (_lockedSlug) _orgSlug.text = slug!;
+  }
 
   @override
   void dispose() {
@@ -62,7 +75,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.lightGray,
-      appBar: AppBar(title: const Text('Registrati')),
+      appBar: AppBar(title: const Text('Registrati come cliente')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.xxl),
@@ -76,10 +89,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   children: [
                     TextFormField(
                       controller: _orgSlug,
-                      decoration: const InputDecoration(
+                      readOnly: _lockedSlug,
+                      decoration: InputDecoration(
                         labelText: 'Codice palestra',
-                        helperText:
-                            'Te lo fornisce il tuo trainer (es. "studio-rossi").',
+                        prefixIcon: _lockedSlug
+                            ? const Icon(Icons.verified_outlined)
+                            : null,
+                        helperText: _lockedSlug
+                            ? 'Ti stai iscrivendo a questo studio.'
+                            : 'Te lo fornisce il tuo trainer (es. "studio-rossi").',
                       ),
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Inserisci il codice della tua palestra.'
