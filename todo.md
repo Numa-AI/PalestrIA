@@ -6,6 +6,49 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
 
 ---
 
+## 📱 Flutter — code review pre-pubblicazione (2026-07-07): 15 fix APPLICATI + residui
+Review completa di `Flutter/palestria_app` (focus sicurezza per pubblicazione). **2 batch di fix applicati** (⚠️ `flutter analyze` sempre pulito, ma NON buildato APK né committato — lo fa l'utente). Restano poche voci: 1 azione utente (keystore), 2 migration DB da deployare, 1 parità web, alcune rifiniture non bloccanti.
+
+**Blocker di pubblicazione**
+- [x] **Firma release da `key.properties`** ([build.gradle.kts](Flutter/palestria_app/android/app/build.gradle.kts)): `signingConfigs.release` legge `android/key.properties` (gitignorato), fallback a debug se assente. Creato `android/key.properties.example` (istruzioni keytool). **✅ FATTO (2026-07-08)**: keystore di upload generato (`C:\Users\andrea\keystores\palestria-upload.jks`, alias `upload`, RSA2048/10000gg) + `android/key.properties` reale creato (gitignore verificato). AAB firmato buildato (`flutter build appbundle --release`).
+- [x] **`allowBackup="false"`** ([AndroidManifest.xml](Flutter/palestria_app/android/app/src/main/AndroidManifest.xml)): il refresh token Supabase non esce più dal device via backup/transfer.
+
+**Pubblicazione Play Store — 2026-07-08**
+- [x] **Test interno pubblicato + app installata su device**. App creata su Play Console: nome `PalestrIA`, package **`com.palestria.app`** (⚠️ PERMANENTE), Gratis, Play App Signing accettata. AAB `1 (1.0.0)` (minSdk Android 7 / target API 36) caricato e distribuito al test interno; tester `andrea.pompili1997@gmail.com`, installazione OK.
+- [ ] **Committare/pushare il ramo Flutter** (fix code-review batch 1+2 + config firma) — ancora nel working tree, non committato.
+- [ ] **"Configurare l'app" su Play Console** (obbligatorio per test aperti/produzione): **Privacy policy** (URL pubblico), **Sicurezza dei dati** (l'app usa Supabase: raccoglie email/nome/telefono per login → dichiarare), **Classificazione dei contenuti** (questionario), **Pubblico di destinazione** ed età, presenza **annunci** (no). Preparare testi scheda Store (descrizione breve/lunga), icona 512×512, feature graphic, screenshot.
+- [ ] **Requisito account personale**: closed testing con **≥12 tester per 14 giorni** prima di poter richiedere l'accesso alla **produzione** (se l'account sviluppatore è personale, non organizzazione).
+- [ ] **⚠️ Policy pagamenti Google Play**: l'app vende abbonamenti SaaS (Stripe). Verificare se Google impone **Google Play Billing** per i beni digitali consumati in-app prima della pubblicazione in produzione (rischio sospensione).
+
+**Bug funzionali — FIXATI (batch 1)**
+- [x] **RPC `is_whatsapp_taken` parametri corretti** (`phone`/`exclude_user_id`) in [auth_repository.dart](Flutter/palestria_app/lib/core/auth/auth_repository.dart) + [edit_profile_sheet.dart](Flutter/palestria_app/lib/features/client/profile/edit_profile_sheet.dart) → signup + salvataggio profilo con WhatsApp funzionano.
+- [x] **Doppia prenotazione (dup-check)**: [booking_sheet.dart](Flutter/palestria_app/lib/features/client/booking/booking_sheet.dart) esclude solo `cancelled`. ⚠️ Chiude il caso comune, NON la race pura → resta l'unique index server-side (sotto).
+- [x] **`book()` timeout** → esito incerto invece di "non salvata" + invalida cache ([booking_repository.dart](Flutter/palestria_app/lib/core/data/booking_repository.dart)).
+- [x] **`webBaseUrl`** `numa-ai`→`renumaa.github.io/PalestrIA` ([config.dart](Flutter/palestria_app/lib/core/config.dart)).
+- [x] **setState/ref dopo dispose** + **profilo in loading** = guard `mounted` + attesa `userProfileProvider.future` in `_submit`.
+- [x] **Prezzo "Da saldare" cliente** allineato a `bookingPrice()` ([billing_status.dart](Flutter/palestria_app/lib/features/client/profile/billing_status.dart)).
+
+**Bug funzionali — FIXATI (batch 2)**
+- [x] **Prezzi admin allineati al server**: `payments_tab` (lista debitori + card), `pay_debt_sheet` (totale + righe), `client_card` (Da saldare + movimenti) usano ora `bookingPrice()` invece di `customPrice ?? 0`. **Bug reale**: il server `admin_pay_bookings` registra `custom ?? default tipo`, e i debitori senza custom_price valevano €0 → **sparivano** dalla lista debitori (filtro `total > 0`) pur dovendo il prezzo pieno. `billing_client.prices` è tenuto in sync con `slot_types.default_price` dalle Impostazioni → `bookingPrice()` combacia col ledger.
+- [x] **Schede modificabili dai clienti — CONFIGURABILE dal trainer**: nuovo flag org `features.client_manage_plans` (default OFF = solo trainer), toggle in Impostazioni→Funzionalità ([settings_prefs.dart](Flutter/palestria_app/lib/features/admin/settings/settings_prefs.dart)); la UI cliente ([workout_screen.dart](Flutter/palestria_app/lib/features/client/workout/workout_screen.dart) `_canManage`) mostra crea/rinomina/elimina scheda+esercizi+aggiungi-giorno+swipe-delete solo se admin O flag ON (i log serie/peso restano sempre). Con default OFF spariscono i pulsanti che prima fallivano → bug risolto. **Migration `00000000000028_client_manage_plans_rls.sql`** creata (policy own-write gated sul flag) — **⚠️ DA DEPLOYARE** (`supabase db push`) per far salvare davvero i clienti quando il flag è ON; senza, il flag ON mostra i pulsanti ma il DB blocca ancora.
+- [x] **Batch delete workout_logs**: `_deleteDay` (history_view) e delete-log-oggi (exercise_detail_sheet) usano `deleteLogsOfDay` (1 query invece di N; niente cancellazione parziale su errore rete).
+- [x] **Init parallelo** in [main.dart](Flutter/palestria_app/lib/main.dart) (Supabase.initialize ‖ prefs+preload branding).
+- [x] **`ctz` Google Calendar** ora da `locale.timezone` org (fallback Roma) in booking_sheet.
+- [x] **Rimosso file morto** `tabs_placeholder.dart`.
+
+**Residui — DA DEPLOYARE / DECIDERE**
+- [ ] **⚠️ DEPLOY migration `00000000000028`** (schede clienti) quando si vuole abilitare la modalità "anche i clienti": `supabase db push`. È CI-safe (solo tabelle baseline). Finché non deployata, il flag `features.client_manage_plans` funziona solo per nascondere/mostrare, non per far salvare i clienti.
+- [ ] **Parità web schede clienti**: la PWA (allenamento.html) mostra i pulsanti di modifica scheda ai clienti senza gate sul flag → replicare il gate `features.client_manage_plans` anche lì (con la 0028 deployata, un cliente web può salvare solo se il flag è ON; senza gate UI vede pulsanti che falliscono a flag OFF, come prima).
+- [ ] **Unique index parziale server-side** su `bookings(org_id,user_id,date,time) where status in ('confirmed','cancellation_requested')` → attiva l'handler `duplicate_booking` già in `book_slot` (dead code). ⚠️ Verificare prima che non esistano doppioni in prod, poi `db push`. Riguarda anche il web.
+- [ ] **QR tablet** = capability URL permanente anon lettura+scrittura senza scadenza/revoca — già rimandato in mig.0023 (token opaco a scadenza). Da fare prima di distribuire l'app.
+
+**Residui — rifiniture non bloccanti**
+- [ ] Egress: `fetchLogsForExercises` senza finestra temporale + `planLogsProvider` autoDispose; `statsBookingsProvider` scarica 36 mesi a ogni apertura Statistiche/pull-to-refresh. (NON toccato: finestrare i log rischia di nascondere lo storico allenamenti — serve decidere quanta storia tenere caricata.)
+- [ ] Pulizia: formatter € duplicato in 8 file (1 divergente), array mesi/giorni in 10+ file (indicizzazioni miste dom/lun-first!), label metodi pagamento drift in 6 file, `_weekMonday` ×3, dock "VAI A" duplicato admin/workout, loop paging duplicato in admin_repository, `€` hardcoded (anche web), prezzi piani SaaS hardcoded invece che da tabella `plans`, `adminStatsEmails` per email invece che ruoli org_members. (Rimandate: refactor ampio, rischioso a ridosso della pubblicazione.)
+- [ ] **Nota (non-Flutter)**: `booking.policy.free_cancel_hours` è un setting **morto** — editabile (web+Flutter) ma non letto da nessuna RPC/client; `cancel_booking` hardcoda 10min/24h/3gg.
+
+---
+
 ## 🔁 Port 2026-07-04 dal gemello Thomas (voci nuove comparse dopo il batch precedente)
 Comparse 3 voci nuove **2026-07-04** in cima al changelog Thomas. **2 sono sul sistema crediti → N/A** (§11: crediti/bonus rimossi): "Notifica ricarica sul pagamento lezioni" (`💰 Ricarica credito`/`credit_delta`) e "Notifica al cliente: ricarica credito fatta dall'admin" (nuova edge `notify-client-credit`, `notifyClientCreditAdded`, `RechargeBonusStorage`/bonus, `admin_credit_added`). Portata **solo la terza**, applicabile.
 

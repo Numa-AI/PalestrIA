@@ -1,0 +1,154 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/auth/auth_repository.dart';
+import '../../core/theme/tokens.dart';
+
+/// Registrazione CLIENTE nel contesto di una palestra: nell'app (senza slug
+/// nell'URL come sul web) il codice palestra viene chiesto esplicitamente.
+class SignupScreen extends ConsumerStatefulWidget {
+  const SignupScreen({super.key});
+
+  @override
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends ConsumerState<SignupScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _orgSlug = TextEditingController();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _whatsapp = TextEditingController();
+  final _password = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final c in [_orgSlug, _name, _email, _whatsapp, _password]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final result = await ref.read(authRepositoryProvider).registerClient(
+          name: _name.text,
+          email: _email.text,
+          password: _password.text,
+          orgSlug: _orgSlug.text,
+          whatsapp: _whatsapp.text,
+        );
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (!result.ok) {
+      setState(() => _error = result.error);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text(
+          'Registrazione inviata! Se richiesto, conferma la tua email e poi accedi.'),
+    ));
+    context.go('/login');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.lightGray,
+      appBar: AppBar(title: const Text('Registrati')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _orgSlug,
+                      decoration: const InputDecoration(
+                        labelText: 'Codice palestra',
+                        helperText:
+                            'Te lo fornisce il tuo trainer (es. "studio-rossi").',
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Inserisci il codice della tua palestra.'
+                          : null,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    TextFormField(
+                      controller: _name,
+                      decoration:
+                          const InputDecoration(labelText: 'Nome e cognome'),
+                      validator: (v) => (v == null || v.trim().length < 2)
+                          ? 'Inserisci il tuo nome.'
+                          : null,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    TextFormField(
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      validator: (v) => (v == null || !v.contains('@'))
+                          ? 'Inserisci una email valida.'
+                          : null,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    TextFormField(
+                      controller: _whatsapp,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                          labelText: 'WhatsApp (opzionale)'),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    TextFormField(
+                      controller: _password,
+                      obscureText: true,
+                      decoration:
+                          const InputDecoration(labelText: 'Password'),
+                      validator: (v) => (v == null || v.length < 6)
+                          ? 'La password deve avere almeno 6 caratteri.'
+                          : null,
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                            color: AppColors.dangerDark,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.xl),
+                    FilledButton(
+                      onPressed: _loading ? null : _submit,
+                      child: _loading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Crea account'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

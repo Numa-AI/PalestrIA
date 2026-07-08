@@ -1,0 +1,18 @@
+# Firma di RELEASE per il Play Store.
+# Copia questo file in `key.properties` (stessa cartella) e compila i valori
+# REALI. `key.properties` e i keystore (*.jks / *.keystore) sono gitignorati:
+# NON committarli mai.
+#
+# 1) Genera il keystore (una tantum, conservalo al sicuro — se lo perdi non
+#    potrai più aggiornare l'app sul Play Store):
+#      keytool -genkey -v -keystore upload-keystore.jks \
+#        -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+# 2) Metti il .jks fuori dal repo (es. C:/Users/<tu>/keystores/) e indica il
+#    percorso in storeFile qui sotto.
+#
+# storeFile accetta un percorso assoluto o relativo alla cartella android/app.
+
+storePassword=CAMBIA_ME
+keyPassword=CAMBIA_ME
+keyAlias=upload
+storeFile=C:/Users/andrea/keystores/palestria-upload.jks
