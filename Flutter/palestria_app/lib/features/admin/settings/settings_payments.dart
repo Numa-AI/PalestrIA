@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Sezione "Pagamenti cliente" (port di _settRenderPayments §4): Stripe Connect
 /// (edge `stripe-connect`), modello di pagamento predefinito (billing_settings),
@@ -111,7 +112,6 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
   }
 
   Future<void> _connectStripe() async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final res = await ref
           .read(supabaseProvider)
@@ -121,13 +121,11 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
       if (url == null) throw Exception('Avvio collegamento non riuscito');
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
-      messenger.showSnackBar(
-          SnackBar(content: Text('Errore collegamento Stripe: $e')));
+      if (mounted) AppSnack.error(context, 'Errore collegamento Stripe: $e');
     }
   }
 
   Future<void> _disconnectStripe() async {
-    final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -145,24 +143,22 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
     try {
       await ref
           .read(supabaseProvider)
           .functions
           .invoke('stripe-connect', body: {'action': 'disconnect'});
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Account Stripe scollegato.')));
+      if (mounted) AppSnack.success(context, 'Account Stripe scollegato.');
       setState(() => _loading = true);
       await _load();
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     }
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final messenger = ScaffoldMessenger.of(context);
     final client = ref.read(supabaseProvider);
     try {
       await client.from('billing_settings').upsert({
@@ -190,10 +186,9 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
             .eq('org_id', _orgId);
       }
       await widget.service.set('billing_client.prices', pricesMap);
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Pagamenti salvati.')));
+      if (mounted) AppSnack.success(context, 'Pagamenti salvati.');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -204,7 +199,7 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.all(AppSpacing.md),
-        child: Center(child: CircularProgressIndicator()),
+        child: AppLoading(),
       );
     }
     return Column(
@@ -320,8 +315,8 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.slate50,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
@@ -343,7 +338,7 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: chOk
-                        ? const Color(0xFF059669)
+                        ? AppColors.successEmeraldDark
                         : const Color(0xFFB45309))),
             if (email.isNotEmpty)
               Text(email, style: AppText.meta),

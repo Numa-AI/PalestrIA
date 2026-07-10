@@ -1,6 +1,8 @@
 import 'package:barcode/barcode.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/tokens.dart';
+
 /// QR code disegnato via CustomPaint (pacchetto `barcode`, nessuna immagine di
 /// rete). Riusabile da Tablet-QR e da "Invita clienti".
 class QrView extends StatelessWidget {
@@ -25,7 +27,7 @@ class _QrPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
     final qr =
         Barcode.qrCode(errorCorrectLevel: BarcodeQRCorrectionLevel.medium);
-    final module = Paint()..color = const Color(0xFF0F172A);
+    final module = Paint()..color = AppColors.navy;
     for (final e in qr.make(data, width: size.width, height: size.height)) {
       if (e is BarcodeBar && e.black) {
         canvas.drawRect(

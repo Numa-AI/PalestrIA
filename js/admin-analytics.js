@@ -80,7 +80,8 @@ function _persistStatsCache() {
     if (!key || !_statsBookings || !_statsCacheRange) return;
     if (_statsBookings.length > _STATS_PERSIST_MAX_ROWS) return;
     try {
-        localStorage.setItem(key, JSON.stringify({
+        // _lsSetSnapshot (governo quota, mai toast): su quota resta il fallback SWR.
+        _lsSetSnapshot(key, JSON.stringify({
             savedAt: Date.now(),
             clearedAt: localStorage.getItem('dataLastCleared') || '0',
             range: _statsCacheRange,

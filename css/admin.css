@@ -7377,6 +7377,62 @@ button.cedit-cert-badge {
     max-height: 300px;
 }
 
+/* ── Popup zoom Progressi cliente (video + grafici kg/reps/serie/tutti) ──────── */
+.schede-admin-chart-img { position: relative; cursor: pointer; }
+.schede-prog-zoom {
+    position: absolute; right: 4px; bottom: 4px;
+    width: 26px; height: 26px; border: none; border-radius: 8px;
+    background: rgba(15,23,42,0.55); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(2px);
+    transition: background 0.15s, transform 0.15s;
+    padding: 0;
+}
+.schede-prog-zoom:hover { background: rgba(0,174,239,0.9); }
+.schede-prog-zoom:active { transform: scale(0.92); }
+.schede-prog-zoom svg { width: 12px; height: 12px; }
+
+.schede-prog-zoom-panel { max-width: 640px; }
+.schede-prog-zoom-nomedia {
+    display: flex; align-items: center; justify-content: center;
+    height: 160px; font-size: 3rem; border-radius: 12px;
+    background: linear-gradient(135deg, #f0fbff, #e0f2fe);
+}
+.schede-prog-zoom-tabs { display: flex; gap: 0.4rem; margin: 0.9rem 0 0.7rem; }
+.schede-prog-zoom-tab {
+    flex: 1; padding: 0.45rem 0.5rem; border-radius: 10px;
+    border: 1.5px solid #e2e8f0; background: #fff; color: #64748b;
+    font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+}
+.schede-prog-zoom-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+.schede-prog-zoom-tab.active[data-mode="kg"]   { border-color: #00AEEF; background: linear-gradient(135deg, #e0f7ff, #f0fbff); color: #0077b6; }
+.schede-prog-zoom-tab.active[data-mode="reps"] { border-color: #f59e0b; background: linear-gradient(135deg, #fef3c7, #fffbeb); color: #b45309; }
+.schede-prog-zoom-tab.active[data-mode="sets"] { border-color: #10b981; background: linear-gradient(135deg, #d1fae5, #ecfdf5); color: #047857; }
+.schede-prog-zoom-tab.active[data-mode="all"]  { border-color: #0f172a; background: linear-gradient(135deg, #f1f5f9, #f8fafc); color: #0f172a; }
+.schede-prog-zoom-legend {
+    display: none; gap: 1rem; flex-wrap: wrap;
+    margin: 0 0 0.5rem; font-size: 0.75rem; font-weight: 700; color: #475569;
+}
+.schede-prog-zoom-legend i {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 3px; margin-right: 5px; vertical-align: -1px;
+}
+.schede-chart-stats.schede-prog-zoom-stats { margin-top: 0.7rem; flex-direction: column; gap: 0.35rem; }
+.schede-prog-zoom-stat-row {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 0.3rem 0.9rem;
+}
+.schede-prog-zoom-stat-row i {
+    width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0;
+}
+/* Desktop: più spazio → popup largo, video e grafico più grandi */
+@media (min-width: 900px) {
+    .schede-prog-zoom-panel { max-width: 880px; }
+    .schede-prog-zoom-panel .schede-ex-detail-video { max-height: 340px; object-fit: contain; }
+    .schede-prog-zoom-panel .schede-ex-detail-img { max-height: 340px; }
+}
+
 .schede-add-btns {
     display: flex; gap: 0.5rem; margin-top: 0.2rem;
 }
@@ -7441,7 +7497,7 @@ button.cedit-cert-badge {
 .schede-cc-block {
     border: 2px solid #06b6d4;
     border-radius: 12px;
-    padding: 0.6rem 0.5rem 0.5rem 2.4rem;
+    padding: 0.6rem 2.4rem 0.5rem 0.5rem;
     margin-bottom: 0.5rem;
     background: linear-gradient(135deg, #ecfeff 0%, #fff 60%);
     position: relative;
@@ -7460,7 +7516,7 @@ button.cedit-cert-badge {
     line-height: 1.4;
 }
 .schede-cc-block .schede-ss-delete { /* riusa stile delete della SS */ }
-.schede-cc-block .schede-ss-move button:hover { color: #0891b2; background: #ecfeff; box-shadow: 0 1px 4px rgba(6,182,212,0.18); }
+.schede-cc-block .schede-ss-move button:hover:not(:disabled) { color: #0891b2; border-color: #0891b2; background: #ecfeff; box-shadow: 0 1px 4px rgba(6,182,212,0.18); }
 .schede-cc-params {
     display: flex; gap: 0.5rem; flex-wrap: wrap;
     padding: 0.2rem 0 0.45rem;
@@ -7517,7 +7573,7 @@ button.cedit-cert-badge {
 .schede-ss-block {
     border: 2px solid #f59e0b;
     border-radius: 12px;
-    padding: 0.6rem 0.5rem 0.5rem 2.4rem;
+    padding: 0.6rem 2.4rem 0.5rem 0.5rem;
     margin-bottom: 0.5rem;
     background: linear-gradient(135deg, #fffbeb 0%, #fff 60%);
     position: relative;
@@ -7550,26 +7606,36 @@ button.cedit-cert-badge {
     line-height: 1.4;
 }
 .schede-ss-delete:hover { background: #dc2626; }
+/* Frecce blocco (Super Serie/Circuito) = identiche a quelle dei singoli
+   (.schede-ex-move): sempre rese, disabled ai bordi, nella gronda DESTRA. */
 .schede-ss-move {
     position: absolute;
-    left: 0.5rem;
+    right: 0.45rem;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 3px;
+    z-index: 2;
 }
 .schede-ss-move button {
-    background: linear-gradient(135deg, #f1f5f9, #e8ecf1);
-    border: none;
+    width: 24px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid #e2e8f0;
+    background: #fff;
     border-radius: 6px;
-    padding: 0.25rem 0.4rem;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    line-height: 1;
     color: #64748b;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.15s;
 }
-.schede-ss-move button:hover { color: #8B5CF6; background: #e0f2fe; box-shadow: 0 1px 4px rgba(139, 92, 246, 0.15); }
+.schede-ss-move button:hover:not(:disabled) { color: #8B5CF6; border-color: #8B5CF6; background: rgba(139,92,246,0.06); box-shadow: 0 1px 4px rgba(139, 92, 246, 0.15); }
+.schede-ss-move button:disabled { opacity: 0.35; cursor: not-allowed; }
 .schede-ss-block .schede-exercise-row { margin-bottom: 0.3rem; }
 .schede-ss-block .schede-exercise-row:last-of-type { margin-bottom: 0; }
 .schede-ss-block .schede-ex-delete { display: none; }

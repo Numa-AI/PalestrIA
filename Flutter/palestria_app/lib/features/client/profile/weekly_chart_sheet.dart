@@ -10,7 +10,7 @@ const _monthsShort = [
   'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
   'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
 ];
-const _past = Color(0xFF3B82F6);
+const _past = AppColors.blue500;
 const _future = Color(0xFFE63946);
 
 /// Modal "Allenamenti settimanali/mensili" (port §7.6): barre = conteggio
@@ -157,9 +157,10 @@ class _WeeklyChartSheetState extends ConsumerState<WeeklyChartSheet> {
 void showWeeklyChart(BuildContext context) {
   showModalBottomSheet(
     context: context,
-    backgroundColor: Colors.white,
+    backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppRadius.modalLg))),
     builder: (_) => const WeeklyChartSheet(),
   );
 }

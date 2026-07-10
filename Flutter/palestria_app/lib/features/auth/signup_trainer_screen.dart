@@ -120,8 +120,8 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                       const SizedBox(height: AppSpacing.xs),
                       Text(
                         'Codice studio (i clienti lo useranno per iscriversi): $_slug',
-                        style: const TextStyle(
-                            color: AppColors.primary,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600),
                       ),
@@ -174,8 +174,8 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                     if (_info != null) ...[
                       const SizedBox(height: AppSpacing.md),
                       Text(_info!,
-                          style: const TextStyle(
-                              color: AppColors.primary,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
                               fontSize: 13.5,
                               fontWeight: FontWeight.w600)),
                     ],

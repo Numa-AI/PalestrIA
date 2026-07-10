@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/config.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Vista "Tablet — QR" (port di renderTabletQR, §8.8): mostra un QR che apre
 /// la scheda dell'utente sul tablet della palestra
@@ -32,13 +33,9 @@ class TabletQrView extends ConsumerWidget {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
               AppSpacing.lg, AppSpacing.xxxl, AppSpacing.lg, 120),
-          child: Container(
+          child: AppCard(
             padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: AppShadows.card,
-            ),
+            radius: 20,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -70,8 +67,7 @@ class TabletQrView extends ConsumerWidget {
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: url));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Link copiato!')));
+                      AppSnack.success(context, 'Link copiato!');
                     }
                   },
                   icon: const Icon(Icons.copy, size: 18),
@@ -102,7 +98,7 @@ class _QrPainter extends CustomPainter {
         Offset.zero & size, Paint()..color = Colors.white);
     final qr = Barcode.qrCode(
         errorCorrectLevel: BarcodeQRCorrectionLevel.medium);
-    final module = Paint()..color = const Color(0xFF0F172A);
+    final module = Paint()..color = AppColors.navy;
     for (final e in qr.make(data, width: size.width, height: size.height)) {
       if (e is BarcodeBar && e.black) {
         canvas.drawRect(

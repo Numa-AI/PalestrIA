@@ -18,6 +18,7 @@ Future<void> showBookingSheet(
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
+    showDragHandle: true,
     builder: (_) => _BookingSheet(slot: slot),
   );
 }
@@ -248,13 +249,7 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
               style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
-                color: slot.isFull
-                    ? const Color(0xFFDC2626)
-                    : switch (slot.remaining) {
-                        <= 1 => const Color(0xFFDC2626),
-                        2 => const Color(0xFFEA7B0A),
-                        _ => const Color(0xFF111111),
-                      },
+                color: spotsColor(slot.remaining),
               ),
             ),
             const SizedBox(height: 4),
@@ -301,8 +296,8 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
       child: ExpansionTile(
         initiallyExpanded: slot.isFull,
         tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-        backgroundColor: const Color(0xFFF9FAFB),
-        collapsedBackgroundColor: const Color(0xFFF9FAFB),
+        backgroundColor: AppColors.slate50,
+        collapsedBackgroundColor: AppColors.slate50,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         collapsedShape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -316,7 +311,7 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
                 'Disattiva la privacy per vedere chi è iscritto.',
                 style: TextStyle(
                     fontStyle: FontStyle.italic,
-                    color: Color(0xFF9CA3AF),
+                    color: AppColors.subtle,
                     fontSize: 13.5),
               ),
             )
@@ -386,7 +381,7 @@ class _BookingSheetState extends ConsumerState<_BookingSheet> {
             onPressed: () => _openGoogleCalendar(booking, config),
             style: OutlinedButton.styleFrom(
               backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF444444),
+              foregroundColor: AppText.label.color,
               side: BorderSide.none,
             ),
             child: const Text('Google Calendar'),
@@ -438,7 +433,7 @@ class _AttendeesList extends ConsumerWidget {
         padding: EdgeInsets.all(12),
         child: Text('Caricamento...',
             style: TextStyle(
-                fontStyle: FontStyle.italic, color: Color(0xFF9CA3AF))),
+                fontStyle: FontStyle.italic, color: AppColors.subtle)),
       ),
       error: (_, _) => Padding(
         padding: const EdgeInsets.all(12),
@@ -446,7 +441,7 @@ class _AttendeesList extends ConsumerWidget {
           children: [
             const Expanded(
                 child: Text('Impossibile caricare gli iscritti.',
-                    style: TextStyle(color: Color(0xFF9CA3AF)))),
+                    style: TextStyle(color: AppColors.subtle))),
             TextButton(
               onPressed: () =>
                   ref.invalidate(_attendeesProvider((slot.date, slot.time))),

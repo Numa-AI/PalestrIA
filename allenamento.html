@@ -29,7 +29,7 @@
     <link rel="preconnect" href="https://rwaiekhllujximrqftmp.supabase.co" crossorigin>
     <link rel="stylesheet" href="css/style.css?v=11">
     <link rel="stylesheet" href="css/login.css?v=6">
-    <link rel="stylesheet" href="css/allenamento.css?v=58">
+    <link rel="stylesheet" href="css/allenamento.css?v=59">
 <script src="js/ls-namespace.js?v=1"></script>
 <script src="js/branding-boot.js?v=3"></script>
 </head>
@@ -173,7 +173,7 @@
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=99"></script>
+    <script src="js/data.js?v=100"></script>
     <script src="js/auth.js?v=37"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
@@ -200,6 +200,9 @@
         // Mobile v2: cache esercizi correnti per il modal zoom (ricostruita ad ogni render)
         let _progressiExIdSeq = 0;
         const _progressiExData = {};
+        // Stato del selettore metrica del modal zoom (kg / reps / serie / tutti)
+        let _progressiZoomExId = null;
+        let _progressiZoomMode = 'kg';
         let _allLastRefreshTs = Date.now(); // aggiornato ad ogni _refreshAllenamentoData
         // Incrementato ogni volta che l'app va in background.
         // I catch di saveLog/saveEditExercise lo confrontano col valore
@@ -2254,19 +2257,30 @@
                 const isCardio = (nameToMuscle[exName] || '').toLowerCase() === 'cardio';
                 const unit = isCardio ? 'min' : 'kg';
 
+                // Rollup per sessione: value (metrica principale card: max kg o
+                // max minuti per cardio), + weight (max kg), repsAvg (media reps per
+                // serie) e sets (n° serie) per il selettore del modal zoom.
                 const sessionMap = {};
                 for (const l of exLogs) {
-                    const val = isCardio ? l.reps_done : l.weight_done;
-                    if (val == null) continue;
                     const key = l.exercise_id + '|' + l.log_date;
-                    if (!sessionMap[key] || val > sessionMap[key].value) {
-                        sessionMap[key] = { date: l.log_date, value: val };
-                    }
+                    let s = sessionMap[key];
+                    if (!s) s = sessionMap[key] = { date: l.log_date, value: null, weight: null, repsSum: 0, repsCnt: 0, sets: 0 };
+                    s.sets++;
+                    if (l.weight_done != null) s.weight = (s.weight == null) ? l.weight_done : Math.max(s.weight, l.weight_done);
+                    if (l.reps_done != null) { s.repsSum += l.reps_done; s.repsCnt++; }
+                    const val = isCardio ? l.reps_done : l.weight_done;
+                    if (val != null) s.value = (s.value == null) ? val : Math.max(s.value, val);
                 }
-                const sessions = Object.values(sessionMap).sort((a, b) => a.date.localeCompare(b.date) || a.value - b.value);
+                // Criterio card invariato: solo sessioni con la metrica principale.
+                const sessions = Object.values(sessionMap)
+                    .filter(s => s.value != null)
+                    .sort((a, b) => a.date.localeCompare(b.date) || a.value - b.value);
                 if (!sessions.length) continue;
 
                 const values = sessions.map(s => s.value);
+                const weights = sessions.map(s => s.weight);
+                const repsAvg = sessions.map(s => s.repsCnt ? Math.round((s.repsSum / s.repsCnt) * 10) / 10 : null);
+                const setsCnt = sessions.map(s => s.sets);
                 const maxW = Math.max(...values);
                 const lastW = values[values.length - 1];
                 const trend = values.length >= 2 ? lastW - values[0] : 0;
@@ -2286,7 +2300,7 @@
                 const exId = 'pex' + (++_progressiExIdSeq);
                 _progressiExData[exId] = {
                     name: exName, target: targetStr,
-                    values, isCardio, maxW, lastW, trend, unit,
+                    values, weights, repsAvg, setsCnt, isCardio, maxW, lastW, trend, unit,
                     imgUrl, videoUrl
                 };
 
@@ -2413,6 +2427,13 @@
                             </button>
                         </div>
                         <div class="prog2-modal-img" id="prog2ModalImg"></div>
+                        <div class="prog2-modal-tabs" id="prog2ModalTabs" role="tablist">
+                            <button class="prog2-modal-tab" type="button" data-mode="kg" onclick="_progressiZoomSetMode('kg')">Kg</button>
+                            <button class="prog2-modal-tab" type="button" data-mode="reps" onclick="_progressiZoomSetMode('reps')">Ripetizioni</button>
+                            <button class="prog2-modal-tab" type="button" data-mode="sets" onclick="_progressiZoomSetMode('sets')">Serie</button>
+                            <button class="prog2-modal-tab" type="button" data-mode="all" onclick="_progressiZoomSetMode('all')">Tutti</button>
+                        </div>
+                        <div class="prog2-modal-legend" id="prog2ModalLegend"></div>
                         <div class="prog2-modal-chart" id="prog2ModalChart"></div>
                         <div class="prog2-modal-foot" id="prog2ModalFoot"></div>
                     </div>
@@ -2429,6 +2450,7 @@
             if (!d) return;
             const modal = document.getElementById('prog2Modal');
             if (!modal) return;
+            _progressiZoomExId = exId;
             document.getElementById('prog2ModalName').textContent = d.name;
             document.getElementById('prog2ModalTarget').textContent = d.target || '';
 
@@ -2441,19 +2463,159 @@
                 imgEl.innerHTML = _progressiPlaceholderSvg(false);
             }
 
-            const chartEl = document.getElementById('prog2ModalChart');
-            chartEl.innerHTML = _progressiBuildModalChartSvg(d.values) +
-                `<span class="prog2-badge">${d.lastW}${d.unit}</span>`;
+            // Selettore metrica: nascosto per cardio (grafico unico in minuti).
+            const tabs = document.getElementById('prog2ModalTabs');
+            if (tabs) {
+                if (d.isCardio) {
+                    tabs.style.display = 'none';
+                } else {
+                    tabs.style.display = 'flex';
+                    const avail = _progressiZoomAvail(d);
+                    const canAll = [avail.kg, avail.reps, avail.sets].filter(Boolean).length >= 2;
+                    _progressiZoomMode = avail.kg ? 'kg' : (avail.reps ? 'reps' : 'sets');
+                    tabs.querySelectorAll('.prog2-modal-tab').forEach(t => {
+                        const m = t.dataset.mode;
+                        t.disabled = !(m === 'all' ? canAll : avail[m]);
+                        t.classList.toggle('active', m === _progressiZoomMode);
+                    });
+                }
+            }
 
-            const trendSign = d.trend > 0 ? '+' : '';
-            const trendClass = d.trend > 0 ? 'all-trend-up' : d.trend < 0 ? 'all-trend-down' : '';
-            document.getElementById('prog2ModalFoot').innerHTML =
-                `<span class="prog2-stat">Max <b>${d.maxW}${d.unit}</b></span><span class="prog2-sep">·</span>
-                 <span class="prog2-stat">Ultimo <b>${d.lastW}${d.unit}</b></span><span class="prog2-sep">·</span>
-                 <span class="prog2-stat ${trendClass}">Trend <b>${trendSign}${d.trend.toFixed(1)}${d.unit}</b></span>`;
+            _progressiZoomRender();
 
             modal.classList.add('open');
             document.body.classList.add('prog2-modal-locked');
+        }
+
+        // Modalità con dati per l'esercizio corrente (≥1 punto non-null).
+        function _progressiZoomAvail(d) {
+            return {
+                kg:   (d.weights || []).some(v => v != null),
+                reps: (d.repsAvg || []).some(v => v != null),
+                sets: (d.setsCnt || []).some(v => v != null),
+            };
+        }
+
+        // Colori: kg #1aa6e0 (blu allenamento), reps #f59e0b, serie #10b981.
+        function _progressiZoomSeriesList(d) {
+            if (d.isCardio) return [{ color: '#1aa6e0', badgeBg: '#0b7db5', unit: 'min', label: 'Minuti', values: d.values }];
+            const S = {
+                kg:   { color: '#1aa6e0', badgeBg: '#0b7db5', unit: d.unit, label: 'Kg',          values: d.weights },
+                reps: { color: '#f59e0b', badgeBg: '#b45309', unit: ' rip',  label: 'Ripetizioni', values: d.repsAvg },
+                sets: { color: '#10b981', badgeBg: '#047857', unit: ' serie', label: 'Serie',       values: d.setsCnt },
+            };
+            const avail = _progressiZoomAvail(d);
+            if (_progressiZoomMode === 'all') return ['kg', 'reps', 'sets'].filter(k => avail[k]).map(k => S[k]);
+            return [S[_progressiZoomMode]];
+        }
+
+        function _progressiZoomSetMode(mode) {
+            _progressiZoomMode = mode;
+            document.querySelectorAll('#prog2ModalTabs .prog2-modal-tab')
+                .forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+            _progressiZoomRender();
+        }
+
+        const _progNN = (vals) => (vals || []).filter(v => v != null);
+
+        function _progressiZoomRender() {
+            const d = _progressiExData[_progressiZoomExId];
+            if (!d) return;
+            const list = _progressiZoomSeriesList(d);
+            const n = d.values.length;
+
+            const chartEl = document.getElementById('prog2ModalChart');
+            if (chartEl) {
+                // Badge ultimo valore solo in modalità singola.
+                let badge = '';
+                if (list.length === 1) {
+                    const f = _progNN(list[0].values);
+                    if (f.length) badge = `<span class="prog2-badge" style="background:${list[0].badgeBg}">${f[f.length - 1]}${list[0].unit}</span>`;
+                }
+                chartEl.innerHTML = _progressiBuildModalMultiSvg(list, n) + badge;
+            }
+
+            const legend = document.getElementById('prog2ModalLegend');
+            if (legend) {
+                if (list.length > 1) {
+                    legend.style.display = 'flex';
+                    legend.innerHTML = list.map(s => `<span><i style="background:${s.color}"></i>${_escHtml(s.label)}</span>`).join('');
+                } else { legend.style.display = 'none'; legend.innerHTML = ''; }
+            }
+
+            const foot = document.getElementById('prog2ModalFoot');
+            if (foot) {
+                if (list.length > 1) {
+                    foot.classList.add('prog2-modal-foot--multi');
+                    foot.innerHTML = list.map(s => _progressiZoomStatRow(s)).join('');
+                } else {
+                    foot.classList.remove('prog2-modal-foot--multi');
+                    const s = list[0];
+                    const f = _progNN(s.values);
+                    if (!f.length) { foot.innerHTML = ''; return; }
+                    const mx = Math.max(...f), last = f[f.length - 1];
+                    const tr = f.length >= 2 ? last - f[0] : 0;
+                    const sign = tr > 0 ? '+' : '';
+                    const cls = tr > 0 ? 'all-trend-up' : tr < 0 ? 'all-trend-down' : '';
+                    foot.innerHTML =
+                        `<span class="prog2-stat">Max <b>${mx}${s.unit}</b></span><span class="prog2-sep">·</span>
+                         <span class="prog2-stat">Ultimo <b>${last}${s.unit}</b></span><span class="prog2-sep">·</span>
+                         <span class="prog2-stat ${cls}">Trend <b>${sign}${Math.round(tr * 10) / 10}${s.unit}</b></span>`;
+                }
+            }
+        }
+
+        function _progressiZoomStatRow(s) {
+            const f = _progNN(s.values);
+            if (!f.length) return '';
+            const mx = Math.max(...f), last = f[f.length - 1];
+            const tr = f.length >= 2 ? last - f[0] : 0;
+            const sign = tr > 0 ? '+' : '';
+            const cls = tr > 0 ? 'all-trend-up' : tr < 0 ? 'all-trend-down' : '';
+            return `<div class="prog2-modal-foot-row">
+                <span class="prog2-dot" style="background:${s.color}"></span>
+                <span class="prog2-stat">Max <b>${mx}${s.unit}</b></span>
+                <span class="prog2-stat">Ultimo <b>${last}${s.unit}</b></span>
+                <span class="prog2-stat ${cls}">Trend <b>${sign}${Math.round(tr * 10) / 10}${s.unit}</b></span>
+            </div>`;
+        }
+
+        // SVG multi-serie (1-3 polilinee), ognuna normalizzata sulla PROPRIA scala,
+        // area gradient solo sulla 1ª, tratteggio differenziato (pieno/dash/dot),
+        // serie costante → linea a metà altezza.
+        function _progressiBuildModalMultiSvg(seriesList, n) {
+            const w = 400, h = 160, padL = 20, padR = 20, padT = 30, padB = 30;
+            const innerW = w - padL - padR, innerH = h - padT - padB;
+            const dash = ['', '7 5', '2 5'];
+            const grid = `
+                <line x1="20" y1="40" x2="380" y2="40" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 4"/>
+                <line x1="20" y1="80" x2="380" y2="80" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 4"/>
+                <line x1="20" y1="120" x2="380" y2="120" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 4"/>`;
+            let defs = '', body = '';
+            seriesList.forEach((s, si) => {
+                const pts = [];
+                for (let i = 0; i < n; i++) { if (s.values[i] != null) pts.push({ i, v: s.values[i] }); }
+                if (!pts.length) return;
+                const nn = pts.map(p => p.v);
+                const minV = Math.min(...nn), maxV = Math.max(...nn);
+                const range = (maxV - minV) || 1;
+                const xy = pts.map(p => ({
+                    x: padL + (n === 1 ? innerW / 2 : (p.i / (n - 1)) * innerW),
+                    y: (minV === maxV) ? padT + innerH / 2 : padT + innerH - ((p.v - minV) / range) * innerH,
+                }));
+                const lineD = xy.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(2) + ',' + c.y.toFixed(2)).join(' ');
+                if (si === 0) {
+                    const gid = 'p2mm-' + (++_progressiExIdSeq);
+                    const areaD = lineD + ` L${xy[xy.length - 1].x.toFixed(2)},${h} L${xy[0].x.toFixed(2)},${h} Z`;
+                    defs += `<linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${s.color}" stop-opacity="0.28"/><stop offset="100%" stop-color="${s.color}" stop-opacity="0"/></linearGradient>`;
+                    body += `<path d="${areaD}" fill="url(#${gid})"/>`;
+                }
+                body += `<path d="${lineD}" stroke="${s.color}" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"${dash[si] ? ` stroke-dasharray="${dash[si]}"` : ''}/>`;
+                const first = xy[0], last = xy[xy.length - 1];
+                body += `<circle cx="${last.x.toFixed(2)}" cy="${last.y.toFixed(2)}" r="5" fill="${s.color}" stroke="#fff" stroke-width="2"/>`;
+                if (xy.length > 1) body += `<circle cx="${first.x.toFixed(2)}" cy="${first.y.toFixed(2)}" r="5" fill="${s.color}" stroke="#fff" stroke-width="2"/>`;
+            });
+            return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs>${defs}</defs>${grid}${body}</svg>`;
         }
 
         function _progressiCloseZoom() {

@@ -51,6 +51,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   @override
   Widget build(BuildContext context) {
     ref.watch(orgSettingsProvider);
+    final studioName = ref.watch(orgBrandingProvider).studioName;
 
     final body = switch (_tab) {
       AdminTab.bookings => const AdminBookingsTab(),
@@ -67,7 +68,19 @@ class _AdminShellState extends ConsumerState<AdminShell> {
     return Scaffold(
       backgroundColor: AppColors.slateBg,
       appBar: AppBar(
-        title: Text(_tab.label),
+        title: (studioName == null || studioName.trim().isEmpty)
+            ? Text(_tab.label)
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_tab.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(studioName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.meta),
+                ],
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.person_add_alt_1),
@@ -101,23 +114,24 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   }
 
   Widget _dock() {
+    final primary = Theme.of(context).colorScheme.primary;
     return GestureDetector(
       onTap: _openPagesSheet,
       child: Container(
         height: 60,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+            colors: [primary, Theme.of(context).colorScheme.secondary],
           ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
+          borderRadius: BorderRadius.circular(AppRadius.cardLg),
+          boxShadow: [
             BoxShadow(
-                color: Color(0x668B5CF6),
+                color: primary.withValues(alpha: 0.4),
                 blurRadius: 16,
-                offset: Offset(0, 6)),
+                offset: const Offset(0, 6)),
           ],
         ),
         child: Row(
@@ -128,7 +142,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: const Color(0x33FFFFFF),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.buttonAdmin),
               ),
               child: Text(_tab.emoji, style: const TextStyle(fontSize: 18)),
             ),
@@ -162,6 +176,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   }
 
   Future<void> _openPagesSheet() async {
+    final primary = Theme.of(context).colorScheme.primary;
     final choice = await showModalBottomSheet<AdminTab>(
       context: context,
       isScrollControlled: true,
@@ -175,14 +190,15 @@ class _AdminShellState extends ConsumerState<AdminShell> {
             ),
             for (final t in AdminTab.values)
               ListTile(
-                tileColor: t == _tab ? AppColors.purpleGlow : null,
+                tileColor:
+                    t == _tab ? primary.withValues(alpha: 0.12) : null,
                 leading: Container(
                   width: 36,
                   height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.slateBg,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.buttonAdmin),
                   ),
                   child: Text(t.emoji),
                 ),
@@ -193,7 +209,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                   t == _tab
                       ? Icons.radio_button_checked
                       : Icons.radio_button_off,
-                  color: t == _tab ? AppColors.primary : AppColors.subtle,
+                  color: t == _tab ? primary : AppColors.subtle,
                   size: 22,
                 ),
                 onTap: () => Navigator.pop(ctx, t),

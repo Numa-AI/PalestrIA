@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/workout_repository.dart';
 import '../../../core/models/workout.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'schede_providers.dart';
 
 /// Editor esercizio lato admin (crea/modifica) come bottom sheet. Riusa
@@ -20,9 +21,10 @@ Future<void> showExerciseEditSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
+    showDragHandle: true,
+    backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.modalLg))),
     builder: (_) => Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -88,11 +90,9 @@ class _ExerciseEditSheetState extends ConsumerState<_ExerciseEditSheet> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     if (name.isEmpty) {
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Inserisci il nome dell\'esercizio.')));
+      AppSnack.error(context, 'Inserisci il nome dell\'esercizio.');
       return;
     }
     setState(() => _saving = true);
@@ -120,14 +120,13 @@ class _ExerciseEditSheetState extends ConsumerState<_ExerciseEditSheet> {
         });
       }
       ref.invalidate(orgPlansProvider);
-      messenger.showSnackBar(SnackBar(
-          content: Text(widget.existing == null
-              ? 'Esercizio aggiunto.'
-              : 'Esercizio aggiornato.')));
+      if (mounted) {
+        AppSnack.success(context,
+            widget.existing == null ? 'Esercizio aggiunto.' : 'Esercizio aggiornato.');
+      }
       navigator.pop();
     } catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Errore nel salvataggio: $e')));
+      if (mounted) AppSnack.error(context, 'Errore nel salvataggio: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

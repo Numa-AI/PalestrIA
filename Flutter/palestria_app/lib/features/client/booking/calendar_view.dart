@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/data/schedule_config.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
+import '../../../core/theme/org_theme.dart';
 import 'booking_providers.dart';
 import 'booking_sheet.dart';
 
@@ -41,7 +43,15 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final ownAsync = ref.watch(ownBookingsProvider);
 
     if (configAsync.isLoading || overridesAsync.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
+    }
+    if (configAsync.hasError || overridesAsync.hasError) {
+      return AppErrorRetry(
+        onRetry: () {
+          ref.invalidate(scheduleConfigProvider);
+          ref.invalidate(scheduleOverridesProvider);
+        },
+      );
     }
     final config = configAsync.value ?? OrgScheduleConfig.empty();
     final overrides = overridesAsync.value ?? const {};
@@ -107,20 +117,14 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          _weekNav(primary, weekHasSlots),
-          const SizedBox(height: AppSpacing.md),
-          _daySelector(days, selectedDay, dayHasAvailable, own, primary),
+          _bookingHero(
+              days, selectedDay, dayHasAvailable, own, primary, weekHasSlots),
           const SizedBox(height: AppSpacing.lg),
           if (daySlots.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.xxxl),
-              child: Text(
-                hadSlots
-                    ? 'Nessuna lezione disponibile per questo giorno'
-                    : 'Nessuna lezione programmata per questo giorno',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF999999), fontSize: 15),
-              ),
+            AppEmptyState(
+              title: hadSlots
+                  ? 'Nessuna lezione disponibile per questo giorno'
+                  : 'Nessuna lezione programmata per questo giorno',
             )
           else
             ...daySlots.map((s) => _slotCard(context, config, s)),
@@ -130,48 +134,120 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     );
   }
 
-  Widget _weekNav(Color primary, bool Function(int) weekHasSlots) {
-    final days = _weekDays(_weekOffset);
-    final label =
-        '${days.first.day}/${days.first.month} – ${days.last.day}/${days.last.month}';
+  /// Hero della sezione Prenotazioni (stesso stile dell'hero admin): nome
+  /// palestra/PT + navigazione settimana con frecce "glass" + i 7 giorni come
+  /// chip glass, tutto sul gradiente scuro→viola con glow org-aware.
+  Widget _bookingHero(
+    List<DateTime> days,
+    DateTime selectedDay,
+    bool Function(DateTime) dayHasAvailable,
+    List<dynamic> own,
+    Color primary,
+    bool Function(int) weekHasSlots,
+  ) {
+    final name = ref.watch(orgBrandingProvider).studioName?.trim();
+    final range =
+        '${days.first.day} ${kMonthShort[days.first.month - 1]} — ${days.last.day} ${kMonthShort[days.last.month - 1]}';
     final prevEnabled = _weekOffset > 0;
     final nextEnabled = weekHasSlots(_weekOffset + 1);
 
-    Widget btn(String text, bool enabled, VoidCallback onTap) => Opacity(
-          opacity: enabled ? 1 : 0.3,
-          child: FilledButton(
-            onPressed: enabled ? onTap : null,
-            style: FilledButton.styleFrom(
-              backgroundColor: primary,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md, vertical: 8),
-              minimumSize: const Size(0, 36),
-              textStyle:
-                  const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-            ),
-            child: Text(text),
+    return DarkHero(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        children: [
+          // Riga brand: icona + eyebrow + nome studio
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.event_available_rounded,
+                    color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('PRENOTA LA TUA LEZIONE',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: Colors.white.withValues(alpha: 0.7))),
+                    const SizedBox(height: 3),
+                    Text(
+                      (name != null && name.isNotEmpty) ? name : 'Prenotazioni',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.3),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        );
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        btn('← Prec.', prevEnabled, () => setState(() {
-              _weekOffset--;
-              _selectedDay = null;
-            })),
-        Text(label,
-            style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AppColors.navy)),
-        btn('Succ. →', nextEnabled, () => setState(() {
-              _weekOffset++;
-              _selectedDay = null;
-            })),
-      ],
+          const SizedBox(height: AppSpacing.lg),
+          // Navigazione settimana con frecce glass (etichetta: solo anno)
+          Row(
+            children: [
+              _navBtn(Icons.chevron_left, prevEnabled, () {
+                setState(() {
+                  _weekOffset--;
+                  _selectedDay = null;
+                });
+              }),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(range,
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white)),
+                    Text('${days.first.year}',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                            color: Colors.white.withValues(alpha: 0.72))),
+                  ],
+                ),
+              ),
+              _navBtn(Icons.chevron_right, nextEnabled, () {
+                setState(() {
+                  _weekOffset++;
+                  _selectedDay = null;
+                });
+              }),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _daySelector(
+              days, selectedDay, dayHasAvailable, own, primary, weekHasSlots),
+        ],
+      ),
     );
   }
+
+  Widget _navBtn(IconData icon, bool enabled, VoidCallback onTap) => Opacity(
+        opacity: enabled ? 1 : 0.3,
+        child: IconButton(
+          onPressed: enabled ? onTap : null,
+          icon: Icon(icon, color: Colors.white),
+          style: IconButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.12)),
+        ),
+      );
 
   Widget _daySelector(
     List<DateTime> days,
@@ -179,6 +255,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     bool Function(DateTime) dayHasAvailable,
     List<dynamic> own,
     Color primary,
+    bool Function(int) weekHasSlots,
   ) {
     bool hasEnrollment(DateTime d) {
       final ds = OrgScheduleConfig.localDateStr(d);
@@ -188,7 +265,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     return GestureDetector(
       onHorizontalDragEnd: (details) {
         final v = details.primaryVelocity ?? 0;
-        if (v < -200) {
+        if (v < -200 && weekHasSlots(_weekOffset + 1)) {
           setState(() {
             _weekOffset++;
             _selectedDay = null;
@@ -227,16 +304,16 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     required bool enrolled,
     required Color primary,
   }) {
-    // Stati come il web: active = gradiente viola (rosso se enrolled);
-    // enrolled = tinta rossa; disabled = opacity 0.35.
+    // Chip "glass" sull'hero scuro: default translucido bianco; active =
+    // gradiente pieno (rosso se già iscritto); enrolled = tinta rossa; disabled 0.35.
     Gradient? gradient;
-    Color bg = Colors.white;
-    Color border = const Color(0xFFDDDDDD);
-    Color fg = AppColors.textDark;
+    Color bg = Colors.white.withValues(alpha: 0.08);
+    Color border = Colors.white.withValues(alpha: 0.16);
+    Color fg = Colors.white.withValues(alpha: 0.78);
 
     if (isActive && enrolled) {
       gradient = const LinearGradient(
-          colors: [Color(0xFFEF4444), Color(0xFFDC2626)]);
+          colors: [AppColors.danger, AppColors.dangerDark]);
       fg = Colors.white;
     } else if (isActive) {
       gradient = LinearGradient(colors: [
@@ -246,8 +323,8 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       ]);
       fg = Colors.white;
     } else if (enrolled) {
-      bg = const Color(0x1FEF4444);
-      border = const Color(0x59EF4444);
+      bg = AppColors.danger.withValues(alpha: 0.30);
+      border = AppColors.danger.withValues(alpha: 0.55);
     }
 
     return Opacity(
@@ -323,7 +400,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           style: TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w600,
-            color: _spotsColor(slot.remaining),
+            color: spotsColor(slot.remaining),
           ),
         ),
       );
@@ -347,12 +424,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border(left: BorderSide(color: color, width: 5)),
-            boxShadow: const [
-              BoxShadow(
-                  color: Color(0x1A000000),
-                  blurRadius: 8,
-                  offset: Offset(0, 2)),
-            ],
+            boxShadow: AppShadows.card,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,10 +453,4 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       ),
     );
   }
-
-  static Color _spotsColor(int n) => switch (n) {
-        <= 1 => const Color(0xFFDC2626),
-        2 => const Color(0xFFEA7B0A),
-        _ => const Color(0xFF111111),
-      };
 }

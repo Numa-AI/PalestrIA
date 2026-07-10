@@ -168,7 +168,7 @@ class _SlotTypeEditorState extends ConsumerState<_SlotTypeEditor> {
                         shape: BoxShape.circle,
                         border: Border.all(
                             color: _color.toLowerCase() == c.toLowerCase()
-                                ? Colors.black
+                                ? AppColors.navy
                                 : Colors.transparent,
                             width: 2.5),
                       ),

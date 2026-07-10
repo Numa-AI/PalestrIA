@@ -238,10 +238,10 @@ class _BarPainter extends CustomPainter {
       final base = barColor ?? const Color(0xFFC4B5FD);
       final current = barColor != null
           ? (Color.lerp(barColor, Colors.black, 0.22) ?? barColor!)
-          : const Color(0xFF7C3AED);
+          : AppColors.primaryDark;
       segment(solid[i].toDouble(), isCurrent ? current : base);
       if (projected != null) {
-        segment(projected![i].toDouble(), projectedColor ?? const Color(0xFFF59E0B));
+        segment(projected![i].toDouble(), projectedColor ?? AppColors.amber);
       }
       if (estimate != null) {
         segment(estimate![i].toDouble(), const Color(0x5522C55E));

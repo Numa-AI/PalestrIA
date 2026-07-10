@@ -210,3 +210,106 @@ Portati dall'entry `2026-07-03 — Security review` del changelog Thomas **solo 
 ### Follow-up aperti
 - **DEPLOY**: `supabase db push` (0025) + `supabase functions deploy notify-admin-booking notify-admin-cancellation notify-admin-new-client` + push branch (Pages, cache-bust v577). `deno check` da far girare in CI (deno non installato in locale).
 - **QA produzione**: (1) cliente non-admin non cambia la propria `profiles.email` via PostgREST, admin sì, signup/edit-admin OK; (2) nome-body forgiato ≠ nome booking → la notifica admin mostra quello della prenotazione; (3) health-check settings con email cliente contenente HTML → nessuna esecuzione.
+
+---
+
+## Task: Setup toolchain Flutter/Android su nuovo PC + build & install APK aggiornato sul telefono
+**Data:** 2026-07-08
+**Durata stimata:** ~40 min lavoro Claude + ~5 min prompt utente
+
+### Contesto
+L'utente voleva installare l'app Flutter aggiornata sul proprio Galaxy A54 collegato via USB, ma **questo PC** (`C:\Users\andre`) non aveva alcuna toolchain (né Flutter, né Java, né Android SDK): l'app finora veniva compilata sull'**altro PC** (`C:\Users\andrea\VM-Nextcloud`). L'APK in `build/` era di ieri (sincronizzato via Nextcloud) e mancava i fix onboarding del commit `e4dd8dd`. L'utente ha chiesto esplicitamente di **installare tutta la toolchain qui e compilare da qui**.
+
+### Modifiche effettuate (ambiente, nessun codice progetto toccato in modo permanente)
+- **JDK 21 Temurin** installato via winget → `C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot`.
+- **Flutter 3.44.5 stable** (Dart 3.12.2, combacia col pubspec `^3.12.2`) clonato in `C:\flutter`.
+- **Android SDK** in `C:\Users\andre\AppData\Local\Android\Sdk`: cmdline-tools + platform-tools 37 + `platforms;android-36` + `build-tools;36.0.0` (+ NDK 28.2 e CMake 3.22 auto-installati da Gradle). Licenze accettate via redirezione `cmd < yes.txt` (il pipe PowerShell verso lo script `.bat` non propagava lo stdin).
+- `flutter config --android-sdk … --jdk-dir …` + `flutter pub get`.
+- Compilato `app-release.apk` (64.1 MB) e installato sul Galaxy A54 (uninstall+install per firma diversa), avvio verificato.
+
+### Problemi risolti durante il build
+1. **Path assoluti stale dell'altro PC** (`C:\Users\andrea\VM-Nextcloud\…`) dentro `build/`, `.dart_tool/`, `android/.gradle/` (gitignorati ma **sincronizzati via Nextcloud**) → `Failed to create parent directory 'C:\Users\andrea'`. Risolto con `flutter clean` + rimozione `android/.gradle`.
+2. **`android/key.properties`** (gitignorato, sincronizzato dall'altro PC) punta al keystore `C:/Users/andrea/keystores/palestria-upload.jks` (vera upload key Play Store, assente qui) → `validateSigningRelease` fallito. Risolto **spostando temporaneamente** `key.properties` (la `build.gradle.kts` ripiega su firma debug) e **rimettendolo subito a posto** — senza modificare nulla di sincronizzato in modo permanente (una modifica si sarebbe propagata all'altro PC rompendogli la firma).
+3. **Firma debug ≠ firma release installata** → `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Risolto con `adb uninstall com.palestria.app` + `adb install` (persi solo i dati locali; il resto è su Supabase → re-login).
+
+### Decisioni prese
+- **Non toccare `key.properties`/`build.gradle.kts` in modo permanente**: il progetto è in cartella Nextcloud condivisa; qualsiasi modifica ai file sincronizzati si sarebbe propagata all'altro PC. Preferito lo spostamento temporaneo self-healing.
+- **Keystore locale al path `C:\Users\andrea\…` non creabile** (permessi Windows su `C:\Users`) → scartata l'idea di generare un keystore fittizio lì; usata la firma di debug prevista dal fallback della build.
+- **Per il Play Store si continua a usare l'altro PC** (ha la vera upload key). Questo PC serve solo per build/test locali.
+
+### File toccati
+- Nessun file del progetto modificato in modo permanente (`key.properties` spostato e ripristinato; cache `build/`/`.dart_tool/`/`android/.gradle` ripulite e rigenerate).
+- Nuova memoria di progetto: `memory/build-env-flutter.md` (toolchain + gotcha Nextcloud).
+
+### Follow-up aperti
+- **Consigliato**: escludere `build/`, `.dart_tool/`, `android/.gradle/` dalla sincronizzazione Nextcloud (sono per-macchina, pesanti, gitignorati) per evitare il ripresentarsi dei path stale ad ogni build.
+- L'APK installato è **firmato debug** (ok per test personale, NON per Play Store).
+
+---
+
+## Task: Uniformazione grafica app Flutter (design system) + audit parità PWA↔Flutter
+**Data:** 2026-07-08
+**Durata stimata:** ~3h lavoro Claude (11 subagent: 7 audit + 9 fix in 2 ondate) + ~10 min prompt utente
+
+### Contesto
+Nel port PWA→Flutter la grafica era divergente (ogni schermata reinventava card/empty/pill/ombre; ~250 colori hardcoded, 342 `TextStyle` ad-hoc, 0 font custom) e mancavano parecchie funzioni/pagine. Richiesta utente: uniformare lo stile "come un graphic designer" con un **file di riferimento**, colmare le differenze/mancanze, **tenendo** l'app nativa (no menù laterale/web) e la **bottom nav cliente** (Prenotazioni/Allenamento/Profilo).
+
+### Modifiche effettuate
+**Fondazione design system:**
+- Font unico **Inter** bundlato in `assets/fonts` (5 pesi 400–800), cablato nel tema in un punto solo (`kFontFamily`) — sostituisce il Roboto di default.
+- **`Flutter/palestria_app/docs/DESIGN_SYSTEM.md`**: reference unico (tipografia, palette org-aware vs semantica, spacing 4-based, radius, ombre, componenti, pattern, checklist, regole d'oro).
+- **`lib/core/theme/ui_kit.dart`** (nuovo): AppCard, SectionHeader, StatusPill, AppEmptyState, GradientButton, AppStatCard, DarkHero, AppLoading, AppErrorRetry, AppSnack, brandGradient.
+- **`tokens.dart`** esteso: superfici soft, verdi attivo/incassato, stati documento, spotsOrange, blu, `AppGradients.workoutHero`.
+
+**9 aree uniformate** (9 subagent su aree disgiunte, `core/theme` off-limits, ognuno con `flutter analyze` pulito sul proprio scope): Auth&Shell, Prenotazioni, Allenamento, Profilo (cliente); Clienti, Prenotazioni/Orari, Statistiche/Pagamenti, Registro/Messaggi, Impostazioni/Schede (admin). Pattern ricorrente: hardcoded→token; elementi branded→`colorScheme` (dock/tab/selezioni org-aware); card/empty/loading/error→UI kit; SnackBar esito→`AppSnack` (verde/rosso, prima tutti navy); `StatusPill` per i badge; 3 stati async distinti ovunque. Micro-fix inclusi: logo studio in login+header admin, back-to-login, logout rosso, off-by-one certificato, maxLength CF/CAP, password nascosta per OAuth, gating cert editabile, badge Assicurazione, importi Registro via `bookingPrice`, data/ora lezione, messaggi (maxLength+conferma+validazione), dropdown vincolati fuso/valuta (sicurezza DST), plural + virgola decimale + "seleziona tutto" pagamenti, header "Serie", PDF "Fatto ✓", drag handle + guard swipe.
+
+**Verifica:** `flutter analyze lib` full → **No issues found**. 50 file toccati. **NON committato/buildato** (lo fa l'utente).
+
+### Decisioni prese
+- **Font bundlato** (non `google_fonts` runtime): offline, nessuna chiamata a Google (data-safety Play), rendering deterministico dal primo frame.
+- **Non pixel-perfect col web** ma **linguaggio unico coerente** (richiesta utente): il confronto 1:1 col web serve alla parità **funzionale**/pagine mancanti, non a copiare i pixel.
+- **Bottom nav cliente + dock admin lasciati** (app nativa, no menù laterale); reso solo il **colore** org-aware.
+- **Subagent paralleli** su aree disgiunte con `core/theme` come contratto condiviso immutabile + auto-verifica `analyze` per scope; **funzioni grosse mancanti NON costruite** in questa passata grafica → elenco **DEFERITE** in `todo.md` per prioritizzazione.
+
+### File toccati
+- **Nuovi**: `assets/fonts/Inter-{Regular,Medium,SemiBold,Bold,ExtraBold}.ttf`, `docs/DESIGN_SYSTEM.md`, `lib/core/theme/ui_kit.dart`.
+- **Modificati**: `pubspec.yaml`, `lib/core/theme/{tokens,org_theme}.dart` + 46 file feature (auth, client/*, admin/*).
+
+---
+
+## Task: Profilo cliente — sezioni Prossime/Passate/Transazioni + tab Prenotazioni ridotto al solo calendario
+**Data:** 2026-07-08
+**Durata stimata:** ~40 min lavoro Claude + ~5 min prompt utente
+
+### Contesto
+Richiesta utente sull'area cliente: (1) togliere la pill-bar *Calendario / Le mie* dal tab Prenotazioni (→ solo calendario); (2) spostare "Le mie" nel **Profilo**; (3) nel Profilo tre sezioni **Prossime / Passate / Transazioni** "come sul PWA"; (4) togliere il "recap dati" dal Profilo; (5) mostrare **Nome e Cognome**. Chiarito con domanda mirata: "Transazioni" = **storico pagamenti** dal ledger `payments`, da fare in **Flutter + PWA** (parità §0.3), dato che non esisteva ancora in nessuno dei due frontend.
+
+### Modifiche effettuate
+**Flutter (app cliente):**
+- `booking_screen.dart` → `ConsumerWidget` con `body: CalendarView()` (rimossa la pill-bar + import `MyBookingsView`).
+- Nuovo `core/models/client_payment.dart` (`ClientPayment.fromRow`/`selectColumns`).
+- `BookingRepository.fetchOwnPayments(userId)` (query `payments` per `client_user_id`, order desc, limit 200) + `ownPaymentsProvider` accanto a `ownBookingsProvider`.
+- Nuovo `booking/booking_card.dart` = `BookingCard` (ConsumerWidget) con badge pagamento + regole di annullo, estratto da `my_bookings_view.dart` (poi **eliminato**).
+- `profile_screen.dart` riscritto → `ConsumerStatefulWidget` con pill-bar **Prossime/Passate/Transazioni** (paginazione 5→+20), hero con **nome+cognome**, **rimosso `_infoCard`** (recap dati); card transazione con colore bordo per `kind` (Lezione/Abbonamento/Pacchetto/Mora/Rettifica) + importo/metodo/data/periodo/nota.
+- `flutter analyze lib` → **No issues found**.
+
+**PWA (parità §0.3):**
+- `prenotazioni.html`: 3ª tab `#tabTransazioni`; `switchPrenoTab`/`showMore` con branch `transactions`; nuove `_ensurePayments()` (query `payments` client-side, RLS own-only, cache lazy), `renderTransactions()`, `buildTransactionCard()`, `_fmtTxDate()`; invalidazione cache + re-render nel realtime full-sync; hero → nome completo.
+- Cache-bust `sw.js` v584→**v585** (`prenotazioni.html` è in `APP_SHELL`, JS inline). `node --check` inline → 0 errori su 3 blocchi.
+
+### Decisioni prese
+- **Domanda mirata prima di costruire**: "Transazioni" non esisteva nel PWA (solo Prossime/Passate) → chiesto contenuto + scope; risposta: storico pagamenti, entrambi i frontend.
+- **Riuso, non duplicazione**: estratta `BookingCard` invece di duplicare ~200 righe di card+annullo nel profilo.
+- **RLS come sicurezza**: la lettura transazioni si appoggia alla policy `payments_select` (`client_user_id = auth.uid()` OR admin) — nessuna nuova RPC/migration necessaria.
+- **Full-name anche sul PWA** (oltre al Flutter richiesto): coerenza §0.3 (il PWA mostrava solo il nome proprio nell'hero). Il "recap dati" è specifico Flutter (il PWA non ce l'ha) → nessuna modifica lì.
+- **Nessun build APK**: `flutter analyze` (che fa il type-check completo, nessun codegen nel modulo) è sufficiente per queste modifiche UI; il build richiederebbe la gestione key.properties/cache Nextcloud senza aggiungere garanzie.
+
+### File toccati
+- **Nuovi**: `Flutter/palestria_app/lib/core/models/client_payment.dart`, `Flutter/palestria_app/lib/features/client/booking/booking_card.dart`.
+- **Modificati**: `Flutter/palestria_app/lib/features/client/booking/booking_screen.dart`, `.../booking/booking_providers.dart`, `.../core/data/booking_repository.dart`, `.../client/profile/profile_screen.dart`; `prenotazioni.html`, `sw.js`.
+- **Eliminato**: `Flutter/palestria_app/lib/features/client/booking/my_bookings_view.dart`.
+- **Tracking**: `todo.md`, `Aggiornamento.md`, memoria `stato-progetto`.
+
+### Follow-up aperti
+- **NON committato/buildato/deployato** (lo fa l'utente): rebuild AAB Flutter + push ramo web → GitHub Pages (cache-bust v585 già applicato).
+- **QA**: Prenotazioni = solo calendario; Profilo = hero nome+cognome, no recap, 3 tab; Prossime/Passate con annulla/richiedi annullo; Transazioni con importo/metodo/data ed empty-state; idem PWA.

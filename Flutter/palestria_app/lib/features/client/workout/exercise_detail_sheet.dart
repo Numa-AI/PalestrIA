@@ -5,6 +5,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/workout_repository.dart';
 import '../../../core/models/workout.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'exercise_media.dart';
 import 'workout_providers.dart';
 
@@ -185,8 +186,7 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
         _saving = false;
         _saved = true;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Log salvato')));
+      AppSnack.success(context, 'Log salvato');
       ref.invalidate(planLogsProvider(widget.plan.id));
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _saved = false);
@@ -194,8 +194,7 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Errore nel salvataggio')));
+      AppSnack.error(context, 'Errore nel salvataggio');
     }
   }
 
@@ -221,8 +220,7 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
     // Una sola DELETE batch (tutti i set di oggi dell'esercizio) invece di N.
     await repo.deleteLogsOfDay(exerciseIds: [e.id], logDate: today);
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Log eliminato')));
+    AppSnack.success(context, 'Log eliminato');
     ref.invalidate(planLogsProvider(widget.plan.id));
     setState(() {
       _initialized = false;
@@ -301,8 +299,7 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
         FilledButton(
           onPressed: _saving ? null : _save,
           style: FilledButton.styleFrom(
-            backgroundColor:
-                _saved ? const Color(0xFF10B981) : null,
+            backgroundColor: _saved ? AppColors.successEmerald : null,
           ),
           child: Text(_saving
               ? 'Salvataggio...'
@@ -314,7 +311,7 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
           TextButton(
             onPressed: () => _deleteToday(logs),
             style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFDC2626)),
+                foregroundColor: AppColors.dangerDark),
             child: const Text('Elimina log di oggi'),
           ),
       ],
@@ -332,9 +329,9 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-            colors: [Color(0xFFFEFCE8), Color(0xFFFFFBEB)]),
+            colors: [Color(0xFFFEFCE8), AppColors.warnSurface]),
         border: const Border(
-            left: BorderSide(color: Color(0xFFF59E0B), width: 3)),
+            left: BorderSide(color: AppColors.amber, width: 3)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -344,7 +341,7 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
               style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF92400E))),
+                  color: AppColors.docWarnText)),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
@@ -411,11 +408,21 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
           ),
         );
 
+    Widget setHeader() => const SizedBox(
+          width: 28,
+          child: Text('Serie',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted)),
+        );
+
     return Column(
       children: [
         Row(
           children: [
-            const SizedBox(width: 28),
+            setHeader(),
             if (e.isCardio)
               header('Min')
             else ...[

@@ -1,9 +1,20 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/booking_repository.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
+import '../../../core/models/client_payment.dart';
+import '../../../core/theme/tokens.dart';
+
+/// Colore dell'indicatore "posti residui", unificato (prima duplicato tra
+/// calendar_view e booking_sheet): 1→danger, 2→spotsOrange, altrimenti navy.
+Color spotsColor(int remaining) => switch (remaining) {
+      <= 1 => AppColors.danger,
+      2 => AppColors.spotsOrange,
+      _ => AppColors.navy,
+    };
 
 /// Nomi italiani (identici al web).
 const kDayNames = [
@@ -86,6 +97,14 @@ final ownBookingsProvider = FutureProvider<List<Booking>>((ref) async {
   if (session == null) return const [];
   final repo = await ref.watch(bookingRepositoryProvider.future);
   return repo.fetchOwnBookings(session.user.id);
+});
+
+/// Transazioni (ledger `payments`) dell'utente corrente (refresh: invalidate).
+final ownPaymentsProvider = FutureProvider<List<ClientPayment>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return const [];
+  final repo = await ref.watch(bookingRepositoryProvider.future);
+  return repo.fetchOwnPayments(session.user.id);
 });
 
 /// Disponibilità server (oggi → +90 gg), indicizzata per 'date|time|type'.

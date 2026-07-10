@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+/// Famiglia tipografica unica dell'app (bundled in assets/fonts, vedi pubspec).
+/// Inter: alta leggibilità UI + ottime cifre tabulari. Cambiare font = cambiare
+/// questa costante + il pubspec: la tipografia si aggiorna in un punto solo.
+const String kFontFamily = 'Inter';
+
 /// Design tokens estratti 1:1 dal CSS della web app (docs/design-tokens.md).
 /// La web app è light-only: nessun dark mode.
 class AppColors {
@@ -62,6 +67,33 @@ class AppColors {
 
   // WhatsApp
   static const whatsapp = Color(0xFF25D366);
+
+  // Superfici "soft" per box/badge tenui
+  static const dangerSurface = Color(0xFFFEF2F2);
+  static const warnSurface = Color(0xFFFFFBEB);
+  static const successSurface = Color(0xFFF0FDF4);
+  static const infoSurface = Color(0xFFEFF6FF);
+  static const slate50 = Color(0xFFF8FAFC);
+
+  // Verdi "attivo/incassato" (distinti dal teal `success` #06D6A0)
+  static const green500 = Color(0xFF22C55E);
+  static const green600 = Color(0xFF16A34A);
+  static const green700 = Color(0xFF15803D);
+
+  // Blu (registro/booking, grafici)
+  static const blue500 = Color(0xFF3B82F6);
+  static const blue600 = Color(0xFF2563EB);
+
+  // Indicatore posti residui: 1→danger, 2→spotsOrange, ≥3→navy
+  static const spotsOrange = Color(0xFFEA7B0A);
+
+  // Stati documento (certificato/assicurazione/anagrafica) — coppie bg/testo
+  static const docOkBg = Color(0xFFF0FDF4);
+  static const docOkText = Color(0xFF166534);
+  static const docWarnBg = Color(0xFFFFFBEB);
+  static const docWarnText = Color(0xFF92400E);
+  static const docDangerBg = Color(0xFFFEF2F2);
+  static const docDangerText = Color(0xFFDC2626);
 
   // Avatar partecipanti: 6 tinte stabili (hash sul nome) — [sfondo, testo]
   static const avatarTints = <(Color, Color)>[
@@ -130,15 +162,17 @@ class AppShadows {
   ];
 }
 
-/// Stili di testo ricorrenti. Font: default di piattaforma (la web app usa
-/// 'Segoe UI' su Windows e il system font su mobile → Roboto è fedele).
+/// Stili di testo ricorrenti. Font unico: [kFontFamily] (Inter, bundled).
 /// Numeri sempre tabular (font-variant-numeric: tabular-nums del CSS).
+/// La `fontFamily` è impostata esplicitamente su ogni stile così che restino
+/// corretti anche se usati fuori dal contesto del tema (TextSpan, PDF-preview…).
 class AppText {
   AppText._();
 
   static const tabularNums = [FontFeature.tabularFigures()];
 
   static const pageTitle = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 26.4,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.5,
@@ -147,6 +181,7 @@ class AppText {
   );
 
   static const sectionTitle = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 22.4,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.4,
@@ -154,6 +189,7 @@ class AppText {
   );
 
   static const cardTitle = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 16,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.16,
@@ -161,25 +197,29 @@ class AppText {
   );
 
   static const body = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 15,
     fontWeight: FontWeight.w500,
     color: AppColors.textDark,
-    height: 1.6,
+    height: 1.55,
   );
 
   static const label = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 13.5,
     fontWeight: FontWeight.w600,
     color: Color(0xFF444444),
   );
 
   static const meta = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 13,
     fontWeight: FontWeight.w500,
     color: AppColors.muted,
   );
 
   static const badge = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 12,
     fontWeight: FontWeight.w700,
     letterSpacing: 0.2,
@@ -187,6 +227,7 @@ class AppText {
 
   /// Eyebrow / group label: UPPERCASE con letter-spacing largo
   static const eyebrow = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 11,
     fontWeight: FontWeight.w800,
     letterSpacing: 1.1,
@@ -195,11 +236,26 @@ class AppText {
 
   /// Valori KPI (stat card)
   static const statValue = TextStyle(
+    fontFamily: kFontFamily,
     fontSize: 32,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.64,
     height: 1.15,
     color: AppColors.navy,
     fontFeatures: tabularNums,
+  );
+}
+
+/// Gradienti FISSI (non legati al branding org).
+class AppGradients {
+  AppGradients._();
+
+  /// Hero "Athletic" delle sezioni scure (Scheda/Progressi/Report/Profilo).
+  /// Volutamente fisso come nel web: non deriva dal colore brand della org.
+  static const workoutHero = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF7C3AED)],
+    stops: [0, 0.55, 1],
   );
 }

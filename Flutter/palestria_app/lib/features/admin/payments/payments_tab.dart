@@ -8,8 +8,17 @@ import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import '../../client/booking/booking_providers.dart';
 import 'pay_debt_sheet.dart';
+
+/// Formattatore € unico del modulo Pagamenti: virgola decimale italiana
+/// (es. "12,50"), niente decimali quando l'importo è intero. Condiviso con
+/// [PayDebtSheet] (che importa questo file) per evitare due copie divergenti.
+String formatEuro(double v) {
+  final s = v.toStringAsFixed(v == v.roundToDouble() ? 0 : 2);
+  return s.replaceAll('.', ',');
+}
 
 /// Contatto con debito (prenotazioni passate non pagate).
 class DebtorContact {
@@ -49,8 +58,11 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
         ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
 
     return bookingsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Errore: $e')),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore nel caricamento dei pagamenti.',
+        onRetry: () => ref.invalidate(adminBookingsProvider),
+      ),
       data: (bookings) {
         final debtors = _computeDebtors(bookings);
         final totalUnpaid =
@@ -75,8 +87,12 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                   _statCard(
                     '💰',
                     'Da Incassare',
-                    '€${_fmt(totalUnpaid)}',
-                    const Color(0xFFEF4444),
+                    '€${formatEuro(totalUnpaid)}',
+                    AppColors.danger,
+                    subtitle: debtors.isEmpty
+                        ? null
+                        : '${debtors.length} '
+                            '${debtors.length == 1 ? 'debitore' : 'debitori'}',
                     active: _showDebtors,
                     onTap: () => setState(() {
                       _showDebtors = !_showDebtors;
@@ -87,8 +103,12 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                   _statCard(
                     '💳',
                     'Incassato questo mese',
-                    '€${_fmt(monthRevenue)}',
-                    const Color(0xFF16A34A),
+                    '€${formatEuro(monthRevenue)}',
+                    AppColors.green600,
+                    subtitle: payments.isEmpty
+                        ? null
+                        : '${payments.length} '
+                            '${payments.length == 1 ? 'pagamento' : 'pagamenti'}',
                     active: _showRecent,
                     onTap: () => setState(() {
                       _showRecent = !_showRecent;
@@ -163,48 +183,53 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
 
   Widget _statCard(
       String emoji, String label, String value, Color color,
-      {required bool active, required VoidCallback onTap}) {
+      {required bool active, required VoidCallback onTap, String? subtitle}) {
     return Expanded(
-      child: GestureDetector(
+      child: AppCard(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-                color: active ? color : const Color(0x0F000000),
-                width: active ? 1.5 : 1),
-            boxShadow: AppShadows.card,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(emoji, style: const TextStyle(fontSize: 20)),
+        radius: AppRadius.cardLg,
+        borderColor: active ? color : const Color(0x0F000000),
+        elevated: active,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(height: AppSpacing.md),
-              Text(label.toUpperCase(),
+              child: Text(emoji, style: const TextStyle(fontSize: 20)),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(label.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: Color(0xFF9CA3AF))),
+            Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    fontFeatures: AppText.tabularNums)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.6,
-                      color: Color(0xFF9CA3AF))),
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: color,
-                      fontFeatures: AppText.tabularNums)),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.subtle)),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -212,14 +237,10 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
 
   Widget _debtorsList(OrgScheduleConfig config, List<DebtorContact> debtors) {
     if (debtors.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(AppSpacing.xl),
-        child: Text('Nessun cliente con pagamenti in sospeso! 🎉',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: AppColors.subtle,
-                fontStyle: FontStyle.italic,
-                fontSize: 14)),
+      return const AppEmptyState(
+        compact: true,
+        icon: Icons.celebration_outlined,
+        title: 'Nessun cliente con pagamenti in sospeso! 🎉',
       );
     }
     return Column(
@@ -232,19 +253,11 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
 
   Widget _debtorCard(OrgScheduleConfig config, DebtorContact d, int index) {
     final open = _openCards.contains('$index');
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border(
-          left: const BorderSide(color: Color(0xFFEF4444), width: 4),
-          top: BorderSide(color: const Color(0xFFE5E7EB)),
-          right: BorderSide(color: const Color(0xFFE5E7EB)),
-          bottom: BorderSide(color: const Color(0xFFE5E7EB)),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
+      padding: EdgeInsets.zero,
+      leftBarColor: AppColors.danger,
+      borderColor: AppColors.borderGray,
       child: Column(
         children: [
           InkWell(
@@ -272,14 +285,14 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0x14EF4444),
-                      borderRadius: BorderRadius.circular(20),
+                      color: AppColors.danger.withValues(alpha: 0x14 / 255),
+                      borderRadius: BorderRadius.circular(AppRadius.chip),
                     ),
-                    child: Text('Da incassare: €${_fmt(d.total)}',
+                    child: Text('Da incassare: €${formatEuro(d.total)}',
                         style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFFEF4444))),
+                            color: AppColors.danger)),
                   ),
                 ],
               ),
@@ -302,10 +315,10 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                                 style: const TextStyle(fontSize: 12.5)),
                           ),
                           Text(
-                              '€${_fmt(bookingPrice(b, ref.read(orgSettingsProvider).value, config))}',
+                              '€${formatEuro(bookingPrice(b, ref.read(orgSettingsProvider).value, config))}',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFFEF4444))),
+                                  color: AppColors.danger)),
                         ],
                       ),
                     ),
@@ -327,27 +340,19 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
 
   Widget _recentList(List<PaymentRow> payments) {
     if (payments.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(AppSpacing.xl),
-        child: Text('Nessun pagamento registrato',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: AppColors.subtle,
-                fontStyle: FontStyle.italic,
-                fontSize: 14)),
+      return const AppEmptyState(
+        compact: true,
+        icon: Icons.receipt_long_outlined,
+        title: 'Nessun pagamento registrato',
       );
     }
     return Column(
       children: [
         for (final p in payments)
-          Container(
+          AppCard(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
             padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
+            borderColor: AppColors.borderGray,
             child: Row(
               children: [
                 Expanded(
@@ -370,13 +375,13 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0x1422C55E),
-                    borderRadius: BorderRadius.circular(20),
+                    color: AppColors.green500.withValues(alpha: 0x14 / 255),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                   ),
-                  child: Text('€${_fmt(p.amount)}',
+                  child: Text('€${formatEuro(p.amount)}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF16A34A))),
+                          color: AppColors.green600)),
                 ),
               ],
             ),
@@ -392,9 +397,6 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
       ref.invalidate(monthPaymentsProvider);
     }
   }
-
-  static String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
   static String _shortDate(String ymd) {
     final d = DateTime.parse(ymd);

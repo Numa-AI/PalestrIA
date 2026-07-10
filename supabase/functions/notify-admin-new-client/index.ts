@@ -1,13 +1,21 @@
 // Edge Function: notify-admin-new-client
-// Chiamata dal client dopo una registrazione confermata.
 // Manda una push notification AGLI ADMIN DELLA ORG del nuovo iscritto.
 //
-// SICUREZZA (multi-tenant): il chiamante DEVE essere autenticato (Bearer JWT
-// validato con getUser). La org si deriva dal PROFILO del chiamante
-// (profiles.org_id) — è l'utente appena registrato — MAI dal body. org_id e
-// client_id eventualmente presenti nel body sono ignorati (anti-spoofing H1).
-// I destinatari sono gli owner/admin attivi di QUELLA org (org_members) con una
-// push_subscription.
+// DUE CANALI di autenticazione (config verify_jwt=false):
+//   1) INTERNO (primario) — dal trigger DB `trg_notify_admin_new_client` via
+//      pg_net: header `x-internal-secret` == env NEW_CLIENT_NOTIFY_SECRET.
+//      Il soggetto è `user_id` dal body. Affidabile: non dipende dal browser.
+//   2) UTENTE (fallback) — dal client dopo la registrazione: Bearer JWT validato
+//      con getUser(). Il soggetto è il chiamante stesso.
+//
+// SICUREZZA (multi-tenant): la org e il NOME si derivano SEMPRE dal PROFILO del
+// soggetto (profiles.org_id/name) — MAI dal body (anti-spoofing H1). org_id e
+// client_id eventualmente nel body sono ignorati. I destinatari sono gli
+// owner/admin attivi di QUELLA org (org_members) con una push_subscription.
+//
+// DEDUP: se una notifica `new_client` per lo stesso testo è già stata registrata
+// negli ultimi 5 minuti (admin_messages), non re-invia → niente doppioni tra
+// canale server e fallback client. Fail-open se la query dedup fallisce.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -16,6 +24,7 @@ const VAPID_PUBLIC_KEY  = Deno.env.get("VAPID_PUBLIC_KEY")!;
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const SUPABASE_URL      = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const INTERNAL_SECRET   = Deno.env.get("NEW_CLIENT_NOTIFY_SECRET") ?? "";
 
 webpush.setVapidDetails("mailto:palestra@palestria-demo.app", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
@@ -24,7 +33,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-internal-secret",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -33,52 +42,89 @@ Deno.serve(async (req) => {
         return new Response(null, { status: 204, headers: corsHeaders });
     }
     try {
-        // ── 0) Autenticazione: ricava l'utente dal Bearer JWT ──────────────────
-        const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-        if (!token) {
-            return new Response(JSON.stringify({ ok: false, error: "Non autenticato" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-        const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-        if (userErr || !userData?.user) {
-            return new Response(JSON.stringify({ ok: false, error: "Token non valido" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-        const callerId = userData.user.id;
+        // Body: `name` fallback; `user_id` usato SOLO dal canale interno.
+        const body = await req.json().catch(() => ({}));
+        const { name, user_id: bodyUserId } = body ?? {};
 
-        // Solo `name` è usato dal body; org_id/client_id eventuali sono IGNORATI.
-        const { name } = await req.json();
+        // ── 0) Autenticazione: canale INTERNO (secret) OPPURE UTENTE (Bearer) ──
+        const internalSecret = (req.headers.get("x-internal-secret") ?? "").trim();
+        const isInternal = INTERNAL_SECRET.length > 0 && internalSecret === INTERNAL_SECRET;
 
-        if (!name) {
-            return new Response(JSON.stringify({ ok: false, error: "name è obbligatorio" }), {
-                status: 400,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
+        let subjectId: string | null = null;
+        if (isInternal) {
+            // Canale server (trigger DB): il soggetto è user_id dal body.
+            subjectId = (bodyUserId && String(bodyUserId).trim()) || null;
+            if (!subjectId) {
+                return new Response(JSON.stringify({ ok: false, error: "user_id obbligatorio (canale interno)" }), {
+                    status: 400,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            }
+        } else {
+            // Canale client: il soggetto è il chiamante autenticato.
+            const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+            if (!token) {
+                return new Response(JSON.stringify({ ok: false, error: "Non autenticato" }), {
+                    status: 401,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            }
+            const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+            if (userErr || !userData?.user) {
+                return new Response(JSON.stringify({ ok: false, error: "Token non valido" }), {
+                    status: 401,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            }
+            subjectId = userData.user.id;
         }
 
-        // ── 1) Org del nuovo cliente = org del PROFILO del chiamante ───────────
+        // ── 1) Org e NOME del nuovo cliente = dal PROFILO del soggetto ─────────
         // Anti-spoofing: il `name` del body è forgiabile (finisce nelle push e in
         // admin_messages mostrate agli admin). Preferisci SEMPRE il nome server-side
-        // dal profilo del chiamante (l'utente appena registrato); il body è solo fallback.
+        // dal profilo del soggetto; il body è solo fallback.
         const { data: prof, error: profErr } = await supabase
             .from("profiles")
             .select("org_id, name")
-            .eq("id", callerId)
+            .eq("id", subjectId)
             .maybeSingle();
         if (profErr) throw profErr;
         const orgId: string | null = prof?.org_id ?? null;
-        const displayName = (prof?.name && String(prof.name).trim()) ? prof.name : name;
+        const displayName = (prof?.name && String(prof.name).trim())
+            ? prof.name
+            : ((name && String(name).trim()) ? name : "Nuovo cliente");
 
         if (!orgId) {
             // Senza org non sappiamo a quali admin notificare: usciamo senza errore.
-            console.warn(`[notify-admin-new-client] org non risolta per il chiamante ${callerId} — notifica saltata`);
+            console.warn(`[notify-admin-new-client] org non risolta per il soggetto ${subjectId} — notifica saltata`);
             return new Response(JSON.stringify({ ok: true, sent: 0, skipped: "org_not_resolved" }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
+        }
+
+        const messageBody = `${displayName} iscritto`;
+
+        // ── 1b) Dedup: se una notifica new_client per lo stesso testo è già stata
+        // registrata negli ultimi 5 minuti, non re-inviare (evita doppioni tra il
+        // canale server e il fallback client). Fail-open se la query fallisce.
+        try {
+            const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString();
+            const { data: recent } = await supabase
+                .from("admin_messages")
+                .select("id")
+                .eq("org_id", orgId)
+                .eq("kind", "new_client")
+                .eq("body", messageBody)
+                .gte("created_at", fiveMinAgo)
+                .limit(1);
+            if (recent && recent.length > 0) {
+                console.log(`[notify-admin-new-client] dedup (già inviata <5min) org ${orgId} — ${displayName}`);
+                return new Response(JSON.stringify({ ok: true, deduped: true, sent: 0 }), {
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            }
+        } catch (dedupErr) {
+            console.warn("[notify-admin-new-client] dedup check fallito (fail-open):", (dedupErr as any)?.message);
         }
 
         // ── 2) Admin/owner attivi della org ────────────────────────────────────
@@ -101,7 +147,7 @@ Deno.serve(async (req) => {
 
         const payload = JSON.stringify({
             title: "🆕 New entry!",
-            body:  `${displayName} iscritto`,
+            body:  messageBody,
             tag:   `admin-new-client-${displayName}`.replace(/\s/g, "-"),
             url:   `/admin.html`,
         });
@@ -154,7 +200,7 @@ Deno.serve(async (req) => {
             org_id: orgId,
             kind:  "new_client",
             title: "🆕 New entry!",
-            body:  `${displayName} iscritto`,
+            body:  messageBody,
         });
 
         console.log(`[notify-admin-new-client] org ${orgId} — ${sent} inviate, ${failed} fallite per ${displayName}`);

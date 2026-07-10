@@ -5,6 +5,7 @@ import '../../../core/data/admin_repository.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import '../../client/booking/booking_providers.dart';
 import 'add_participant_sheet.dart';
 
@@ -23,10 +24,6 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
 
   static const _dayNames = [
     'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'
-  ];
-  static const _monthFull = [
-    'GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO',
-    'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE'
   ];
   static const _monthShort = [
     'gen', 'feb', 'mar', 'apr', 'mag', 'giu',
@@ -52,7 +49,16 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
     final bookingsAsync = ref.watch(adminBookingsProvider);
 
     if (configAsync.isLoading || bookingsAsync.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
+    }
+    if (configAsync.hasError || bookingsAsync.hasError) {
+      return AppErrorRetry(
+        onRetry: () {
+          ref.invalidate(scheduleConfigProvider);
+          ref.invalidate(scheduleOverridesProvider);
+          ref.invalidate(adminBookingsProvider);
+        },
+      );
     }
     final config = configAsync.value ?? OrgScheduleConfig.empty();
     final overrides = overridesAsync.value ?? const {};
@@ -87,9 +93,7 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
         padding: const EdgeInsets.fromLTRB(
             AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
         children: [
-          _weekBar(selectedDay),
-          const SizedBox(height: AppSpacing.md),
-          _daySelector(days, selectedDay, bookings),
+          _weekHero(days, selectedDay, bookings),
           const SizedBox(height: AppSpacing.lg),
           if (daySlots.isEmpty)
             const Padding(
@@ -109,60 +113,65 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
     );
   }
 
-  Widget _weekBar(DateTime selectedDay) {
-    final days = _weekDays(_weekOffset);
+  /// Hero scuro→viola (replica dell'hero admin del web): nav settimana + i giorni
+  /// come chip "glass" sul gradiente. `DarkHero` porta gradiente+glow org-aware.
+  Widget _weekHero(
+      List<DateTime> days, DateTime selectedDay, List<Booking> bookings) {
     final range =
         '${days.first.day} ${_monthShort[days.first.month - 1]} — ${days.last.day} ${_monthShort[days.last.month - 1]}';
-    final monthLabel =
-        '${_monthFull[selectedDay.month - 1]} ${selectedDay.year}';
+    final monthLabel = '${selectedDay.year}';
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
+    return DarkHero(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
         children: [
-          IconButton(
-            onPressed: () => setState(() {
-              _weekOffset--;
-              _selectedDay = null;
-            }),
-            icon: const Icon(Icons.chevron_left),
-            tooltip: 'Settimana precedente',
+          Row(
+            children: [
+              _navBtn(Icons.chevron_left, 'Settimana precedente', () {
+                setState(() {
+                  _weekOffset--;
+                  _selectedDay = null;
+                });
+              }),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(range,
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white)),
+                    Text(monthLabel,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                            color: Colors.white.withValues(alpha: 0.72))),
+                  ],
+                ),
+              ),
+              _navBtn(Icons.chevron_right, 'Settimana successiva', () {
+                setState(() {
+                  _weekOffset++;
+                  _selectedDay = null;
+                });
+              }),
+            ],
           ),
-          Expanded(
-            child: Column(
-              children: [
-                Text(range,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.navy)),
-                Text(monthLabel,
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                        color: AppColors.subtle)),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () => setState(() {
-              _weekOffset++;
-              _selectedDay = null;
-            }),
-            icon: const Icon(Icons.chevron_right),
-            tooltip: 'Settimana successiva',
-          ),
+          const SizedBox(height: AppSpacing.md),
+          _daySelector(days, selectedDay, bookings),
         ],
       ),
     );
   }
+
+  Widget _navBtn(IconData icon, String tip, VoidCallback onTap) => IconButton(
+        onPressed: onTap,
+        icon: Icon(icon, color: Colors.white),
+        tooltip: tip,
+        style: IconButton.styleFrom(
+            backgroundColor: Colors.white.withValues(alpha: 0.12)),
+      );
 
   Widget _daySelector(
       List<DateTime> days, DateTime selected, List<Booking> bookings) {
@@ -194,20 +203,22 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
   Widget _dayCard(DateTime d,
       {required bool isActive, required bool isToday, required int count}) {
     Gradient? gradient;
-    Color bg = Colors.transparent;
-    Color fg = const Color(0xFF64748B);
+    // Chip "glass" sull'hero scuro: default translucido, attivo = gradiente pieno.
+    Color bg = Colors.white.withValues(alpha: 0.08);
+    Color fg = Colors.white.withValues(alpha: 0.72);
 
     if (isActive && isToday) {
-      gradient = const LinearGradient(
-          colors: [Color(0xFFEF4444), Color(0xFFDC2626)]);
+      gradient =
+          const LinearGradient(colors: [AppColors.danger, AppColors.dangerDark]);
       fg = Colors.white;
+      bg = Colors.transparent;
     } else if (isActive) {
-      gradient = const LinearGradient(
-          colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)]);
+      gradient = brandGradient(context);
       fg = Colors.white;
+      bg = Colors.transparent;
     } else if (isToday) {
-      bg = const Color(0x38EF4444);
-      fg = const Color(0xFF991B1B);
+      bg = Colors.white.withValues(alpha: 0.20);
+      fg = Colors.white;
     }
 
     return GestureDetector(
@@ -291,7 +302,7 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
                   IconButton(
                     onPressed: () => _addParticipant(config, slot, day),
                     icon: const Icon(Icons.add_circle_outline),
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.primary,
                     tooltip: 'Aggiungi prenotazione',
                   ),
               ],
@@ -361,15 +372,21 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
                         fontSize: 14,
                         color: Color(0xFF0F172A))),
                 if (pending)
-                  const Text('⏳ Annullamento richiesto',
-                      style: TextStyle(
-                          fontSize: 11.5, color: Color(0xFF92400E)))
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: StatusPill(
+                      label: '⏳ Annullamento richiesto',
+                      background: AppColors.cancelReqBg,
+                      foreground: AppColors.cancelReqText,
+                      dense: true,
+                    ),
+                  )
                 else if (b.paid)
                   const Text('Pagato',
                       style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF15803D)))
+                          color: AppColors.paidText))
                 else if (passed)
                   const Text('Da pagare',
                       style: TextStyle(
@@ -383,7 +400,7 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
             onPressed: () => _deleteBooking(b),
             icon: const Icon(Icons.close, size: 18, color: Colors.white),
             style: IconButton.styleFrom(
-              backgroundColor: AppColors.primary,
+              backgroundColor: AppColors.dangerDark,
               minimumSize: const Size(30, 30),
               padding: EdgeInsets.zero,
             ),

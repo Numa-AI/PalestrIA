@@ -7,6 +7,7 @@ import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import '../../client/booking/booking_providers.dart';
 import 'payments_tab.dart';
 
@@ -60,6 +61,8 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
         .where((b) => b.sbId != null)
         .toList()
       ..sort((a, b) => '${a.date}${a.time}'.compareTo('${b.date}${b.time}'));
+    final allIds = [for (final b in bookings) b.sbId!];
+    final allSelected = allIds.isNotEmpty && allIds.every(_selected.contains);
 
     // Prezzo allineato al server (admin_pay_bookings) e a payments/analytics.
     final total = bookings
@@ -79,8 +82,36 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
               Text(widget.contact.name,
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.w800)),
-              Text('${bookings.length} lezioni non pagate',
-                  style: AppText.meta),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                      bookings.length == 1
+                          ? '1 lezione non pagata'
+                          : '${bookings.length} lezioni non pagate',
+                      style: AppText.meta),
+                  TextButton(
+                    onPressed: allIds.isEmpty
+                        ? null
+                        : () => setState(() {
+                              if (allSelected) {
+                                _selected.removeAll(allIds);
+                              } else {
+                                _selected.addAll(allIds);
+                              }
+                            }),
+                    style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    child: Text(
+                        allSelected ? 'Deseleziona tutto' : 'Seleziona tutto',
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.md),
               Flexible(
                 child: SingleChildScrollView(
@@ -107,7 +138,7 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Dovuto: €${_fmt(total)}',
+                  Text('Dovuto: €${formatEuro(total)}',
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w800)),
                   FilledButton(
@@ -146,9 +177,9 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
           style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
       subtitle: Text(config.slotName(b.slotType),
           style: const TextStyle(fontSize: 12)),
-      secondary: Text('€${_fmt(bookingPrice(b, settings, config))}',
+      secondary: Text('€${formatEuro(bookingPrice(b, settings, config))}',
           style: const TextStyle(
-              fontWeight: FontWeight.w700, color: Color(0xFFE63946))),
+              fontWeight: FontWeight.w700, color: AppColors.dangerDark)),
     );
   }
 
@@ -165,17 +196,12 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
       final n = await repo.payBookings(_selected.toList(), method);
       if (!mounted) return;
       Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '$n pagament${n == 1 ? 'o registrato' : 'i registrati'}')));
+      AppSnack.success(
+          context, '$n pagament${n == 1 ? 'o registrato' : 'i registrati'}');
     } catch (e) {
       if (!mounted) return;
       setState(() => _paying = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Errore: $e')));
+      AppSnack.error(context, 'Errore: $e');
     }
   }
-
-  static String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 }

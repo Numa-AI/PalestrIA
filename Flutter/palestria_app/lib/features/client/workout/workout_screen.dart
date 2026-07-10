@@ -7,6 +7,7 @@ import '../../../core/data/workout_repository.dart';
 import '../../../core/models/workout.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'add_exercise_flows.dart';
 import 'exercise_detail_sheet.dart';
 import 'history_view.dart';
@@ -80,17 +81,16 @@ class _WorkoutScreenHostState extends ConsumerState<WorkoutScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF7C3AED), Color(0xFF8B5CF6)],
-                      ),
+                      gradient: brandGradient(context),
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
+                      boxShadow: [
                         BoxShadow(
-                            color: Color(0x668B5CF6),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.40),
                             blurRadius: 16,
-                            offset: Offset(0, 6)),
+                            offset: const Offset(0, 6)),
                       ],
                     ),
                     child: Row(
@@ -181,7 +181,9 @@ class _WorkoutScreenHostState extends ConsumerState<WorkoutScreen> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
       trailing: Icon(
         selected ? Icons.radio_button_checked : Icons.radio_button_off,
-        color: selected ? AppColors.primary : AppColors.subtle,
+        color: selected
+            ? Theme.of(ctx).colorScheme.primary
+            : AppColors.subtle,
         size: 22,
       ),
       onTap: () => Navigator.pop(ctx, section),
@@ -211,14 +213,16 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
   bool _canManage = false;
 
   Future<void> _exportPdf(WorkoutPlan plan) async {
-    final messenger = ScaffoldMessenger.of(context);
     setState(() => _pdfBusy = true);
     try {
       final userName = ref.read(userProfileProvider).value?.name;
-      await shareWorkoutPdf(plan, userName: userName);
+      final shared = await shareWorkoutPdf(plan, userName: userName);
+      // shared == false → utente ha annullato la condivisione: nessun feedback.
+      if (shared && mounted) {
+        AppSnack.success(context, 'PDF pronto per la condivisione');
+      }
     } catch (e) {
-      messenger.showSnackBar(
-          SnackBar(content: Text('Errore nella generazione del PDF: $e')));
+      _toast('Errore nella generazione del PDF: $e', isError: true);
     } finally {
       if (mounted) setState(() => _pdfBusy = false);
     }
@@ -236,9 +240,11 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
     return Scaffold(
       backgroundColor: AppColors.slateBg,
       body: plansAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) =>
-            const Center(child: Text('Errore caricamento scheda.')),
+        loading: () => const AppLoading(),
+        error: (e, _) => AppErrorRetry(
+          message: 'Errore caricamento scheda.',
+          onRetry: () => ref.invalidate(ownPlansProvider),
+        ),
         data: (plans) {
           if (plans.isEmpty) return _emptyState();
 
@@ -292,8 +298,9 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
                       const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                   child: Column(
                     children: [
-                      for (final g in groups)
-                        _groupCard(context, plan, g, logs, media),
+                      for (var gi = 0; gi < groups.length; gi++)
+                        _groupCard(
+                            context, plan, groups[gi], logs, media, groups, gi),
                     ],
                   ),
                 ),
@@ -317,27 +324,12 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
     );
   }
 
-  Widget _emptyState() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxxl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('Nessuna scheda ancora.',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.navy)),
-              const SizedBox(height: 6),
-              Text(
-                  _canManage
-                      ? 'Premi il + in basso per crearne una!'
-                      : 'Il tuo trainer non ti ha ancora assegnato una scheda.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.muted)),
-            ],
-          ),
-        ),
+  Widget _emptyState() => AppEmptyState(
+        icon: Icons.fitness_center_outlined,
+        title: 'Nessuna scheda ancora.',
+        subtitle: _canManage
+            ? 'Premi il + in basso per crearne una!'
+            : 'Il tuo trainer non ti ha ancora assegnato una scheda.',
       );
 
   /// Hero mobile §8.3: gradiente #0f172a → #1e1b4b → #7C3AED.
@@ -350,12 +342,7 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
           right: AppSpacing.lg,
           bottom: AppSpacing.lg),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF7C3AED)],
-          stops: [0, 0.6, 1.3],
-        ),
+        gradient: AppGradients.workoutHero,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
       ),
       child: Column(
@@ -487,12 +474,12 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    color: active ? const Color(0xFF0F172A) : Colors.white)),
+                    color: active ? AppColors.navy : Colors.white)),
             Text(meta,
                 style: TextStyle(
                     fontSize: 10,
                     color: active
-                        ? const Color(0xFF64748B)
+                        ? AppColors.muted
                         : const Color(0xA6FFFFFF))),
           ],
         ),
@@ -501,7 +488,8 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
   }
 
   Widget _groupCard(BuildContext context, WorkoutPlan plan, ExerciseGroup g,
-      List<WorkoutLog> logs, Map<String, CatalogMedia> media) {
+      List<WorkoutLog> logs, Map<String, CatalogMedia> media,
+      List<ExerciseGroup> groups, int index) {
     final allDone = g.exercises.every((e) => doneToday(e, logs));
 
     Widget thumb(WorkoutExercise e, {double size = 44}) {
@@ -600,12 +588,12 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
           decoration: BoxDecoration(
             gradient: allDone
                 ? const LinearGradient(
-                    colors: [Color(0xFFF0FDF4), Colors.white])
+                    colors: [AppColors.successSurface, Colors.white])
                 : null,
             color: allDone ? null : Colors.white,
             border: Border.all(
                 color: allDone
-                    ? const Color(0xFF10B981)
+                    ? AppColors.successEmerald
                     : AppColors.border,
                 width: 1.5),
             borderRadius: BorderRadius.circular(16),
@@ -648,14 +636,29 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
                   ],
                 ),
               ),
+              // Frecce di riordino blocco (solo chi gestisce la struttura scheda).
+              if (_canManage)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _reorderArrow(Icons.keyboard_arrow_up, index > 0,
+                        () => _reorderGroup(plan, groups, index, -1)),
+                    _reorderArrow(
+                        Icons.keyboard_arrow_down,
+                        index < groups.length - 1,
+                        () => _reorderGroup(plan, groups, index, 1)),
+                  ],
+                ),
               if (allDone)
                 Container(
                   width: 30,
                   height: 30,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                        colors: [Color(0xFF10B981), Color(0xFF059669)]),
+                    gradient: LinearGradient(colors: [
+                      AppColors.successEmerald,
+                      AppColors.successEmeraldDark,
+                    ]),
                   ),
                   child:
                       const Icon(Icons.check, size: 18, color: Colors.white),
@@ -667,6 +670,37 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
         ),
       ),
     );
+  }
+
+  Widget _reorderArrow(IconData icon, bool enabled, VoidCallback onTap) {
+    return InkResponse(
+      onTap: enabled ? onTap : null,
+      radius: 18,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 2),
+        child: Icon(icon,
+            size: 22,
+            color: enabled ? AppColors.muted : AppColors.subtle.withValues(alpha: 0.4)),
+      ),
+    );
+  }
+
+  /// Sposta il blocco (single/superset/circuit) su/giù nel giorno e rinumera i
+  /// sort_order via reorderExercises (base-min, come il web).
+  Future<void> _reorderGroup(WorkoutPlan plan, List<ExerciseGroup> groups,
+      int index, int direction) async {
+    final target = index + direction;
+    if (target < 0 || target >= groups.length) return;
+    final reordered = [...groups];
+    final moved = reordered.removeAt(index);
+    reordered.insert(target, moved);
+    final flat = [for (final grp in reordered) ...grp.exercises];
+    try {
+      await ref.read(workoutRepositoryProvider).reorderExercises(flat);
+      ref.invalidate(ownPlansProvider);
+    } catch (e) {
+      if (mounted) _toast('Errore riordino: $e', isError: true);
+    }
   }
 
   Future<bool?> _confirmDeleteGroup(ExerciseGroup g) {
@@ -704,7 +738,7 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
         ExerciseGroupKind.circuit => 'Circuito eliminato',
       });
     } catch (_) {
-      _toast('Errore di rete. Riprova.');
+      _toast('Errore di rete. Riprova.', isError: true);
     }
     ref.invalidate(ownPlansProvider);
   }
@@ -791,7 +825,7 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
     );
     if (ok != true) return;
     if (name.text.trim().isEmpty) {
-      _toast('Inserisci un nome per la scheda');
+      _toast('Inserisci un nome per la scheda', isError: true);
       return;
     }
     final session = ref.read(sessionProvider)!;
@@ -804,14 +838,17 @@ class _WorkoutScreenState extends ConsumerState<SchedaView> {
       _toast('Scheda creata!');
       ref.invalidate(ownPlansProvider);
     } catch (e) {
-      _toast('Errore creazione: $e');
+      _toast('Errore creazione: $e', isError: true);
     }
   }
 
-  void _toast(String message) {
+  void _toast(String message, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    if (isError) {
+      AppSnack.error(context, message);
+    } else {
+      AppSnack.success(context, message);
+    }
   }
 
   static const _monthShort = [

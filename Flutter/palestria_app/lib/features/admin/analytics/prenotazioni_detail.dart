@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'stats_charts.dart';
 
 const _monthsShort = [
@@ -167,15 +168,10 @@ class PrenotazioniDetail extends StatelessWidget {
       if (dayCounts[i] > dayCounts[peakDayIdx]) peakDayIdx = i;
     }
 
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(top: AppSpacing.md),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-        border: Border.all(color: const Color(0x223B82F6)),
-      ),
+      radius: AppRadius.cardLg,
+      borderColor: AppColors.blue500.withValues(alpha: 0x22 / 255),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -213,7 +209,7 @@ class PrenotazioniDetail extends StatelessWidget {
             solid: solid,
             projected: projected,
             highlightIndex: 11,
-            barColor: const Color(0xFF3B82F6),
+            barColor: AppColors.blue500,
           ),
           const SizedBox(height: AppSpacing.lg),
           _blockTitle('Per tipo di lezione'),
@@ -223,7 +219,7 @@ class PrenotazioniDetail extends StatelessWidget {
           MonthlyBarChart(
             labels: _dayLabels,
             solid: dayCounts,
-            barColor: const Color(0xFF06B6D4),
+            barColor: AppColors.cyan,
             height: 130,
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -235,7 +231,7 @@ class PrenotazioniDetail extends StatelessWidget {
           _blockTitle('Top 5 slot più comuni'),
           _hBars(
               [for (final e in topSlots.take(5)) (e.key, e.value)],
-              const Color(0xFF8B5CF6)),
+              AppColors.primary),
           const SizedBox(height: AppSpacing.md),
           _breakdownRow('Fascia oraria più popolare', peakTime),
           _breakdownRow('Giorno più popolare', _dayLabels[peakDayIdx]),
@@ -276,7 +272,7 @@ class PrenotazioniDetail extends StatelessWidget {
               style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: warn ? const Color(0xFFDC2626) : const Color(0xFF111111),
+                  color: warn ? AppColors.dangerDark : const Color(0xFF111111),
                   fontFeatures: AppText.tabularNums)),
           const SizedBox(height: 2),
           Text(label,
@@ -310,7 +306,7 @@ class PrenotazioniDetail extends StatelessWidget {
                 ),
                 Expanded(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                     child: LinearProgressIndicator(
                       value: maxV == 0 ? 0 : r.$2 / maxV,
                       minHeight: 14,

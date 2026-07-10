@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/data/admin_repository.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Tab Messaggi: composizione di una notifica push ai clienti
 /// (edge send-admin-message, mode tutti/giorno/ora).
@@ -30,13 +31,20 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
 
   Future<void> _send() async {
     if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) {
-      _toast('Titolo e testo sono obbligatori.');
+      AppSnack.error(context, 'Titolo e testo sono obbligatori.');
       return;
     }
     if ((_mode == 'giorno' || _mode == 'ora') && _date == null) {
-      _toast('Seleziona la data dei destinatari.');
+      AppSnack.error(context, 'Seleziona la data dei destinatari.');
       return;
     }
+    if (_mode == 'ora' && (_time == null || _time!.trim().isEmpty)) {
+      AppSnack.error(context, 'Seleziona un orario');
+      return;
+    }
+    final confirmed = await _confirmSend();
+    if (confirmed != true || !mounted) return;
+
     setState(() => _sending = true);
     final repo = await ref.read(adminRepositoryProvider.future);
     if (repo == null) {
@@ -59,19 +67,51 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
         _title.clear();
         _body.clear();
       });
-      _toast('Messaggio inviato a $n destinatari.');
+      AppSnack.success(context, 'Messaggio inviato a $n destinatari.');
       ref.invalidate(adminMessagesProvider);
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);
-      _toast('Errore: $e');
+      AppSnack.error(context, 'Errore: $e');
     }
   }
 
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  /// Descrizione leggibile dei destinatari per il dialog di conferma pre-invio.
+  String _recipientsLabel() {
+    switch (_mode) {
+      case 'giorno':
+        return _date == null
+            ? 'i clienti del giorno selezionato'
+            : 'i clienti del ${_date!.day}/${_date!.month}/${_date!.year}';
+      case 'ora':
+        final when = _date == null
+            ? ''
+            : ' del ${_date!.day}/${_date!.month}/${_date!.year}'
+                '${_time != null && _time!.trim().isNotEmpty ? ' alle ${_time!.trim()}' : ''}';
+        return 'i clienti$when';
+      default:
+        return 'tutti i clienti';
+    }
   }
+
+  Future<bool?> _confirmSend() => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Conferma invio'),
+          content: Text(
+              'Inviare la notifica "${_title.text.trim()}" a ${_recipientsLabel()}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Invia'),
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -83,37 +123,45 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
       children: [
         const Text('Messaggi', style: AppText.pageTitle),
         const SizedBox(height: AppSpacing.md),
-        Container(
+        AppCard(
+          radius: AppRadius.cardLg,
           padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: AppShadows.card,
-          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
                 controller: _title,
+                maxLength: 60,
                 decoration: const InputDecoration(labelText: 'Titolo'),
               ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _body,
                 maxLines: 3,
+                maxLength: 200,
                 decoration: const InputDecoration(labelText: 'Testo'),
               ),
               const SizedBox(height: AppSpacing.md),
               const Text('Destinatari', style: AppText.eyebrow),
               const SizedBox(height: 6),
               SegmentedButton<String>(
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: Theme.of(context).colorScheme.primary,
+                  selectedForegroundColor: Colors.white,
+                ),
                 segments: const [
                   ButtonSegment(value: 'tutti', label: Text('Tutti')),
                   ButtonSegment(value: 'giorno', label: Text('Per giorno')),
                   ButtonSegment(value: 'ora', label: Text('Giorno+ora')),
                 ],
                 selected: {_mode},
-                onSelectionChanged: (s) => setState(() => _mode = s.first),
+                onSelectionChanged: (s) => setState(() {
+                  _mode = s.first;
+                  if ((_mode == 'giorno' || _mode == 'ora') &&
+                      _date == null) {
+                    _date = DateTime.now();
+                  }
+                }),
               ),
               if (_mode == 'giorno' || _mode == 'ora') ...[
                 const SizedBox(height: AppSpacing.md),
@@ -156,14 +204,9 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
           const Text('Ultimi messaggi', style: AppText.eyebrow),
           const SizedBox(height: AppSpacing.sm),
           for (final m in recent.take(20))
-            Container(
+            AppCard(
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFEEF0F3)),
-              ),
               child: Row(
                 children: [
                   Expanded(
@@ -183,11 +226,12 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
                       ],
                     ),
                   ),
-                  Text('${(m['sent_count'] as num?)?.toInt() ?? 0} inviati',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF15803D))),
+                  StatusPill(
+                    label: '${(m['sent_count'] as num?)?.toInt() ?? 0} inviati',
+                    background: AppColors.successSurface,
+                    foreground: AppColors.green700,
+                    dense: true,
+                  ),
                 ],
               ),
             ),

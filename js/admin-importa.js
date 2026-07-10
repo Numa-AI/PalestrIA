@@ -83,7 +83,7 @@ async function _loadImportaImported() {
     _importaImported = data || [];
     _importaImportedSlugs = new Set(_importaImported.map(e => e.slug));
     _importaImportedLoaded = true;
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ ts: Date.now(), data: _importaImported })); } catch (e) { /* quota: ignora */ }
+    try { _lsSetSnapshot(LS_KEY, JSON.stringify({ ts: Date.now(), data: _importaImported })); } catch (e) { /* quota: ignora */ }
 }
 
 // ── Main render ─────────────────────────────────────────────────────────────

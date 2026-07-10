@@ -5,6 +5,7 @@ import '../../../core/data/schedule_admin.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/theme/org_theme.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'activation_editor.dart';
 import 'slot_type_editor.dart';
 import 'template_editor.dart';
@@ -56,7 +57,7 @@ class ScheduleTab extends ConsumerWidget {
     return _section(
       '🏷️ Tipi di lezione',
       trailing: IconButton(
-        icon: const Icon(Icons.add_circle, color: AppColors.primary),
+        icon: Icon(Icons.add_circle, color: Theme.of(context).colorScheme.primary),
         tooltip: 'Nuovo tipo',
         onPressed: () => showSlotTypeEditor(context, ref,
             existingKeys: keys, defaultSort: types.length),
@@ -88,8 +89,8 @@ class ScheduleTab extends ConsumerWidget {
         child: Row(
           children: [
             Container(
-              width: 14,
-              height: 14,
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
                   color: OrgBranding.parseHex(st['color'] as String?) ??
                       AppColors.primary,
@@ -128,7 +129,7 @@ class ScheduleTab extends ConsumerWidget {
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline,
-                  size: 18, color: Color(0xFFDC2626)),
+                  size: 18, color: AppColors.dangerDark),
               tooltip: 'Elimina',
               onPressed: () => _deleteType(context, ref, st),
             ),
@@ -153,8 +154,8 @@ class ScheduleTab extends ConsumerWidget {
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Annulla')),
           FilledButton(
-              style:
-                  FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+              style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.dangerDark),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Elimina')),
         ],
@@ -179,7 +180,7 @@ class ScheduleTab extends ConsumerWidget {
         margin: const EdgeInsets.only(left: 6),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: AppColors.slateBg,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(text,
@@ -194,7 +195,7 @@ class ScheduleTab extends ConsumerWidget {
     return _section(
       '🕐 Fasce orarie',
       trailing: IconButton(
-        icon: const Icon(Icons.add_circle, color: AppColors.primary),
+        icon: Icon(Icons.add_circle, color: Theme.of(context).colorScheme.primary),
         tooltip: 'Nuova fascia',
         onPressed: () =>
             showTimeSlotEditor(context, ref, defaultSort: slots.length),
@@ -252,7 +253,7 @@ class ScheduleTab extends ConsumerWidget {
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline,
-                  size: 18, color: Color(0xFFDC2626)),
+                  size: 18, color: AppColors.dangerDark),
               tooltip: 'Elimina',
               onPressed: () => _deleteSlot(context, ref, ts),
             ),
@@ -284,7 +285,7 @@ class ScheduleTab extends ConsumerWidget {
               child: const Text('Annulla')),
           FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFDC2626)),
+                  backgroundColor: AppColors.dangerDark),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Elimina')),
         ],
@@ -306,26 +307,15 @@ class ScheduleTab extends ConsumerWidget {
 
   Widget _section(String title,
           {required List<Widget> children, Widget? trailing}) =>
-      Container(
+      AppCard(
         margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: AppShadows.card,
-        ),
+        radius: AppRadius.cardLg,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(title,
-                      style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.navy)),
-                ),
+                Expanded(child: Text(title, style: AppText.cardTitle)),
                 ?trailing,
               ],
             ),

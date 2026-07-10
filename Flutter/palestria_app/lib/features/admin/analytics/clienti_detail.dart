@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/admin_repository.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Pannello drill-down "Clienti — Dettaglio" (port di renderClientiDetail,
 /// admin-analytics.js): KPI (unici/nuovi/media lezioni/% con cancellazioni) +
@@ -146,15 +147,10 @@ class ClientiDetail extends ConsumerWidget {
       lost.sort();
     }
 
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(top: AppSpacing.md),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-        border: Border.all(color: const Color(0x228B5CF6)),
-      ),
+      radius: AppRadius.cardLg,
+      borderColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0x22 / 255),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -229,7 +225,7 @@ class ClientiDetail extends ConsumerWidget {
               style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
-                  color: warn ? const Color(0xFFDC2626) : const Color(0xFF111111),
+                  color: warn ? AppColors.dangerDark : const Color(0xFF111111),
                   fontFeatures: AppText.tabularNums)),
           const SizedBox(height: 2),
           Text(label, style: const TextStyle(fontSize: 11, color: AppColors.subtle)),

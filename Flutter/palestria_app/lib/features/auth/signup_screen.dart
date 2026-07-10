@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/auth_providers.dart';
 import '../../core/auth/auth_repository.dart';
 import '../../core/theme/tokens.dart';
+import '../../core/theme/ui_kit.dart';
 
 /// Registrazione CLIENTE nel contesto di una palestra: nell'app (senza slug
 /// nell'URL come sul web) il codice palestra viene chiesto esplicitamente.
@@ -64,10 +65,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   /// Header org: banner col nome studio (se risolto) o campo "Codice palestra".
   Widget _orgHeader() {
     if (_lockedSlug && (_studioName?.isNotEmpty ?? false)) {
+      final primary = Theme.of(context).colorScheme.primary;
       return _studioBanner(
         icon: Icons.verified,
-        color: AppColors.primary,
-        bg: const Color(0xFFF5F3FF),
+        color: primary,
+        bg: primary.withValues(alpha: 0.08),
         title: 'Ti stai iscrivendo a',
         value: _studioName!,
       );
@@ -77,7 +79,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       children.add(_studioBanner(
         icon: Icons.error_outline,
         color: AppColors.dangerDark,
-        bg: const Color(0xFFFEF2F2),
+        bg: AppColors.dangerSurface,
         title: '⚠️ Palestra non riconosciuta',
         value: 'Codice: ${widget.orgSlug}',
       ));
@@ -171,10 +173,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       setState(() => _error = result.error);
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text(
-          'Registrazione inviata! Se richiesto, conferma la tua email e poi accedi.'),
-    ));
+    AppSnack.success(context,
+        'Registrazione inviata! Se richiesto, conferma la tua email e poi accedi.');
     context.go('/login');
   }
 
@@ -251,6 +251,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                   strokeWidth: 2, color: Colors.white),
                             )
                           : const Text('Crea account'),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    TextButton(
+                      onPressed: () => context.go('/login'),
+                      child: const Text('Hai già un account? Accedi'),
                     ),
                   ],
                 ),

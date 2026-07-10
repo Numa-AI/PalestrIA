@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_providers.dart';
 import '../models/booking.dart';
+import '../models/client_payment.dart';
 import 'schedule_config.dart';
 
 /// Esito di una scrittura booking, con messaggi già in italiano.
@@ -58,6 +59,19 @@ class BookingRepository {
         .order('time')
         .timeout(const Duration(seconds: 12));
     return [for (final r in rows) Booking.fromRow(r)];
+  }
+
+  /// Storico transazioni del cliente dal ledger `payments` (RLS: solo le
+  /// proprie righe). Ordinate dalla più recente. Cap a 200 come lato admin.
+  Future<List<ClientPayment>> fetchOwnPayments(String userId) async {
+    final rows = await _client
+        .from('payments')
+        .select(ClientPayment.selectColumns)
+        .eq('client_user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(200)
+        .timeout(const Duration(seconds: 12));
+    return [for (final r in rows) ClientPayment.fromRow(r)];
   }
 
   /// Disponibilità aggregata server-authoritative (solo slot con ≥1 occupato;

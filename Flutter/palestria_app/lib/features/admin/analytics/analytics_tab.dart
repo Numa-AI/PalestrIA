@@ -7,6 +7,7 @@ import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'clienti_detail.dart';
 import 'fatturato_detail.dart';
 import 'fiscal_report.dart';
@@ -240,8 +241,14 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
     final config = ref.watch(scheduleConfigProvider).value;
 
     return bookingsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _errorState(e),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore nel caricamento delle statistiche.',
+        onRetry: () {
+          ref.invalidate(statsBookingsProvider);
+          ref.invalidate(statsPaymentsProvider);
+        },
+      ),
       data: (allRaw) {
         // Escludi cancellate e admin (come _excludeAdminBookings web).
         final all = allRaw
@@ -311,12 +318,12 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
               Row(
                 children: [
                   _statCard('💰', 'Fatturato previsto', '€${_fmt(rev)}',
-                      const Color(0xFFF59E0B), revChange,
+                      AppColors.amber, revChange,
                       active: _detail == 'fatturato',
                       onTap: () => _toggle('fatturato')),
                   const SizedBox(width: AppSpacing.md),
                   _statCard('📅', 'Prenotazioni', '$bookingsCount',
-                      const Color(0xFF3B82F6), bookChange,
+                      AppColors.blue500, bookChange,
                       active: _detail == 'prenotazioni',
                       onTap: () => _toggle('prenotazioni')),
                 ],
@@ -325,7 +332,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
               Row(
                 children: [
                   _statCard('👥', 'Clienti attivi', '$activeClients',
-                      const Color(0xFF8B5CF6), null,
+                      Theme.of(context).colorScheme.primary, null,
                       subtitle: _filterLabel(_filter),
                       active: _detail == 'clienti',
                       onTap: () => _toggle('clienti')),
@@ -334,7 +341,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                       '📈',
                       'Occupazione',
                       occupancy == null ? '—' : '$occupancy%',
-                      const Color(0xFF10B981),
+                      AppColors.successEmerald,
                       null,
                       subtitle: _filterLabel(_filter),
                       positive: occupancy != null && occupancy > 50,
@@ -480,6 +487,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
 
   // ── UI helpers ──────────────────────────────────────────────────────────────
   Widget _filterBar() {
+    final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -494,7 +502,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                   border: Border(
                     bottom: BorderSide(
                       color: _filter == entry.key
-                          ? AppColors.primary
+                          ? cs.primary
                           : Colors.transparent,
                       width: 3,
                     ),
@@ -504,9 +512,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                     style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: _filter == entry.key
-                            ? AppColors.primaryDark
-                            : AppColors.muted)),
+                        color: _filter == entry.key ? cs.secondary : AppColors.muted)),
               ),
             ),
         ],
@@ -530,7 +536,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: pos ? const Color(0xFF059669) : const Color(0xFFDC2626)),
+            color: pos ? AppColors.successEmeraldDark : AppColors.dangerDark),
       );
     } else {
       change = Text(
@@ -540,83 +546,75 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: positive ? const Color(0xFF059669) : AppColors.subtle),
+            color: positive ? AppColors.successEmeraldDark : AppColors.subtle),
       );
     }
+    // Barra colore in alto (flush, segue il raggio della card) + bordo/ombra
+    // evidenziati quando il pannello è aperto (stato "active").
     return Expanded(
-      child: GestureDetector(
+      child: AppCard(
         onTap: onTap,
-        child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: AppShadows.card,
-          border: Border(
-            top: BorderSide(color: color, width: 3),
-            left: BorderSide(
-                color: active ? color : Colors.transparent, width: 2),
-            right: BorderSide(
-                color: active ? color : Colors.transparent, width: 2),
-            bottom: BorderSide(
-                color: active ? color : Colors.transparent, width: 2),
-          ),
-        ),
+        radius: AppRadius.cardLg,
+        borderColor: active ? color : AppColors.border,
+        elevated: active,
+        padding: EdgeInsets.zero,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+            Container(height: 3, color: color),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                      ),
+                      const Spacer(),
+                      if (onTap != null)
+                        Icon(active ? Icons.expand_less : Icons.expand_more,
+                            size: 18, color: AppColors.subtle),
+                    ],
                   ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 20)),
-                ),
-                const Spacer(),
-                if (onTap != null)
-                  Icon(active ? Icons.expand_less : Icons.expand_more,
-                      size: 18, color: AppColors.subtle),
-              ],
+                  const SizedBox(height: AppSpacing.md),
+                  Text(label.toUpperCase(),
+                      style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                          color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 2),
+                  Text(value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF111111),
+                          fontFeatures: AppText.tabularNums)),
+                  const SizedBox(height: 3),
+                  change,
+                ],
+              ),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(label.toUpperCase(),
-                style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                    color: Color(0xFF9CA3AF))),
-            const SizedBox(height: 2),
-            Text(value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111111),
-                    fontFeatures: AppText.tabularNums)),
-            const SizedBox(height: 3),
-            change,
           ],
         ),
-      ),
       ),
     );
   }
 
   Widget _chartCard(String title, Widget child) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-      ),
+    return AppCard(
+      radius: AppRadius.cardLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -670,7 +668,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                         minHeight: 16,
                         backgroundColor: const Color(0xFFF1F5F9),
                         valueColor: const AlwaysStoppedAnimation(
-                            Color(0xFF8B5CF6)),
+                            AppColors.primary),
                       ),
                     ),
                   ),
@@ -717,10 +715,10 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         ),
       'cancelled' => (
           const Color(0xFFFEE2E2),
-          const Color(0xFFDC2626),
+          AppColors.dangerDark,
           'Annullata'
         ),
-      _ => (const Color(0xFFDCFCE7), const Color(0xFF059669), 'Confermata'),
+      _ => (const Color(0xFFDCFCE7), AppColors.successEmeraldDark, 'Confermata'),
     };
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -752,30 +750,11 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: badgeBg,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(badgeText,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: badgeFg)),
-          ),
+          StatusPill(label: badgeText, background: badgeBg, foreground: badgeFg, dense: true),
         ],
       ),
     );
   }
-
-  Widget _errorState(Object e) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Text('Errore nel caricamento delle statistiche.\n$e',
-              textAlign: TextAlign.center, style: AppText.meta),
-        ),
-      );
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);

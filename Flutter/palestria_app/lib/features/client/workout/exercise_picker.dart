@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Esercizio del catalogo (tabella `imported_exercises`).
 class CatalogExercise {
@@ -89,9 +90,11 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
       backgroundColor: AppColors.slateBg,
       appBar: AppBar(title: Text(widget.title)),
       body: catalogAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) =>
-            const Center(child: Text('Errore caricamento catalogo.')),
+        loading: () => const AppLoading(),
+        error: (_, _) => AppErrorRetry(
+          message: 'Errore caricamento catalogo.',
+          onRetry: () => ref.invalidate(exerciseCatalogProvider),
+        ),
         data: (catalog) {
           final categories = <String, int>{};
           for (final e in catalog) {
@@ -143,34 +146,26 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
                         crossAxisSpacing: 8,
                         children: [
                           for (final entry in categories.entries)
-                            GestureDetector(
+                            AppCard(
                               onTap: () =>
                                   setState(() => _category = entry.key),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border:
-                                      Border.all(color: AppColors.border),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(entry.key,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 13.5)),
-                                    ),
-                                    Text('${entry.value}',
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(entry.key,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                            color: AppColors.subtle,
-                                            fontSize: 12)),
-                                  ],
-                                ),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13.5)),
+                                  ),
+                                  Text('${entry.value}',
+                                      style: const TextStyle(
+                                          color: AppColors.subtle,
+                                          fontSize: 12)),
+                                ],
                               ),
                             ),
                         ],

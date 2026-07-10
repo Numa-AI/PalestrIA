@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/data/admin_repository.dart';
+import '../../../core/data/booking_pricing.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
+import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Evento del registro (da una prenotazione).
 class RegistroEvent {
@@ -59,6 +62,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
   }
 
   Widget _subTabs() {
+    final cs = Theme.of(context).colorScheme;
     Widget tab(String label, int index) {
       final active = _sub == index;
       return Expanded(
@@ -69,7 +73,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: active ? AppColors.primary : Colors.transparent,
+                  color: active ? cs.primary : Colors.transparent,
                   width: 3,
                 ),
               ),
@@ -79,8 +83,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color:
-                        active ? AppColors.primaryDark : AppColors.muted)),
+                    color: active ? cs.secondary : AppColors.muted)),
           ),
         ),
       );
@@ -103,12 +106,16 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     final bookingsAsync = ref.watch(adminBookingsProvider);
     final config =
         ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
+    final settings = ref.watch(orgSettingsProvider).value;
 
     return bookingsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Errore: $e')),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore caricamento eventi.',
+        onRetry: () => ref.invalidate(adminBookingsProvider),
+      ),
       data: (bookings) {
-        final events = _buildEvents(bookings);
+        final events = _buildEvents(bookings, settings, config);
         final filtered = _filterEvents(events);
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(adminBookingsProvider),
@@ -135,11 +142,9 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
               ),
               const SizedBox(height: AppSpacing.md),
               if (filtered.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(AppSpacing.xl),
-                  child: Text('Nessun evento trovato con i filtri selezionati.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.subtle)),
+                const AppEmptyState(
+                  icon: Icons.event_busy_outlined,
+                  title: 'Nessun evento trovato con i filtri selezionati.',
                 )
               else
                 for (final e in filtered) _eventRow(config, e),
@@ -157,14 +162,11 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          gradient: active
-              ? const LinearGradient(
-                  colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)])
-              : null,
-          color: active ? null : const Color(0xFFF8FAFC),
+          gradient: active ? brandGradient(context) : null,
+          color: active ? null : AppColors.slate50,
           border: Border.all(
-              color: active ? Colors.transparent : const Color(0xFFE2E8F0)),
-          borderRadius: BorderRadius.circular(999),
+              color: active ? Colors.transparent : AppColors.border),
+          borderRadius: BorderRadius.circular(AppRadius.chip),
         ),
         child: Text(label,
             style: TextStyle(
@@ -175,10 +177,15 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     );
   }
 
-  List<RegistroEvent> _buildEvents(List<Booking> bookings) {
+  List<RegistroEvent> _buildEvents(
+    List<Booking> bookings,
+    OrgSettingsService? settings,
+    OrgScheduleConfig config,
+  ) {
     final events = <RegistroEvent>[];
     for (final b in bookings) {
       final name = b.name ?? '—';
+      final amount = bookingPrice(b, settings, config);
       events.add(RegistroEvent(
         type: 'created',
         timestamp: b.createdAt ?? DateTime.tryParse('${b.date}T08:00:00') ??
@@ -187,7 +194,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
         slotType: b.slotType,
         lessonDate: b.date,
         lessonTime: b.time,
-        amount: b.customPrice,
+        amount: amount,
       ));
       if (b.paidAt != null) {
         events.add(RegistroEvent(
@@ -197,7 +204,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
           slotType: b.slotType,
           lessonDate: b.date,
           lessonTime: b.time,
-          amount: b.customPrice,
+          amount: amount,
           method: b.paymentMethod,
         ));
       }
@@ -242,37 +249,26 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
 
   Widget _eventRow(OrgScheduleConfig config, RegistroEvent e) {
     final (label, bg, fg, emoji) = switch (e.type) {
-      'created' => ('Prenotazione', const Color(0xFFDBEAFE),
-          const Color(0xFF1D4ED8), '📅'),
-      'paid' =>
-        ('Pagamento', const Color(0xFFDCFCE7), const Color(0xFF15803D), '✅'),
-      'cancelled' => ('Annullamento', const Color(0xFFFEE2E2),
-          const Color(0xFFB91C1C), '❌'),
-      _ => ('Rich. Annullamento', const Color(0xFFFEF3C7),
-          const Color(0xFF92400E), '⏳'),
+      'created' => ('Prenotazione', AppColors.infoSurface, AppColors.blue600,
+          '📅'),
+      'paid' => ('Pagamento', AppColors.paidBg, AppColors.paidText, '✅'),
+      'cancelled' => ('Annullamento', AppColors.cancelledBg,
+          AppColors.cancelledText, '❌'),
+      _ => ('Rich. Annullamento', AppColors.warnSurface,
+          AppColors.docWarnText, '⏳'),
     };
     final ts = e.timestamp;
     final tsStr =
         '${ts.day.toString().padLeft(2, '0')}/${ts.month.toString().padLeft(2, '0')} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
 
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEEF0F3)),
-      ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration:
-                BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-            child: Text('$emoji $label',
-                style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
-          ),
+          StatusPill(
+              label: '$emoji $label', background: bg, foreground: fg,
+              dense: true),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
@@ -286,13 +282,16 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
                 Text('$tsStr · ${config.slotName(e.slotType)}',
                     style: const TextStyle(
                         fontSize: 11.5, color: AppColors.subtle)),
+                Text('Lezione ${_fmtLessonDate(e.lessonDate)} · ${e.lessonTime}',
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.subtle)),
               ],
             ),
           ),
           if (e.type == 'paid' && e.amount != null)
             Text('+€${_fmt(e.amount!)}',
                 style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: Color(0xFF166534)))
+                    fontWeight: FontWeight.w700, color: AppColors.paidText))
           else if (e.type == 'created' && e.amount != null)
             Text('€${_fmt(e.amount!)}',
                 style: const TextStyle(
@@ -306,12 +305,17 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
   Widget _adminMessagesPanel() {
     final async = ref.watch(adminMessagesProvider);
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) =>
-          const Center(child: Text('❌ Errore caricamento messaggi.')),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore caricamento messaggi.',
+        onRetry: () => ref.invalidate(adminMessagesProvider),
+      ),
       data: (msgs) {
         if (msgs.isEmpty) {
-          return const Center(child: Text('Nessun messaggio trovato'));
+          return const AppEmptyState(
+            icon: Icons.notifications_none_rounded,
+            title: 'Nessun messaggio trovato',
+          );
         }
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(adminMessagesProvider),
@@ -339,12 +343,17 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
   Widget _clientNotifPanel() {
     final async = ref.watch(clientNotificationsProvider);
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) =>
-          const Center(child: Text('❌ Errore caricamento notifiche.')),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore caricamento notifiche.',
+        onRetry: () => ref.invalidate(clientNotificationsProvider),
+      ),
       data: (notifs) {
         if (notifs.isEmpty) {
-          return const Center(child: Text('Nessuna notifica trovata'));
+          return const AppEmptyState(
+            icon: Icons.notifications_none_rounded,
+            title: 'Nessuna notifica trovata',
+          );
         }
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(clientNotificationsProvider),
@@ -360,6 +369,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
                   createdAt: n['created_at'],
                   sent: n['status'] == 'sent',
                   statusText: _cnStatusLabel(n['status']),
+                  status: n['status'],
                 ),
             ],
           ),
@@ -376,19 +386,26 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     required bool sent,
     int? sentCount,
     String? statusText,
+    Object? status,
   }) {
     final ts = createdAt == null ? null : DateTime.tryParse(createdAt.toString());
     final tsStr = ts == null
         ? ''
         : '${ts.day.toString().padLeft(2, '0')}/${ts.month.toString().padLeft(2, '0')} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
-    return Container(
+    // Terzo tono ambra per gli stati "in sospeso" (es. no_subscription), da
+    // non confondere con un invio realmente fallito (rosso).
+    final (pillBg, pillFg) = sent
+        ? (AppColors.successSurface, AppColors.green700)
+        : status == 'no_subscription'
+            ? (AppColors.warnSurface, AppColors.docWarnText)
+            : (AppColors.dangerSurface, AppColors.docDangerText);
+    final pillLabel = statusText ??
+        (sent
+            ? '✅ Inviata${sentCount != null ? ' ($sentCount)' : ''}'
+            : '❌ Non inviata');
+    return AppCard(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEEF0F3)),
-      ),
       child: Row(
         children: [
           Expanded(
@@ -409,24 +426,9 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: sent ? const Color(0x1F22C55E) : const Color(0x1FEF4444),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-                statusText ??
-                    (sent
-                        ? '✅ Inviata${sentCount != null ? ' ($sentCount)' : ''}'
-                        : '❌ Non inviata'),
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: sent
-                        ? const Color(0xFF15803D)
-                        : const Color(0xFFB91C1C))),
-          ),
+          StatusPill(
+              label: pillLabel, background: pillBg, foreground: pillFg,
+              dense: true),
         ],
       ),
     );
@@ -458,4 +460,15 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  /// `YYYY-MM-DD` → `D/M`, coerente con la formattazione date già usata
+  /// altrove nell'admin (es. `analytics_tab._bookingRow`).
+  static String _fmtLessonDate(String iso) {
+    final parts = iso.split('-');
+    if (parts.length != 3) return iso;
+    final d = int.tryParse(parts[2]);
+    final m = int.tryParse(parts[1]);
+    if (d == null || m == null) return iso;
+    return '$d/$m';
+  }
 }

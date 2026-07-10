@@ -5,7 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/normalize.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Modal "Modifica profilo" (§7.7 spec-client), come bottom sheet.
 Future<void> showEditProfileSheet(
@@ -35,6 +37,8 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
   late final TextEditingController _cap;
   late final TextEditingController _password;
   late final TextEditingController _password2;
+  late final TextEditingController _certExpiryCtrl;
+  late final TextEditingController _insuranceExpiryCtrl;
   DateTime? _certExpiry;
   late bool _privacy;
   String? _error;
@@ -54,18 +58,26 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     _password = TextEditingController();
     _password2 = TextEditingController();
     _certExpiry = p.medicalCertExpiry;
+    _certExpiryCtrl = TextEditingController(text: _formatDate(_certExpiry));
+    _insuranceExpiryCtrl =
+        TextEditingController(text: _formatDate(p.insuranceExpiry));
     _privacy = p.privacyPrenotazioni;
   }
 
   @override
   void dispose() {
     for (final c in [
-      _email, _whatsapp, _cf, _via, _paese, _cap, _password, _password2
+      _email, _whatsapp, _cf, _via, _paese, _cap, _password, _password2,
+      _certExpiryCtrl, _insuranceExpiryCtrl,
     ]) {
       c.dispose();
     }
     super.dispose();
   }
+
+  static String _formatDate(DateTime? value) => value == null
+      ? ''
+      : '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
 
   Future<void> _save() async {
     setState(() => _error = null);
@@ -166,12 +178,12 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
       ref.invalidate(userProfileProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        duration: Duration(seconds: emailPending ? 6 : 4),
-        content: Text(emailPending
+      AppSnack.success(
+        context,
+        emailPending
             ? 'Profilo aggiornato. Controlla la tua email per confermare il cambio di indirizzo.'
-            : 'Profilo aggiornato.'),
-      ));
+            : 'Profilo aggiornato.',
+      );
     } on AuthException catch (e) {
       setState(() {
         _error = 'Errore: ${e.message}';
@@ -187,13 +199,27 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Il campo scadenza certificato è editabile dal cliente solo se la org
+    // non l'ha riservato al trainer (setting 'cert_scadenza_editable').
+    final certEditable = ref
+            .watch(orgSettingsProvider)
+            .value
+            ?.getBool('cert_scadenza_editable', true) ??
+        true;
+    // Niente sezione password per gli utenti OAuth (Google/Apple): non hanno
+    // una password Supabase da cambiare.
+    final provider = Supabase
+        .instance.client.auth.currentSession?.user.appMetadata['provider']
+        as String?;
+    final showPasswordSection = provider == null || provider == 'email';
+
     Widget sectionTitle(String title) => Padding(
           padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: 6),
           child: Text(title.toUpperCase(),
               style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF888888),
+                  color: AppColors.subtle,
                   letterSpacing: 0.6)),
         );
 
@@ -238,9 +264,9 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                 ],
               ),
               sectionTitle('Dati personali'),
-              TextField(
+              TextFormField(
                 enabled: false,
-                controller: TextEditingController(text: p.name),
+                initialValue: p.name,
                 decoration: const InputDecoration(labelText: 'Nome completo'),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -253,13 +279,15 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
               TextField(
                 controller: _whatsapp,
                 keyboardType: TextInputType.phone,
-                decoration:
-                    const InputDecoration(labelText: 'Numero WhatsApp'),
+                decoration: const InputDecoration(
+                    labelText: 'Numero WhatsApp',
+                    hintText: '+39 348 1234567'),
               ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _cf,
                 textCapitalization: TextCapitalization.characters,
+                maxLength: 16,
                 decoration:
                     const InputDecoration(labelText: 'Codice Fiscale'),
               ),
@@ -285,6 +313,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                     child: TextField(
                       controller: _cap,
                       keyboardType: TextInputType.number,
+                      maxLength: 5,
                       decoration: const InputDecoration(labelText: 'CAP'),
                     ),
                   ),
@@ -293,31 +322,40 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
               sectionTitle('Documenti'),
               _dateField(
                 label: 'Scadenza certificato medico',
-                value: _certExpiry,
-                onChanged: (d) => setState(() => _certExpiry = d),
+                controller: _certExpiryCtrl,
+                current: _certExpiry,
+                onChanged: certEditable
+                    ? (d) => setState(() {
+                          _certExpiry = d;
+                          _certExpiryCtrl.text = _formatDate(d);
+                        })
+                    : null,
               ),
               const SizedBox(height: AppSpacing.md),
               _dateField(
                 label: 'Scadenza assicurazione (gestita dal trainer)',
-                value: p.insuranceExpiry,
+                controller: _insuranceExpiryCtrl,
+                current: p.insuranceExpiry,
                 onChanged: null, // sempre disabilitata
               ),
-              sectionTitle('Sicurezza'),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                decoration: const InputDecoration(
-                    labelText:
-                        'Nuova password (lascia vuoto per non cambiare)'),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _password2,
-                obscureText: true,
-                decoration: const InputDecoration(
-                    labelText: 'Conferma nuova password'),
-              ),
-              const SizedBox(height: AppSpacing.md),
+              if (showPasswordSection) ...[
+                sectionTitle('Sicurezza'),
+                TextField(
+                  controller: _password,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                      labelText:
+                          'Nuova password (lascia vuoto per non cambiare)'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _password2,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                      labelText: 'Conferma nuova password'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+              ],
               CheckboxListTile(
                 value: _privacy,
                 onChanged: (v) => setState(() => _privacy = v ?? true),
@@ -335,13 +373,13 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                   margin: const EdgeInsets.only(top: AppSpacing.sm),
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
+                    color: AppColors.dangerSurface,
                     border: Border.all(color: const Color(0xFFFECACA)),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.input),
                   ),
                   child: Text(_error!,
                       style: const TextStyle(
-                          color: Color(0xFFDC2626),
+                          color: AppColors.dangerDark,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600)),
                 ),
@@ -359,16 +397,14 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
 
   Widget _dateField({
     required String label,
-    required DateTime? value,
+    required TextEditingController controller,
+    required DateTime? current,
     required ValueChanged<DateTime?>? onChanged,
   }) {
-    final text = value == null
-        ? ''
-        : '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
     return TextField(
       enabled: onChanged != null,
       readOnly: true,
-      controller: TextEditingController(text: text),
+      controller: controller,
       decoration: InputDecoration(
         labelText: label,
         suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
@@ -378,7 +414,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
           : () async {
               final picked = await showDatePicker(
                 context: context,
-                initialDate: value ?? DateTime.now(),
+                initialDate: current ?? DateTime.now(),
                 firstDate: DateTime(2000),
                 lastDate: DateTime(2100),
               );

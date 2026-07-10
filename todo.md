@@ -6,6 +6,80 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
 
 ---
 
+## 🔁 Port gemello Thomas 2026-07-05→07-09 — PWA + Flutter (parità piena) — FIX APPLICATI, DEPLOY DA FARE
+Portate le **7 voci nuove** del changelog Thomas dal 2026-07-05 (l'ultimo port era 2026-07-04). Scelta utente: **parità piena su PWA e Flutter** + entrambi i port opzionali. Le 2 voci crediti 2026-07-04 restano **N/A §11**. Web: `node --check` OK, `sw.js` `CACHE_NAME` → **palestria-v586**. Flutter: `flutter analyze lib` **PULITO**, **NON buildato/committato** (lo fa l'utente).
+
+**① Backend — notifica admin "nuovo iscritto" via trigger DB + pg_net** (fix architetturale, vale PWA+Flutter):
+- [x] **Migration `00000000000029_notify_admin_new_client_server_trigger.sql`**: `create extension pg_net`; funzione `notify_admin_new_client()` `SECURITY DEFINER search_path=''` (guardia freschezza 15min su `auth.users.created_at`, legge secret da **Vault** `new_client_notify_secret`, `net.http_post` con header `x-internal-secret`, tutto in `EXCEPTION WHEN OTHERS`→non aborta il signup); trigger `trg_notify_admin_new_client AFTER INSERT ON profiles` (org già risolta in `NEW.org_id`).
+- [x] **Edge `notify-admin-new-client/index.ts`**: canale **interno** (header `x-internal-secret`==env `NEW_CLIENT_NOTIFY_SECRET`, soggetto=`user_id` dal body) OPPURE **utente** (Bearer `getUser`, fallback client); org+nome derivati server-side dal profilo del soggetto (anti-spoof); **dedup** su `admin_messages` (kind `new_client`, stesso body, <5min, org-scoped, fail-open). `config.toml`: `verify_jwt=false`.
+- [ ] **⚠️ DEPLOY MANUALE (obbligatorio, sennò la notifica non parte)**: (1) `select gen_random_uuid();`→VALORE; (2) `select vault.create_secret('<VALORE>','new_client_notify_secret');`; (3) `supabase secrets set NEW_CLIENT_NOTIFY_SECRET=<VALORE>`; (4) `supabase functions deploy notify-admin-new-client --no-verify-jwt`; (5) `supabase db push` (0029). CI baseline-only: la 0029 usa pg_net/Vault → verificare il job "Validate baseline migration" (la sposta in /tmp come le altre post-baseline).
+
+**② PWA — Progressi popup zoom kg/reps/serie/tutti** (admin + cliente):
+- [x] **Admin `admin-schede.js`+`admin.css`**: nuovo popup zoom (riusa shell `.schede-ex-detail-*`) con **video + grafici kg/reps/serie/tutti**. Rollup arricchito in `_schedeClientRenderProgressi` (weight max/reps media per serie/sets count; esercizio compare anche solo-reps); card immagine cliccabile + bottone `.schede-prog-zoom`; nuove `_schedeProgOpenZoom/_schedeProgCloseZoom/_schedeProgSetZoomMode/_schedeProgRenderZoomChart/_schedeProgDrawZoomChart`+`_schedeHexRgba`; in "Tutti" curve sovrapposte con **tratteggio differenziato** (kg pieno, reps `[7,5]`, serie `[2,5]`); stats **senza "N sessioni"**; popup largo desktop (`@media 900px` max-width 880px). `_drawAdminChart` con 4° param `{color,unit}`. CSS `.schede-prog-zoom-*`. admin-schede.js v52→**53**, admin.css v83→**84**.
+- [x] **Cliente `allenamento.html`+`allenamento.css`**: aggiunto il **selettore kg/reps/serie/tutti** al modal `prog2` (già video+grafico); rollup arricchito (`weights/repsAvg/setsCnt`), `_progressiZoomSetMode/_progressiZoomRender/_progressiBuildModalMultiSvg` (SVG multi-serie, dasharray differenziato, area gradient 1ª serie, badge solo modalità singola, stats a righe); **cardio → selettore nascosto** (grafico unico in minuti). allenamento.css v58→**59** (admin.html + allenamento.html). allenamento.html inline = network-first.
+
+**② PWA — Frecce Super Serie/Circuito** (`admin-schede.js`+`admin.css`):
+- [x] Frecce ▲▼ dei blocchi SS/Circuito ora **sempre rese** (disabled ai bordi, come i singoli) con `event.preventDefault/stopPropagation`+aria-label; restyle `.schede-ss-move button` identico a `.schede-ex-move`+`:disabled`; **spostate nella gronda DESTRA** (`right:0.45rem`, padding blocchi flippato a `…2.4rem 0.5rem`); hover per-blocco (SS `#8B5CF6`/circuito `#0891b2`) protetto da `:not(:disabled)`. `_schedeMoveSuperset/_schedeMoveCircuit` invariati. Mobile non toccato.
+
+**② PWA — Governo quota localStorage** (bassa urgenza qui, crediti assenti):
+- [x] `data.js` nuovo blocco: `_LS_SNAPSHOT_PREFIXES` (chiavi PalestrIA: bookings v2/stats/users/workout_plans/exDB/scheduleOverrides/orgSchedSnap), budget 2M char + `_lsEvictSnapshots` largest-first + `_lsSetSnapshot` (cap+budget+retry, mai toast) + housekeeping IIFE al boot (purga `gym_bookings_cache_v1` obsoleta); `_lsSet` su quota → evict+retry, toast solo se il retry fallisce. Persist grossi migrati a `_lsSetSnapshot`: `_persistCache`/`_persistUsersSnapshot`/workout `_saveToLocalStorage`/`_persistOrgScheduleSnapshot` (data.js), `_persistStatsCache` (admin-analytics.js), cache DB esercizi (admin-schede.js+admin-importa.js). data.js v99→**100** (9 HTML), admin-analytics.js v12→**13**, admin-importa.js v8→**9**.
+
+**③ Flutter — parità piena** (`flutter analyze lib` pulito; NON buildato/committato):
+- [x] **Cliente Progressi — selettore metrica** (`progress_view.dart`): `ProgressGroup` arricchito (weights/repsAvg/setsCnt/minutes per data); card ora **tap → popup zoom** (`showProgressZoom`) con media (video via nuovo `progressMediaProvider(slug)`) + selettore Kg/Ripetizioni/Serie/Tutti + grafico multi-serie (`_MultiSeriesPainter`, dash pieno/`[7,5]`/`[2,5]`, area 1ª serie) + righe stats; cardio→selettore nascosto.
+- [x] **Cliente riordino SS/Circuito+esercizi** (`workout_screen.dart`): frecce ▲▼ su ogni blocco (solo `_canManage`), `_reorderGroup` flatten+`reorderExercises` (base-min); wiring del metodo repo prima inutilizzato.
+- [x] **Admin Progressi per-cliente** (nuovo `admin_progress_view.dart` + `adminClientLogsProvider` in schede_providers): schermata `AdminClientProgressScreen` (KPI + card per esercizio, tap→`showProgressZoom` riusato dal cliente); aperta da menu "Progressi cliente" sul plan card.
+- [x] **Admin editor SS/Circuito + riordino** (`schede_tab.dart` riscritta): giorni renderizzati per **blocchi** (`groupExercises`) con badge SS/CIRCUITO, frecce riordino blocco (`reorderExercises`), elimina blocco; menu "Aggiungi" per giorno = manuale (edit sheet) **o** `showAddToDay` (catalogo/Super Serie/Circuito, riusato dal cliente con `onChanged`→`invalidate(orgPlansProvider)`). `add_exercise_flows.dart` esteso con param `onChanged` opzionale.
+- [ ] **⚠️ AZIONE UTENTE Flutter**: `flutter build appbundle` + verifica su device (selettore Progressi client+admin, riordino blocchi client+admin, creazione SS/Circuito admin) + commit ramo Flutter.
+
+**Deploy web + QA**:
+- [ ] **Push asset** su `origin/main`+`saas-main` (cache-bust `palestria-v586`) → Pages. Nessuna migration richiesta lato asset; la 0029/edge/secret vanno deployati a parte (vedi ①).
+- [ ] **QA**: (1) registra utente → push admin "New entry!" + riga `new_client` in admin_messages + log edge; 2ª iscrizione ravvicinata **non** duplica; (2) admin Schede→plan→Progressi cliente / card cliente Progressi → popup video+grafico, selettore kg/reps/serie/tutti, "Tutti" senza curve coperte, cardio senza selettore; (3) editor schede SS/Circuito → frecce sempre visibili a destra (PWA) / riordino blocchi (Flutter admin+client); (4) creazione Super Serie/Circuito da app Flutter admin; (5) quota localStorage: nessun toast spurio.
+
+---
+
+## 👤 Profilo cliente: Prossime/Passate/Transazioni + Prenotazioni = solo calendario (2026-07-08)
+Richiesta utente sull'app Flutter (poi portata al PWA per parità §0.3). Il tab "Prenotazioni" aveva una pill-bar **Calendario/Le mie**; "Le mie" spostato nel **Profilo**. Nuova sezione **Transazioni** = storico dal ledger `payments` (RLS: il cliente vede solo le proprie righe, `client_user_id = auth.uid()`).
+
+- [x] **Flutter — Prenotazioni = solo calendario** ([booking_screen.dart](Flutter/palestria_app/lib/features/client/booking/booking_screen.dart)): rimossa la pill-bar Calendario/Le mie; `MyBookingsView` eliminata.
+- [x] **Flutter — Profilo a 3 tab** ([profile_screen.dart](Flutter/palestria_app/lib/features/client/profile/profile_screen.dart)): pill-bar **Prossime / Passate / Transazioni**, paginazione 5→+20; hero mostra **Nome e Cognome** (prima solo il nome); **rimosso il recap dati** (`_infoCard`). Card prenotazione estratta in `BookingCard` riusabile ([booking_card.dart](Flutter/palestria_app/lib/features/client/booking/booking_card.dart)).
+- [x] **Flutter — dati transazioni**: modello `ClientPayment` ([client_payment.dart](Flutter/palestria_app/lib/core/models/client_payment.dart)) + `BookingRepository.fetchOwnPayments` + `ownPaymentsProvider`. `flutter analyze lib` **pulito**.
+- [x] **PWA — tab Transazioni** ([prenotazioni.html](prenotazioni.html)): 3ª tab; `_ensurePayments()`/`renderTransactions()`/`buildTransactionCard()` (query `payments` client-side, RLS own-only) + refresh su realtime; hero allineato a **Nome e Cognome**. Cache-bust `sw.js` v584→**v585**.
+- [ ] **NON committato/buildato/deployato** (lo fa l'utente): rebuild AAB Flutter + push ramo web → Pages.
+- [ ] **QA**: (1) cliente → **Prenotazioni** mostra solo il calendario (niente pill-bar); (2) **Profilo** → hero con nome+cognome, niente recap dati, 3 tab; (3) **Prossime/Passate** = le vecchie "Le mie" (annulla/richiedi annullo funzionano); (4) **Transazioni** elenca i pagamenti (lezione/abbonamento/pacchetto/mora) con importo+metodo+data, empty-state se vuoto; (5) parità PWA idem.
+
+---
+
+## 🎨 Uniformazione grafica app Flutter — design system (2026-07-08)
+Il port PWA→Flutter aveva grafica divergente (ogni schermata reinventava card/empty/pill/ombre; ~250 colori hardcoded; 0 font custom) + pagine mancanti. Creato un **design system** e uniformata la grafica di TUTTE le schermate. App nativa e **bottom nav cliente lasciate com'erano** (solo colore reso org-aware, richiesta utente). `flutter analyze lib` **pulito**. **NON committato/buildato** (lo fa l'utente).
+
+**Fatto**
+- [x] Font unico **Inter** bundlato (`assets/fonts`, 5 pesi), cablato in `tokens.dart`/`org_theme.dart` (`kFontFamily`) — sostituisce Roboto.
+- [x] **`Flutter/palestria_app/docs/DESIGN_SYSTEM.md`** = reference unico dello stile (tipografia, palette, spacing, radius, ombre, componenti, regole).
+- [x] **UI kit** `lib/core/theme/ui_kit.dart` (AppCard/SectionHeader/StatusPill/AppEmptyState/GradientButton/AppStatCard/DarkHero/AppLoading/AppErrorRetry/AppSnack) + token estesi in `tokens.dart`.
+- [x] **9 aree uniformate** (subagent, analyze pulito ognuna): token al posto degli hardcoded; elementi branded→`colorScheme` (dock/tab/selezioni org-aware); card/empty/loading/error via UI kit; SnackBar colorati per esito (prima tutti navy); `StatusPill` per i badge; 3 stati async distinti.
+- [x] Micro-fix: logo studio login/header admin, back-to-login, logout rosso, off-by-one cert, maxLength CF/CAP, password OAuth nascosta, gating cert editabile, badge Assicurazione, importi Registro via `bookingPrice`, data/ora lezione, messaggi (maxLength+conferma+validazione), dropdown fuso/valuta (DST), plural+virgola+seleziona-tutto pagamenti, header "Serie", PDF "Fatto ✓", drag handle + guard swipe.
+
+- [ ] **⚠️ AZIONE UTENTE**: rebuild AAB/APK da questo ramo + **verifica visiva su device** (font Inter, dock/tab col brand, stati error/empty, snackbar verdi/rossi). Poi commit/push del ramo Flutter.
+
+**🧩 DEFERITE — pagine/funzioni grosse ancora mancanti vs web (NON grafiche, da prioritizzare)**
+Raccolte dagli audit 1:1. Le più impattanti in alto:
+- **⚠️ ALTA — Admin Prenotazioni/Orari**: **aumento capienza slot / "posto extra" + editor "Override per data"** (`schedule_overrides`). Oggi NON esiste alcun modo in-app di aumentare la capienza; il messaggio d'errore "aggiungi un posto extra" rimanda a una UI inesistente → **dead-end da chiudere per primo**. (+ vista split tipi misti, chip debito/badge doc sul partecipante, auto-gestione richieste cancellazione, barra occupazione.)
+- **ALTA — Admin Pagamenti**: **flusso "Registra incasso"** (vendi pacchetto / registra abbonamento, RPC `admin_sell_package`/`admin_record_membership_payment`) — il trainer non può vendere pacchetti/abbonamenti dall'app.
+- **Admin Clienti**: editor "Modifica contatto" (nome/tel/email/CF/indirizzo) + `admin_rename_client`; elimina cliente; azioni per-prenotazione; "Situazione economica" (sessioni residue, oggi "—"); "Schede assegnate".
+- **Admin Schede**: picker catalogo 7200 esercizi + tab Importa; superset/circuiti; riordino; creazione/eliminazione scheda+template dall'admin; vista "Live"; sezione Clienti+progressi.
+- **Admin Impostazioni**: Backup&Ripristino; Verifica integrità dati (health check); Policy prenotazione (5 card: blocco cert/assicurazione + badge); Branding (URL logo/favicon, nome PWA, durata, color-picker); report XLSX settimanale/fiscale.
+- **Admin Registro**: filtri estesi (tipo-evento/lezione/metodo/stato/custom/reset), tabella/paginazione desktop, colonne Metodo/Stato/Nota, finestra dati oltre 60gg, ricerca telefono/email.
+- **Admin Statistiche**: filtro "Personalizzato" (range date); banner + export XLSX settimanale.
+- **Admin Messaggi**: popup risultato invio nominale (recapitati/falliti); selezione orario dagli slot reali; gating feature `messaging`.
+- **Auth/Shell**: login Google/OAuth; reset-password via deep link; gating piano SaaS (entitlements) sui tab; toggle "nascondi dati sensibili" 👁; campi anagrafici completi (CF/indirizzo/CAP) nel signup cliente; role-guard `/admin`; risoluzione ruolo staff.
+- **Cliente Prenotazioni**: gating certificato/anagrafica al submit; notifiche push admin su prenotazione/annullamento dall'app.
+- **Cliente Allenamento**: anteprima PDF a pagine + lightbox; modifica esercizio/circuito esistente; **riordino esercizi drag&drop** (backend `reorderExercises` già pronto); immagine+zoom card Progressi; anteprima video nel picker; coda offline/retry; selezione "giorno intelligente"; download PNG QR tablet.
+- **Cliente Profilo**: grafico "Allenamenti mensili" con storico completo (oggi sottoconta i mesi vecchi); selezione membership attiva allineata al web.
+
+Nota: alcune sono intrinsecamente web/desktop (backup file, catalogo 7200, XLSX) — valutare caso per caso se portarle in Flutter o lasciarle sul web (PWA in manutenzione).
+
+---
+
 ## 📱 Flutter — code review pre-pubblicazione (2026-07-07): 15 fix APPLICATI + residui
 Review completa di `Flutter/palestria_app` (focus sicurezza per pubblicazione). **2 batch di fix applicati** (⚠️ `flutter analyze` sempre pulito, ma NON buildato APK né committato — lo fa l'utente). Restano poche voci: 1 azione utente (keystore), 2 migration DB da deployare, 1 parità web, alcune rifiniture non bloccanti.
 

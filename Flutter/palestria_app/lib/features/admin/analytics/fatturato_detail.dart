@@ -7,6 +7,7 @@ import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'stats_charts.dart';
 
 const _monthsShort = [
@@ -149,15 +150,10 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
     }
     final currentIdx = 11; // i=0 è l'undicesimo indice
 
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(top: AppSpacing.md),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-        border: Border.all(color: const Color(0x22F59E0B)),
-      ),
+      radius: AppRadius.cardLg,
+      borderColor: AppColors.amber.withValues(alpha: 0x22 / 255),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -212,6 +208,7 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
   }
 
   Widget _modeTabs() {
+    final primary = Theme.of(context).colorScheme.primary;
     Widget tab(String label, bool active, VoidCallback onTap) => Expanded(
           child: GestureDetector(
             onTap: onTap,
@@ -219,7 +216,7 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: active ? AppColors.primary : Colors.transparent,
+                color: active ? primary : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(label,
@@ -321,10 +318,10 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
 
   Widget _byMethod(List<PaymentRow> payments) {
     const methodMeta = {
-      'contanti': ('Contanti', Color(0xFF22C55E)),
-      'contanti-report': ('Contanti con Report', Color(0xFFEF4444)),
-      'carta': ('Carta', Color(0xFF3B82F6)),
-      'iban': ('Bonifico', Color(0xFFF59E0B)),
+      'contanti': ('Contanti', AppColors.green500),
+      'contanti-report': ('Contanti con Report', AppColors.danger),
+      'carta': ('Carta', AppColors.blue500),
+      'iban': ('Bonifico', AppColors.amber),
       'stripe': ('Stripe', Color(0xFF635BFF)),
     };
     final periodPayments = payments.where((p) =>
@@ -353,7 +350,7 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
       }
     });
     if (other > 0) {
-      slices.add(DonutSlice('Altro', other, const Color(0xFF94A3B8)));
+      slices.add(DonutSlice('Altro', other, AppColors.subtle));
     }
     if (freeCount > 0) {
       slices.add(

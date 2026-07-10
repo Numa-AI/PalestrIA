@@ -15,7 +15,11 @@ const _lightGray = PdfColor.fromInt(0xFFE2E8F0);
 /// target/gruppo/note e una tabella Serie|Reps|Kg|Riposo|Fatto (cardio:
 /// Minuti|Fatto) con righe pre-compilate + 1 vuota. Superset/circuito con
 /// intestazione dedicata. Le miniature del web (via image-proxy) sono omesse.
-Future<void> shareWorkoutPdf(WorkoutPlan plan, {String? userName}) async {
+///
+/// Ritorna l'esito di [Printing.sharePdf]: `false` se l'utente ha annullato
+/// il foglio di condivisione (il chiamante può quindi evitare un feedback
+/// di successo fuorviante, senza però trattarlo come un errore).
+Future<bool> shareWorkoutPdf(WorkoutPlan plan, {String? userName}) async {
   final doc = pw.Document();
   final content = <pw.Widget>[];
 
@@ -90,7 +94,7 @@ Future<void> shareWorkoutPdf(WorkoutPlan plan, {String? userName}) async {
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
-  await Printing.sharePdf(
+  return Printing.sharePdf(
       bytes: bytes,
       filename: 'scheda-${slug.isEmpty ? 'allenamento' : slug}.pdf');
 }
@@ -113,8 +117,8 @@ List<List<WorkoutExercise>> _group(List<WorkoutExercise> exercises) {
 
 pw.Widget _exercise(int n, WorkoutExercise e) {
   final headers = e.isCardio
-      ? const ['Minuti', 'Fatto']
-      : const ['Serie', 'Reps', 'Kg', 'Riposo', 'Fatto'];
+      ? const ['Minuti', 'Fatto ✓']
+      : const ['Serie', 'Reps', 'Kg', 'Riposo', 'Fatto ✓'];
   final weight = (e.weightKg == null || e.weightKg == 0)
       ? ''
       : (e.weightKg! == e.weightKg!.roundToDouble()

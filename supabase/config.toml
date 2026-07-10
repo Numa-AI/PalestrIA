@@ -419,8 +419,11 @@ verify_jwt = true
 [functions.notify-admin-cancellation]
 verify_jwt = true
 
+# Notifica "nuovo iscritto": due canali — trigger DB (pg_net, header
+# x-internal-secret) o fallback client (Bearer). verify_jwt=false così il trigger
+# la raggiunge senza JWT; l'auth è garantita internamente (secret o getUser).
 [functions.notify-admin-new-client]
-verify_jwt = true
+verify_jwt = false
 
 [functions.notify-slot-available]
 verify_jwt = true

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/schedule_admin.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 const _windowWeeks = 8;
 
@@ -32,55 +33,71 @@ class _ActivationEditorSectionState
 
   @override
   Widget build(BuildContext context) {
-    final templates = ref.watch(allTemplatesProvider).value ?? const [];
-    final activated = ref.watch(activatedWeeksProvider).value ?? const [];
+    final templatesAsync = ref.watch(allTemplatesProvider);
+    final activatedAsync = ref.watch(activatedWeeksProvider);
+    final templates = templatesAsync.value ?? const [];
+    final activated = activatedAsync.value ?? const [];
     final activeMap = <String, String>{
       for (final a in activated)
         (a['week_start'] as String).substring(0, 10):
             a['template_id'] as String
     };
+    final loading = (templatesAsync.isLoading && templates.isEmpty) ||
+        (activatedAsync.isLoading && activated.isEmpty);
+    final hasError = templatesAsync.hasError || activatedAsync.hasError;
 
-    return Container(
+    Widget body;
+    if (loading) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+        child: AppLoading(),
+      );
+    } else if (hasError) {
+      body = AppErrorRetry(
+        onRetry: () {
+          ref.invalidate(allTemplatesProvider);
+          ref.invalidate(activatedWeeksProvider);
+        },
+      );
+    } else if (templates.isEmpty) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Text('Crea prima almeno una settimana tipo da applicare.',
+            style: AppText.meta),
+      );
+    } else {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i <= _windowWeeks; i++)
+            _weekRow(context,
+                _mondayOf(DateTime.now()).add(Duration(days: i * 7)),
+                templates, activeMap, i == 0),
+          ..._outsideRows(context, templates, activeMap),
+        ],
+      );
+    }
+
+    return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-      ),
+      radius: AppRadius.cardLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('📆 Attiva settimane',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.navy)),
+          const Text('📆 Attiva settimane', style: AppText.cardTitle),
           const Text(
               'Attiva il calendario una settimana alla volta scegliendo il '
               'template. Le settimane non attivate non mostrano slot.',
               style: AppText.meta),
           const SizedBox(height: AppSpacing.sm),
-          if (templates.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Text(
-                  'Crea prima almeno una settimana tipo da applicare.',
-                  style: AppText.meta),
-            )
-          else ...[
-            for (var i = 0; i <= _windowWeeks; i++)
-              _weekRow(_mondayOf(DateTime.now())
-                  .add(Duration(days: i * 7)), templates, activeMap, i == 0),
-            ..._outsideRows(templates, activeMap),
-          ],
+          body,
         ],
       ),
     );
   }
 
-  List<Widget> _outsideRows(List<Map<String, dynamic>> templates,
-      Map<String, String> activeMap) {
+  List<Widget> _outsideRows(BuildContext context,
+      List<Map<String, dynamic>> templates, Map<String, String> activeMap) {
     final startMon = _mondayOf(DateTime.now());
     final windowKeys = {
       for (var i = 0; i <= _windowWeeks; i++)
@@ -95,12 +112,13 @@ class _ActivationEditorSectionState
         child: Text('Altre settimane attivate', style: AppText.meta),
       ),
       for (final ymd in outside)
-        _weekRow(DateTime.parse(ymd), templates, activeMap, false),
+        _weekRow(context, DateTime.parse(ymd), templates, activeMap, false),
     ];
   }
 
-  Widget _weekRow(DateTime monday, List<Map<String, dynamic>> templates,
-      Map<String, String> activeMap, bool isCurrent) {
+  Widget _weekRow(BuildContext context, DateTime monday,
+      List<Map<String, dynamic>> templates, Map<String, String> activeMap,
+      bool isCurrent) {
     final ymd = _ymd(monday);
     final sunday = monday.add(const Duration(days: 6));
     final isActive = activeMap.containsKey(ymd);
@@ -125,18 +143,18 @@ class _ActivationEditorSectionState
               ),
               if (isActive)
                 const Icon(Icons.check_circle,
-                    size: 16, color: Color(0xFF22C55E))
+                    size: 16, color: AppColors.green500)
               else
                 const Icon(Icons.circle_outlined,
                     size: 16, color: AppColors.subtle),
             ],
           ),
           if (isCurrent)
-            const Text('questa settimana',
+            Text('questa settimana',
                 style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary)),
+                    color: Theme.of(context).colorScheme.primary)),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -167,7 +185,7 @@ class _ActivationEditorSectionState
               if (isActive)
                 IconButton(
                   icon: const Icon(Icons.delete_outline,
-                      size: 18, color: Color(0xFFDC2626)),
+                      size: 18, color: AppColors.dangerDark),
                   tooltip: 'Disattiva',
                   onPressed: () => _deactivate(ymd),
                 ),
@@ -183,7 +201,11 @@ class _ActivationEditorSectionState
     final messenger = ScaffoldMessenger.of(context);
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       final existing = activeMap[weekStart];
       if (existing != null && existing != tplId) {
         if (await repo.weekHasBookings(weekStart)) {
@@ -208,7 +230,11 @@ class _ActivationEditorSectionState
     final messenger = ScaffoldMessenger.of(context);
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       if (await repo.weekHasBookings(weekStart)) {
         messenger.showSnackBar(const SnackBar(
             content: Text(
@@ -229,7 +255,7 @@ class _ActivationEditorSectionState
                 child: const Text('Annulla')),
             FilledButton(
                 style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFDC2626)),
+                    backgroundColor: AppColors.dangerDark),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('Disattiva')),
           ],

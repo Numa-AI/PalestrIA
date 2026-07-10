@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/data/admin_repository.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'client_card.dart';
 
 /// Filtri "mostra solo" (spec-admin §6.2), uno alla volta.
@@ -48,13 +49,13 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
     final clientsAsync = ref.watch(adminClientsProvider);
 
     return clientsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxl),
-          child: Text('Errore caricamento clienti:\n$e',
-              textAlign: TextAlign.center, style: AppText.meta),
-        ),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore caricamento clienti:\n$e',
+        onRetry: () {
+          ref.invalidate(adminBookingsProvider);
+          ref.invalidate(adminProfilesProvider);
+        },
       ),
       data: (all) {
         final active = all.where((c) => c.isActive).toList();
@@ -107,14 +108,9 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
               const SizedBox(height: AppSpacing.lg),
               if (listVisible) ...[
                 if (visible.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(AppSpacing.xl),
-                    child: Text('Nessun cliente trovato',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: AppColors.subtle,
-                            fontStyle: FontStyle.italic,
-                            fontSize: 14)),
+                  const AppEmptyState(
+                    title: 'Nessun cliente trovato',
+                    compact: true,
                   )
                 else ...[
                   for (final c in visible.take(_shown))
@@ -158,9 +154,7 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Clienti', style: AppText.pageTitle),
-          Text('$total totali · $active attivi',
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.subtle, fontWeight: FontWeight.w500)),
+          Text('$total totali · $active attivi', style: AppText.meta),
         ],
       );
 
@@ -196,11 +190,9 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: active ? const Color(0xFFFEF2F2) : Colors.white,
+            color: active ? AppColors.dangerSurface : Colors.white,
             border: Border.all(
-                color: active
-                    ? const Color(0xFFEF4444)
-                    : const Color(0xFFE5E7EB),
+                color: active ? AppColors.danger : AppColors.borderGray,
                 width: 1.5),
             borderRadius: BorderRadius.circular(20),
           ),
@@ -208,9 +200,7 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: active
-                      ? const Color(0xFFDC2626)
-                      : const Color(0xFF6B7280))),
+                  color: active ? AppColors.dangerDark : AppColors.muted)),
         ),
       );
     }
@@ -236,7 +226,7 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
               style: const TextStyle(
                   fontSize: 35,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFFEF4444))),
+                  color: AppColors.danger)),
         ],
       );
 
@@ -244,62 +234,52 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
     Widget card(String emoji, String label, int value, ClientsListMode mode) {
       final isActive = _mode == mode;
       return Expanded(
-        child: GestureDetector(
+        child: AppCard(
           onTap: () => setState(() {
             _mode = isActive ? ClientsListMode.none : mode;
             _shown = _pageSize;
           }),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                  color: isActive
-                      ? AppColors.primary
-                      : const Color(0x0F000000),
-                  width: isActive ? 1.5 : 1),
-              boxShadow: AppShadows.card,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(emoji, style: const TextStyle(fontSize: 20)),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          radius: AppRadius.cardLg,
+          borderColor: isActive ? AppColors.primary : AppColors.border,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.slateBg,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    Text(isActive ? 'Nascondi ▲' : 'Dettagli ▼',
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: isActive
-                                ? AppColors.primary
-                                : const Color(0xFFD1D5DB))),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Text(label.toUpperCase(),
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                        color: Color(0xFF9CA3AF))),
-                Text('$value',
-                    style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111111),
-                        fontFeatures: AppText.tabularNums)),
-              ],
-            ),
+                    child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                  ),
+                  Text(isActive ? 'Nascondi ▲' : 'Dettagli ▼',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: isActive
+                              ? AppColors.primary
+                              : AppColors.borderHover)),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(label.toUpperCase(),
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: AppColors.subtle)),
+              Text('$value',
+                  style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.navy,
+                      fontFeatures: AppText.tabularNums)),
+            ],
           ),
         ),
       );
@@ -319,8 +299,8 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
         child: OutlinedButton(
           onPressed: () => setState(() => _shown += _pageSize),
           style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF6B7280),
-            side: const BorderSide(color: Color(0xFFD1D5DB)),
+            foregroundColor: AppColors.muted,
+            side: const BorderSide(color: AppColors.borderHover),
             minimumSize: const Size.fromHeight(44),
           ),
           child: Text(

@@ -8,6 +8,7 @@ import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import '../../client/booking/booking_providers.dart';
 import 'client_edit_sheet.dart';
 
@@ -45,7 +46,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
           right: const BorderSide(color: Color(0xFFEEF0F3)),
           bottom: const BorderSide(color: Color(0xFFEEF0F3)),
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.cardLg),
         boxShadow: AppShadows.card,
       ),
       clipBehavior: Clip.antiAlias,
@@ -78,8 +79,8 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                 shape: BoxShape.circle,
               ),
               child: Text(initials,
-                  style: const TextStyle(
-                      color: Color(0xFF7C3AED),
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.secondary,
                       fontWeight: FontWeight.w800,
                       fontSize: 15)),
             ),
@@ -172,6 +173,14 @@ class _ClientCardState extends ConsumerState<ClientCard> {
       expiringText: (d) => '⏳ Cert. scade il $d',
       missingText: '🏥 Imposta scadenza certificato medico',
     ));
+    // Assicurazione
+    badges.add(_certBadge(
+      expiry: p.insuranceExpiry,
+      okText: (d) => '✅ Assicurazione valida fino al $d',
+      expiredText: (d) => '📋 Assicurazione scaduta il $d',
+      expiringText: (d) => '⏳ Assicurazione scade il $d',
+      missingText: '📋 Imposta scadenza assicurazione',
+    ));
     // Anagrafica
     if (p.anagraficaIncompleta) {
       badges.add(_badge('📋 Completa anagrafica', _BadgeTone.expiring));
@@ -206,18 +215,11 @@ class _ClientCardState extends ConsumerState<ClientCard> {
 
   Widget _badge(String text, _BadgeTone tone) {
     final (bg, fg) = switch (tone) {
-      _BadgeTone.expired => (const Color(0xFFFEF2F2), const Color(0xFFDC2626)),
-      _BadgeTone.expiring => (const Color(0xFFFFFBEB), const Color(0xFF92400E)),
-      _BadgeTone.ok => (const Color(0xFFF0FDF4), const Color(0xFF166534)),
+      _BadgeTone.expired => (AppColors.docDangerBg, AppColors.docDangerText),
+      _BadgeTone.expiring => (AppColors.docWarnBg, AppColors.docWarnText),
+      _BadgeTone.ok => (AppColors.docOkBg, AppColors.docOkText),
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 12.5, fontWeight: FontWeight.w600, color: fg)),
-    );
+    return StatusPill(label: text, background: bg, foreground: fg, dense: true);
   }
 
   Widget _statsGrid() {
@@ -263,7 +265,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.4,
                       color: unpaid > 0 && label == 'Da saldare'
-                          ? const Color(0xFFDC2626)
+                          ? AppColors.dangerDark
                           : AppColors.subtle)),
             ],
           ),
@@ -280,7 +282,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
               top: BorderSide(
                   color: _open
                       ? const Color(0xFFEDE9FE)
-                      : const Color(0xFFF1F5F9))),
+                      : AppColors.slateBg)),
         ),
         child: Row(
           children: [
@@ -288,7 +290,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                 valueColor: AppColors.primary),
             cell('—', 'Sessioni residue'),
             cell('€$unpaidStr', 'Da saldare',
-                valueColor: unpaid > 0 ? const Color(0xFFDC2626) : null),
+                valueColor: unpaid > 0 ? AppColors.dangerDark : null),
           ],
         ),
       ),
@@ -361,7 +363,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
                     color: active
-                        ? const Color(0xFF7C3AED)
+                        ? Theme.of(context).colorScheme.secondary
                         : AppColors.muted)),
           ),
         ),
@@ -381,7 +383,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
     final isFuture = lessonStart(b.date, b.time).isAfter(now);
     final cancelled = b.status == 'cancelled';
     final barColor = cancelled
-        ? const Color(0xFFE5E7EB)
+        ? AppColors.borderGray
         : config.slotColor(b.slotType);
     final d = DateTime.parse(b.date);
 
@@ -389,7 +391,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: isFuture && !cancelled ? const Color(0xFFFEF2F2) : Colors.white,
+        color: isFuture && !cancelled ? AppColors.dangerSurface : Colors.white,
         borderRadius: BorderRadius.circular(9),
       ),
       child: Row(
@@ -413,7 +415,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                         fontWeight: FontWeight.w800,
                         color: cancelled
                             ? const Color(0xFFB0B6BF)
-                            : const Color(0xFF0F172A),
+                            : AppColors.navy,
                         decoration: cancelled
                             ? TextDecoration.lineThrough
                             : null)),
@@ -438,18 +440,18 @@ class _ClientCardState extends ConsumerState<ClientCard> {
     Color fg;
     if (b.status == 'cancelled') {
       text = '✕ Annullata';
-      bg = const Color(0xFFF3F4F6);
-      fg = const Color(0xFF6B7280);
+      bg = AppColors.cancelledBg;
+      fg = AppColors.cancelledText;
     } else if (b.status == 'cancellation_requested') {
       text = '⏳ Annullamento';
-      bg = const Color(0xFFFEF3C7);
-      fg = const Color(0xFF92400E);
+      bg = AppColors.cancelReqBg;
+      fg = AppColors.cancelReqText;
     } else if (b.paid &&
         (b.paymentMethod == 'gratuito' ||
             b.paymentMethod == 'lezione-gratuita')) {
       text = '🎁 Gratuita';
-      bg = const Color(0xFFF3F4F6);
-      fg = const Color(0xFF6B7280);
+      bg = AppColors.cancelledBg;
+      fg = AppColors.cancelledText;
     } else if (b.paid) {
       final method = switch (b.paymentMethod) {
         'contanti' => ' con Contanti',
@@ -467,15 +469,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
       bg = const Color(0x1AF59E0B);
       fg = const Color(0xFFD97706);
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(text,
-          textAlign: TextAlign.right,
-          style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
-    );
+    return StatusPill(label: text, background: bg, foreground: fg);
   }
 
   Widget _storicoPanel(OrgScheduleConfig config, List<Booking> movs) {
@@ -503,7 +497,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
           Container(
             width: 3,
             decoration: BoxDecoration(
-              color: free ? const Color(0xFFCBD5E1) : const Color(0xFF22C55E),
+              color: free ? AppColors.borderHover : AppColors.green500,
               borderRadius: BorderRadius.circular(3),
             ),
           ),
@@ -518,7 +512,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                     style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A))),
+                        color: AppColors.navy)),
                 const SizedBox(height: 2),
                 Text('${d.day}/${d.month} · ${b.time}',
                     style: const TextStyle(
@@ -535,7 +529,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
             style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                color: free ? const Color(0xFF9CA3AF) : const Color(0xFF15803D),
+                color: free ? const Color(0xFF9CA3AF) : AppColors.green700,
                 fontFeatures: AppText.tabularNums),
           ),
         ],

@@ -111,6 +111,7 @@ ThemeData buildAppTheme(OrgBranding branding) {
 
   return ThemeData(
     useMaterial3: true,
+    fontFamily: kFontFamily,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: AppColors.lightGray,
     splashFactory: InkSparkle.splashFactory,
@@ -120,6 +121,7 @@ ThemeData buildAppTheme(OrgBranding branding) {
       elevation: 0,
       centerTitle: false,
       titleTextStyle: TextStyle(
+        fontFamily: kFontFamily,
         fontSize: 20,
         fontWeight: FontWeight.w800,
         letterSpacing: -0.3,
@@ -139,7 +141,8 @@ ThemeData buildAppTheme(OrgBranding branding) {
       style: FilledButton.styleFrom(
         backgroundColor: primary,
         foregroundColor: Colors.white,
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        textStyle: const TextStyle(
+            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w700),
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.xl, vertical: 14),
         shape: RoundedRectangleBorder(
@@ -151,7 +154,8 @@ ThemeData buildAppTheme(OrgBranding branding) {
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.slate800,
         side: const BorderSide(color: AppColors.border),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w600),
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.xl, vertical: 14),
         shape: RoundedRectangleBorder(
@@ -162,7 +166,8 @@ ThemeData buildAppTheme(OrgBranding branding) {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: primary,
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+            fontFamily: kFontFamily, fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -182,7 +187,8 @@ ThemeData buildAppTheme(OrgBranding branding) {
         borderRadius: BorderRadius.circular(AppRadius.input),
         borderSide: BorderSide(color: primary, width: 2),
       ),
-      hintStyle: const TextStyle(color: AppColors.subtle, fontSize: 15),
+      hintStyle: const TextStyle(
+          fontFamily: kFontFamily, color: AppColors.subtle, fontSize: 15),
       labelStyle: AppText.label,
     ),
     dividerTheme: const DividerThemeData(

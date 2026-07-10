@@ -98,6 +98,7 @@
             <div class="preno-tabs">
                 <button class="preno-tab active" id="tabProssime"    onclick="switchPrenoTab('upcoming')">Prossime</button>
                 <button class="preno-tab"         id="tabPassate"     onclick="switchPrenoTab('past')">Passate</button>
+                <button class="preno-tab"         id="tabTransazioni" onclick="switchPrenoTab('transactions')">Transazioni</button>
             </div>
 
             <div class="preno-tabs-divider"></div>
@@ -279,7 +280,7 @@
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=99"></script>
+    <script src="js/data.js?v=100"></script>
     <script src="js/auth.js?v=37"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
@@ -348,8 +349,8 @@
             const user = getCurrentUser();
             if (!user) return;
 
-            // Fill hero
-            document.getElementById('prenoUserName').textContent = user.name.split(' ')[0];
+            // Fill hero — nome e cognome completi (parità §0.3 con l'app Flutter)
+            document.getElementById('prenoUserName').textContent = (user.name || '').trim();
             document.getElementById('prenoAccessCode').innerHTML = 'Codice accesso: <strong>4729 + &#9650;</strong>';
             document.getElementById('prenoAvatar').textContent = user.name.charAt(0).toUpperCase();
 
@@ -396,7 +397,9 @@
             _rtSyncTimer = setTimeout(async () => {
                 BookingStorage._invalidateAvailabilityCache(); // l'evento realtime può aver liberato/occupato un posto
                 await BookingStorage.syncFromSupabase({ ownOnly: true }).catch(e => console.warn('[rt] booking sync:', e?.message || e));
-                renderPrenoList();
+                _paymentsCache = null; // il ledger può essere cambiato (nuovo pagamento)
+                if (_currentTab === 'transactions') renderTransactions();
+                else renderPrenoList();
                 renderClientBilling();
             }, 600);
         }
@@ -489,12 +492,15 @@
             _visibleCount = INITIAL_SHOW;
             document.getElementById('tabProssime').classList.toggle('active', tab === 'upcoming');
             document.getElementById('tabPassate').classList.toggle('active',  tab === 'past');
-            renderPrenoList();
+            document.getElementById('tabTransazioni').classList.toggle('active', tab === 'transactions');
+            if (tab === 'transactions') renderTransactions();
+            else renderPrenoList();
         }
 
         function showMore() {
             _visibleCount += LOAD_MORE;
-            renderPrenoList();
+            if (_currentTab === 'transactions') renderTransactions();
+            else renderPrenoList();
         }
 
         // ── Render ────────────────────────────────────────────────────────
@@ -578,6 +584,80 @@
                     <div class="preno-card-right">
                         ${payBadge}
                         ${cancelBtn}
+                    </div>
+                </div>`;
+        }
+
+        // ── Transazioni (storico dal ledger `payments`) ──────────────────
+        // Port della tab "Transazioni" dell'app Flutter (parità §0.3). RLS:
+        // il cliente vede solo le proprie righe (client_user_id = auth.uid()).
+        let _paymentsCache = null; // null = non ancora caricato
+
+        function _fmtTxDate(d) {
+            if (!d) return '';
+            const s = String(d).slice(0, 10).split('-');
+            return s.length === 3 ? `${s[2]}/${s[1]}/${s[0]}` : d;
+        }
+
+        async function _ensurePayments() {
+            if (_paymentsCache) return _paymentsCache;
+            const user = getCurrentUser();
+            if (!user || typeof supabaseClient === 'undefined') return (_paymentsCache = []);
+            try {
+                const { data, error } = await supabaseClient
+                    .from('payments')
+                    .select('id, amount, currency, method, kind, created_at, note, period_start, period_end')
+                    .eq('client_user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(200);
+                if (error) { console.warn('[payments] fetch:', error.message); return (_paymentsCache = []); }
+                _paymentsCache = data || [];
+            } catch (e) {
+                console.warn('[payments] exception:', e?.message || e);
+                _paymentsCache = [];
+            }
+            return _paymentsCache;
+        }
+
+        async function renderTransactions() {
+            const container = document.getElementById('prenoList');
+            if (!container) return;
+            if (!_paymentsCache) container.innerHTML = `<div class="preno-empty">Caricamento…</div>`;
+            const list = await _ensurePayments();
+            if (_currentTab !== 'transactions') return; // tab cambiata nel frattempo
+            if (!list.length) {
+                container.innerHTML = `<div class="preno-empty">Nessuna transazione.</div>`;
+                return;
+            }
+            const visible = list.slice(0, _visibleCount);
+            const remaining = list.length - visible.length;
+            container.innerHTML = visible.map(buildTransactionCard).join('')
+                + (remaining > 0 ? `<button class="preno-show-more" onclick="showMore()">Mostra altro (${remaining})</button>` : '');
+        }
+
+        function buildTransactionCard(p) {
+            const cur = (typeof OrgSettings !== 'undefined') ? OrgSettings.getString('locale.currency', 'EUR') : 'EUR';
+            const sym = cur === 'EUR' ? '€' : (cur + ' ');
+            const esc = (typeof _escHtml === 'function') ? _escHtml : (s) => s;
+            const kindLabels   = { session: 'Lezione', membership: 'Abbonamento', package_purchase: 'Pacchetto', penalty_mora: 'Mora', adjustment: 'Rettifica' };
+            const methodLabels = { contanti: '💵 Contanti', 'contanti-report': '🧾 Contanti (Report)', carta: '💳 Carta', iban: '🏦 Bonifico', stripe: '💳 Stripe', gratuito: '🎁 Gratuito' };
+            const kindColors   = { session: '#3b82f6', membership: '#22c55e', package_purchase: '#f59e0b', penalty_mora: '#ef4444', adjustment: '#94a3b8' };
+            const kind   = kindLabels[p.kind] || 'Pagamento';
+            const method = methodLabels[p.method] || (p.method || '');
+            const color  = kindColors[p.kind] || '#94a3b8';
+            const amount = `${sym}${Number(p.amount || 0).toFixed(2)}`;
+            const period = (p.period_start && p.period_end) ? `Periodo: ${_fmtTxDate(p.period_start)} – ${_fmtTxDate(p.period_end)}` : '';
+            const note   = p.note ? esc(p.note) : '';
+            const meta   = [method, period, note].filter(Boolean).join(' · ');
+            return `
+                <div class="preno-card" style="border-left-color:${color}">
+                    <div class="preno-card-left">
+                        <div class="preno-card-date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>${esc(kind)}</div>
+                        <div class="preno-card-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${_fmtTxDate(p.created_at)}</div>
+                        ${meta ? `<div class="preno-card-type">${meta}</div>` : ''}
+                    </div>
+                    <div class="preno-card-right">
+                        <span class="preno-badge preno-badge-paid">${amount}</span>
                     </div>
                 </div>`;
         }

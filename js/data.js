@@ -67,12 +67,20 @@ function _lsSet(key, value) {
         return true;
     } catch (e) {
         if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
-            console.error('[localStorage] QuotaExceededError: impossibile salvare', key,
-                '— dimensione approssimativa:', Math.round((value?.length || 0) / 1024), 'KB');
-            if (typeof showToast === 'function') showToast('⚠️ Memoria locale piena. Alcuni dati potrebbero non essere salvati.', 'error', 8000);
-        } else {
-            console.error('[localStorage] Errore setItem per chiave', key, ':', e);
+            // Auto-guarigione: evicta gli snapshot rigenerabili e riprova UNA volta.
+            // Il toast (chiave critica > cache) appare solo se anche il retry fallisce.
+            _lsEvictSnapshots((value?.length || 0) || 1, key);
+            try {
+                localStorage.setItem(key, value);
+                return true;
+            } catch (e2) {
+                console.error('[localStorage] QuotaExceededError anche dopo eviction:', key,
+                    '—', Math.round((value?.length || 0) / 1024), 'KB');
+                if (typeof showToast === 'function') showToast('⚠️ Memoria locale piena. Alcuni dati potrebbero non essere salvati.', 'error', 8000);
+                return false;
+            }
         }
+        console.error('[localStorage] Errore setItem per chiave', key, ':', e);
         return false;
     }
 }
@@ -87,6 +95,101 @@ function _lsGetJSON(key, fallback) {
         return fallback;
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Governo quota localStorage (~5MB/origine). Gli snapshot-cache (bookings, stats,
+// profili, DB esercizi, schede, override) possono saturare la quota. Difesa a 3
+// livelli, TUTTA e SOLO su cache rigenerabili da Supabase (mai settings, code
+// pending, push, auth token): (1) budget globale con eviction largest-first;
+// (2) auto-guarigione in _lsSet su QuotaExceededError; (3) housekeeping al boot.
+// NB: il divoratore storico del gemello (credit_history) qui NON esiste (crediti
+// rimossi §11) → questa è una difesa preventiva.
+// ─────────────────────────────────────────────────────────────────────────────
+const _LS_SNAPSHOT_PREFIXES = [
+    'gym_bookings_cache_v2:',
+    'gym_stats_cache_v1:',
+    'gym_stats',                 // snapshot stats "grezzo" (STATS_KEY)
+    'gym_users_cache_v1',
+    'workout_plans_cache_',
+    'schede_exercises_db_v1',
+    'scheduleOverrides_',
+    '_orgSchedSnap_',
+];
+const _LS_OBSOLETE_PREFIXES = ['gym_bookings_cache_v1'];   // versioni superate → purga
+const _LS_SNAPSHOT_BUDGET  = 2_000_000;   // char totali per gli snapshot (~4MB)
+const _LS_SNAPSHOT_KEY_MAX = 900_000;     // char per singola chiave snapshot
+
+function _lsSnapshotEntries() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (_LS_SNAPSHOT_PREFIXES.some(p => k.startsWith(p))) {
+            const v = localStorage.getItem(k);
+            out.push({ key: k, size: v ? v.length : 0 });
+        }
+    }
+    return out;
+}
+
+// Evicta gli snapshot più grossi (whitelist), saltando keepKey, finché non ha
+// liberato needChars caratteri. Tocca SOLO le cache rigenerabili.
+function _lsEvictSnapshots(needChars, keepKey) {
+    if (!(needChars > 0)) return 0;
+    const entries = _lsSnapshotEntries()
+        .filter(e => e.key !== keepKey)
+        .sort((a, b) => b.size - a.size);
+    let freed = 0;
+    for (const e of entries) {
+        if (freed >= needChars) break;
+        try { localStorage.removeItem(e.key); freed += e.size; console.log('[localStorage] evict snapshot', e.key, Math.round(e.size / 1024) + 'KB'); }
+        catch (err) { /* noop */ }
+    }
+    return freed;
+}
+
+// Persiste uno snapshot cache: cap per-chiave + budget totale + retry post-eviction.
+// NON mostra MAI il toast (è cache rigenerabile: se salta, il prossimo load rifà un fetch).
+function _lsSetSnapshot(key, json) {
+    if (typeof json !== 'string') { try { json = JSON.stringify(json); } catch (e) { return false; } }
+    if (json.length > _LS_SNAPSHOT_KEY_MAX) {
+        console.warn('[localStorage] snapshot troppo grande, salto persist:', key, Math.round(json.length / 1024) + 'KB');
+        try { localStorage.removeItem(key); } catch (e) { /* noop */ }
+        return false;
+    }
+    // Rientra nel budget globale prima di scrivere.
+    const total = _lsSnapshotEntries().reduce((s, e) => s + (e.key !== key ? e.size : 0), 0);
+    if (total + json.length > _LS_SNAPSHOT_BUDGET) {
+        _lsEvictSnapshots((total + json.length) - _LS_SNAPSHOT_BUDGET, key);
+    }
+    try {
+        localStorage.setItem(key, json);
+        return true;
+    } catch (e) {
+        if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+            _lsEvictSnapshots(json.length, key);
+            try { localStorage.setItem(key, json); return true; }
+            catch (e2) { console.warn('[localStorage] snapshot non salvato dopo eviction:', key); return false; }
+        }
+        console.error('[localStorage] errore snapshot', key, e);
+        return false;
+    }
+}
+
+// Housekeeping al boot: purga chiavi obsolete + rientra nel budget → un device
+// già "pieno" si auto-ripara al primo avvio della nuova versione.
+(function _lsSnapshotHousekeeping() {
+    try {
+        const obsolete = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && _LS_OBSOLETE_PREFIXES.some(p => k.startsWith(p))) obsolete.push(k);
+        }
+        obsolete.forEach(k => { try { localStorage.removeItem(k); } catch (e) { /* noop */ } });
+        const total = _lsSnapshotEntries().reduce((s, e) => s + e.size, 0);
+        if (total > _LS_SNAPSHOT_BUDGET) _lsEvictSnapshots(total - _LS_SNAPSHOT_BUDGET, null);
+    } catch (e) { /* noop */ }
+})();
 
 // Wrappa una promise RPC con un timeout esplicito.
 // Se supera ms millisecondi, rifiuta con Error('rpc_timeout').
@@ -311,7 +414,7 @@ function _persistOrgScheduleSnapshot(orgId) {
     if (!orgId) return;
     if (!_ORG_SLOT_TYPES && !_ORG_TIME_SLOTS && !_ORG_TPL_WEEKLY && !_ORG_ACTIVE_WEEKS) return;
     try {
-        localStorage.setItem('_orgSchedSnap_' + orgId, JSON.stringify({
+        _lsSetSnapshot('_orgSchedSnap_' + orgId, JSON.stringify({
             slotTypes: _ORG_SLOT_TYPES, timeSlots: _ORG_TIME_SLOTS,
             tplWeekly: _ORG_TPL_WEEKLY, activeWeeks: _ORG_ACTIVE_WEEKS,
         }));
@@ -827,9 +930,9 @@ class BookingStorage {
         try {
             const rows = this._cache.filter(b => b._sbId && !b.id?.startsWith('_avail_'));
             if (rows.length > this._PERSIST_MAX_ROWS) return;
-            // setItem diretto (NON _lsSet): su quota piena deve fallire in silenzio e ricadere
-            // sul full al prossimo load, non mostrare un toast all'utente.
-            localStorage.setItem(this._persistKeyFor(syncKey, identity), JSON.stringify({
+            // _lsSetSnapshot: cap per-chiave + budget + eviction, mai toast (su quota
+            // fallisce in silenzio → full al prossimo load).
+            _lsSetSnapshot(this._persistKeyFor(syncKey, identity), JSON.stringify({
                 savedAt:     Date.now(),
                 clearedAt:   localStorage.getItem('dataLastCleared') || '0',
                 fingerprint: this._bkFingerprint || null,
@@ -2342,7 +2445,7 @@ class UserStorage {
                 clearedAt: (typeof localStorage !== 'undefined' && localStorage.getItem('dataLastCleared')) || '0',
                 org: (typeof window !== 'undefined' && window._orgId) ? window._orgId : 'anon',
             };
-            localStorage.setItem(this._USERS_SNAP_KEY, JSON.stringify(payload));
+            _lsSetSnapshot(this._USERS_SNAP_KEY, JSON.stringify(payload));
         } catch (_) {}
     }
     static persistSnapshot() { this._persistUsersSnapshot(); }   // API pubblica per i write admin
@@ -2583,7 +2686,7 @@ class WorkoutPlanStorage {
         } catch { return false; }
     }
     static _saveToLocalStorage(adminMode) {
-        try { localStorage.setItem(this._lsKey(adminMode), JSON.stringify({ ts: Date.now(), data: this._cache })); } catch { /* quota: ignora */ }
+        _lsSetSnapshot(this._lsKey(adminMode), JSON.stringify({ ts: Date.now(), data: this._cache }));
     }
 
     // Teardown logout (H2): svuota la cache in memoria + le chiavi localStorage TTL

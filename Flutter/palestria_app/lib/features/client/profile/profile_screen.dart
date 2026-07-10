@@ -5,21 +5,42 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/auth_repository.dart';
 import '../../../core/auth/normalize.dart';
+import '../../../core/data/schedule_config.dart';
+import '../../../core/models/client_payment.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/org_theme.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import '../../shared/area_switch.dart';
+import '../booking/booking_card.dart';
+import '../booking/booking_providers.dart';
 import 'billing_status.dart';
 import 'edit_profile_sheet.dart';
 import 'weekly_chart_sheet.dart';
 
-/// Profilo cliente (port di prenotazioni.html §7.1-7.3): hero gradiente
-/// scuro→viola, warning cert/anagrafica, card stato pagamenti.
-class ProfileScreen extends ConsumerWidget {
+/// Profilo cliente (port di prenotazioni.html §7): hero gradiente scuro→viola,
+/// warning cert/anagrafica, card stato pagamenti e le tre sezioni
+/// **Prossime / Passate / Transazioni** (queste ultime dal ledger `payments`).
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  /// 0 = Prossime, 1 = Passate, 2 = Transazioni.
+  int _tab = 0;
+  int _visible = 5;
+
+  void _selectTab(int i) => setState(() {
+        _tab = i;
+        _visible = 5;
+      });
+
+  @override
+  Widget build(BuildContext context) {
     final profileAsync = ref.watch(userProfileProvider);
 
     return Scaffold(
@@ -34,17 +55,21 @@ class ProfileScreen extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(userProfileProvider);
             ref.invalidate(clientBillingStatusProvider);
+            ref.invalidate(ownBookingsProvider);
+            ref.invalidate(ownPaymentsProvider);
           },
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               if (p != null) ...[
-                _hero(context, ref, p),
+                _hero(context, p),
                 const SizedBox(height: AppSpacing.md),
-                ..._warnings(context, ref, p),
-                _billingCard(ref),
+                ..._warnings(context, p),
+                _billingCard(),
                 const SizedBox(height: AppSpacing.md),
-                _infoCard(p),
+                _tabsBar(),
+                const SizedBox(height: AppSpacing.md),
+                ..._tabContent(),
                 const SizedBox(height: AppSpacing.md),
                 OutlinedButton.icon(
                   onPressed: () => showWeeklyChart(context),
@@ -53,12 +78,16 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: AppSpacing.xl),
-              FilledButton.tonal(
+              OutlinedButton(
                 onPressed: () async {
                   await ref.read(authRepositoryProvider).logout();
                   await ref.read(orgBrandingProvider.notifier).reset();
                   if (context.mounted) context.go('/login');
                 },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                  side: const BorderSide(color: AppColors.danger),
+                ),
                 child: const Text('Esci'),
               ),
               const SizedBox(height: AppSpacing.xxxl),
@@ -69,43 +98,24 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  /// Hero profilo (§7.1): gradiente #1a1a1a → #2a1f3d → #6D28D9.
-  Widget _hero(BuildContext context, WidgetRef ref, UserProfile p) {
-    final firstName = p.name.split(' ').first;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.xl, vertical: AppSpacing.lg),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1A1A1A), Color(0xFF2A1F3D), Color(0xFF6D28D9)],
-          stops: [0, 0.5, 1],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x406D28D9),
-              blurRadius: 20,
-              offset: Offset(0, 4)),
-        ],
-      ),
+  /// Hero profilo (§7.1): hero scura condivisa (`DarkHero`) con avatar brand,
+  /// **nome e cognome** e bottone modifica.
+  Widget _hero(BuildContext context, UserProfile p) {
+    final fullName = p.name.trim();
+    final initial = fullName.isEmpty ? '?' : fullName[0].toUpperCase();
+    return DarkHero(
       child: Row(
         children: [
           Container(
             width: 48,
             height: 48,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFA78BFA), Color(0xFF8B5CF6), Color(0xFF6D28D9)],
-              ),
+              gradient: brandGradient(context),
             ),
             alignment: Alignment.center,
             child: Text(
-              firstName.isEmpty ? '?' : firstName[0].toUpperCase(),
+              initial,
               style: const TextStyle(
                   fontSize: 21,
                   fontWeight: FontWeight.w700,
@@ -115,10 +125,13 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
-              firstName,
+              fullName.isEmpty ? '—' : fullName,
               style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white),
               overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
           ),
           IconButton(
@@ -137,7 +150,7 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   /// Warning anagrafica/certificato (§7.2), possono cumularsi.
-  List<Widget> _warnings(BuildContext context, WidgetRef ref, UserProfile p) {
+  List<Widget> _warnings(BuildContext context, UserProfile p) {
     final warnings = <Widget>[];
 
     Widget banner(String text, {required bool expired, VoidCallback? onTap}) =>
@@ -148,13 +161,11 @@ class ProfileScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg, vertical: 11),
             decoration: BoxDecoration(
-              color: expired ? const Color(0xFFFEF2F2) : const Color(0xFFFFFBEB),
+              color: expired ? AppColors.dangerSurface : AppColors.warnSurface,
               borderRadius: BorderRadius.circular(12),
               border: Border(
                 left: BorderSide(
-                  color: expired
-                      ? const Color(0xFFDC2626)
-                      : const Color(0xFFF59E0B),
+                  color: expired ? AppColors.dangerDark : AppColors.amber,
                   width: 4,
                 ),
               ),
@@ -164,9 +175,7 @@ class ProfileScreen extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: expired
-                    ? const Color(0xFFDC2626)
-                    : const Color(0xFF92400E),
+                color: expired ? AppColors.dangerDark : AppColors.docWarnText,
               ),
             ),
           ),
@@ -184,13 +193,29 @@ class ProfileScreen extends ConsumerWidget {
           expired: false,
           onTap: () => showEditProfileSheet(context, ref, p)));
     }
+
+    // Il warning "Imposta" ha senso solo se il cliente può davvero
+    // impostare la scadenza (setting org 'cert_scadenza_editable').
+    final certEditable = ref
+            .watch(orgSettingsProvider)
+            .value
+            ?.getBool('cert_scadenza_editable', true) ??
+        true;
     if (p.medicalCertExpiry == null) {
-      warnings.add(banner('📋 Imposta Cert. Medico',
-          expired: false,
-          onTap: () => showEditProfileSheet(context, ref, p)));
+      if (certEditable) {
+        warnings.add(banner('📋 Imposta Cert. Medico',
+            expired: false,
+            onTap: () => showEditProfileSheet(context, ref, p)));
+      }
     } else {
-      final days =
-          p.medicalCertExpiry!.difference(DateTime.now()).inDays;
+      // Normalizza "oggi" e la scadenza a mezzanotte PRIMA del diff:
+      // altrimenti l'ora corrente del giorno fa "perdere" un giorno
+      // (mostrando es. "-1 giorno") per gran parte della giornata.
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final expiry = p.medicalCertExpiry!;
+      final expiryDay = DateTime(expiry.year, expiry.month, expiry.day);
+      final days = expiryDay.difference(today).inDays;
       if (days < 0) {
         warnings.add(banner('⚠️ Certificato medico scaduto', expired: true));
       } else if (days <= 30) {
@@ -203,15 +228,15 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   /// Card stato pagamenti (§7.3).
-  Widget _billingCard(WidgetRef ref) {
+  Widget _billingCard() {
     final statusAsync = ref.watch(clientBillingStatusProvider);
     final status = statusAsync.value;
     if (status == null) return const SizedBox.shrink();
 
     final (border, bg) = switch (status.tone) {
-      'ok' => (const Color(0xFF22C55E), const Color(0xFFF0FDF4)),
-      'warn' => (const Color(0xFFF59E0B), const Color(0xFFFFFBEB)),
-      _ => (AppColors.border, Colors.white),
+      'ok' => (AppColors.green500, AppColors.successSurface),
+      'warn' => (AppColors.amber, AppColors.warnSurface),
+      _ => (AppColors.border, AppColors.surface),
     };
 
     return Container(
@@ -219,7 +244,7 @@ class ProfileScreen extends ConsumerWidget {
       decoration: BoxDecoration(
         color: bg,
         border: Border.all(color: border, width: 1.5),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -233,10 +258,10 @@ class ProfileScreen extends ConsumerWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
-                        color: Color(0xFF1A1A1A))),
+                        color: AppColors.darkBg)),
                 Text(status.detail,
                     style: const TextStyle(
-                        fontSize: 13.5, color: Color(0xFF64748B))),
+                        fontSize: 13.5, color: AppColors.muted)),
               ],
             ),
           ),
@@ -245,49 +270,268 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _infoCard(UserProfile p) {
-    Widget row(IconData icon, String? value) => value == null || value.isEmpty
-        ? const SizedBox.shrink()
-        : Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                Icon(icon, size: 18, color: AppColors.muted),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                    child: Text(value, style: const TextStyle(fontSize: 14.5))),
-              ],
+  /// Pill-bar Prossime / Passate / Transazioni (stile .preno-tabs web).
+  Widget _tabsBar() {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    Widget tab(String label, int index) => Expanded(
+          child: GestureDetector(
+            onTap: () => _selectTab(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: _tab == index ? primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(11),
+                boxShadow: _tab == index
+                    ? [
+                        BoxShadow(
+                            color: primary.withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3)),
+                      ]
+                    : null,
+              ),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: _tab == index ? Colors.white : AppColors.muted,
+                ),
+              ),
             ),
-          );
+          ),
+        );
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          tab('Prossime', 0),
+          tab('Passate', 1),
+          tab('Transazioni', 2),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _tabContent() =>
+      _tab == 2 ? _transactionsContent() : _bookingsContent(upcoming: _tab == 0);
+
+  /// Contenuto Prossime/Passate: card prenotazioni con paginazione 5 → +20.
+  List<Widget> _bookingsContent({required bool upcoming}) {
+    final bookingsAsync = ref.watch(ownBookingsProvider);
+    final config =
+        ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
+
+    return bookingsAsync.when(
+      loading: () => const [
+        Padding(padding: EdgeInsets.all(AppSpacing.xl), child: AppLoading()),
+      ],
+      error: (e, _) => [
+        AppErrorRetry(onRetry: () => ref.invalidate(ownBookingsProvider)),
+      ],
+      data: (all) {
+        final now = DateTime.now();
+        final list = all
+            .where((b) => upcoming
+                ? lessonStart(b.date, b.time).isAfter(now)
+                : !lessonStart(b.date, b.time).isAfter(now))
+            .toList()
+          ..sort((a, b) => upcoming
+              ? lessonStart(a.date, a.time)
+                  .compareTo(lessonStart(b.date, b.time))
+              : lessonStart(b.date, b.time)
+                  .compareTo(lessonStart(a.date, a.time)));
+
+        final visible = list.take(_visible).toList();
+        final remaining = list.length - visible.length;
+
+        if (visible.isEmpty) {
+          return [
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: AppEmptyState(
+                title: upcoming
+                    ? 'Nessuna prenotazione futura.'
+                    : 'Nessuna prenotazione passata.',
+                compact: true,
+              ),
+            ),
+          ];
+        }
+
+        return [
+          for (final b in visible)
+            BookingCard(booking: b, config: config, showCancel: upcoming),
+          if (remaining > 0) _showMoreButton(remaining),
+        ];
+      },
+    );
+  }
+
+  /// Contenuto Transazioni: storico dal ledger `payments` (5 → +20).
+  List<Widget> _transactionsContent() {
+    final paymentsAsync = ref.watch(ownPaymentsProvider);
+
+    return paymentsAsync.when(
+      loading: () => const [
+        Padding(padding: EdgeInsets.all(AppSpacing.xl), child: AppLoading()),
+      ],
+      error: (e, _) => [
+        AppErrorRetry(onRetry: () => ref.invalidate(ownPaymentsProvider)),
+      ],
+      data: (all) {
+        final visible = all.take(_visible).toList();
+        final remaining = all.length - visible.length;
+
+        if (visible.isEmpty) {
+          return [
+            const AppCard(
+              padding: EdgeInsets.zero,
+              child: AppEmptyState(
+                title: 'Nessuna transazione.',
+                compact: true,
+              ),
+            ),
+          ];
+        }
+
+        return [
+          for (final p in visible) _transactionCard(p),
+          if (remaining > 0) _showMoreButton(remaining),
+        ];
+      },
+    );
+  }
+
+  Widget _showMoreButton(int remaining) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: OutlinedButton(
+        onPressed: () => setState(() => _visible += 20),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          side: const BorderSide(color: AppColors.borderGray, width: 1.5),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: Text('Mostra altro ($remaining)'),
+      ),
+    );
+  }
+
+  Widget _transactionCard(ClientPayment p) {
+    final cur = ref.watch(orgSettingsProvider).value?.getString(
+              'locale.currency',
+              'EUR',
+            ) ??
+        'EUR';
+    final sym = cur == 'EUR' ? '€' : '$cur ';
+    final color = _kindColor(p.kind);
+    final period = (p.periodStart != null && p.periodEnd != null)
+        ? 'Periodo: ${_fmtDate(p.periodStart)} – ${_fmtDate(p.periodEnd)}'
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border(left: BorderSide(color: color, width: 5)),
         boxShadow: AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          row(Icons.person_outline, p.name),
-          row(Icons.mail_outline, p.email),
-          row(Icons.phone_outlined, p.whatsapp),
-          row(Icons.badge_outlined, p.codiceFiscale),
-          row(
-              Icons.home_outlined,
-              [p.indirizzoVia, p.indirizzoPaese, p.indirizzoCap]
-                  .where((s) => s != null && s.isNotEmpty)
-                  .join(', ')),
-          if (p.medicalCertExpiry != null)
-            row(
-                Icons.medical_information_outlined,
-                'Cert. medico: '
-                '${p.medicalCertExpiry!.day.toString().padLeft(2, '0')}/'
-                '${p.medicalCertExpiry!.month.toString().padLeft(2, '0')}/'
-                '${p.medicalCertExpiry!.year}'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(_kindLabel(p.kind),
+                    style: const TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w700)),
+              ),
+              Text(
+                '$sym${p.amount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                    fontFeatures: AppText.tabularNums),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              const Icon(Icons.calendar_today_outlined,
+                  size: 13, color: AppColors.muted),
+              const SizedBox(width: 6),
+              Text(_fmtDate(p.createdAt),
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.muted)),
+              const Spacer(),
+              Text(_methodLabel(p.method),
+                  style: const TextStyle(
+                      fontSize: 12.5, color: AppColors.subtle)),
+            ],
+          ),
+          if (period != null) ...[
+            const SizedBox(height: 4),
+            Text(period,
+                style:
+                    const TextStyle(fontSize: 12, color: AppColors.subtle)),
+          ],
+          if (p.note != null && p.note!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(p.note!,
+                style:
+                    const TextStyle(fontSize: 12, color: AppColors.subtle)),
+          ],
         ],
       ),
     );
   }
+
+  static String _kindLabel(String kind) => switch (kind) {
+        'session' => 'Lezione',
+        'membership' => 'Abbonamento',
+        'package_purchase' => 'Pacchetto',
+        'penalty_mora' => 'Mora',
+        'adjustment' => 'Rettifica',
+        _ => 'Pagamento',
+      };
+
+  static String _methodLabel(String method) => switch (method) {
+        'contanti' => '💵 Contanti',
+        'contanti-report' => '🧾 Contanti (Report)',
+        'carta' => '💳 Carta',
+        'iban' => '🏦 Bonifico',
+        'stripe' => '💳 Stripe',
+        'gratuito' => '🎁 Gratuito',
+        _ => method,
+      };
+
+  static Color _kindColor(String kind) => switch (kind) {
+        'session' => AppColors.navy,
+        'membership' => AppColors.green500,
+        'package_purchase' => AppColors.amber,
+        'penalty_mora' => AppColors.danger,
+        _ => AppColors.subtle,
+      };
+
+  static String _fmtDate(DateTime? d) => d == null
+      ? ''
+      : '${d.day.toString().padLeft(2, '0')}/'
+          '${d.month.toString().padLeft(2, '0')}/${d.year}';
 }

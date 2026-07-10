@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 const _months = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -81,7 +82,15 @@ class _ReportViewState extends ConsumerState<ReportView> {
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppLoading();
+          }
+          if (snap.hasError) {
+            // Senza questo ramo un errore di rete finirebbe silenziosamente
+            // trattato come "nessun report" (snap.data null → lista vuota).
+            return AppErrorRetry(
+              message: 'Errore caricamento report.',
+              onRetry: _reload,
+            );
           }
           if (ref.read(sessionProvider) == null) {
             return const Center(
@@ -188,12 +197,7 @@ class _ReportViewState extends ConsumerState<ReportView> {
           right: AppSpacing.lg,
           bottom: AppSpacing.lg),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF7C3AED)],
-          stops: [0, 0.6, 1.3],
-        ),
+        gradient: AppGradients.workoutHero,
         borderRadius: BorderRadius.all(Radius.circular(18)),
       ),
       child: Column(
@@ -248,6 +252,7 @@ class _ReportViewState extends ConsumerState<ReportView> {
   }
 
   Widget _toneCard(_Tone t, bool done, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -258,7 +263,7 @@ class _ReportViewState extends ConsumerState<ReportView> {
             borderRadius: BorderRadius.circular(14),
             boxShadow: AppShadows.card,
             border: Border.all(
-                color: done ? AppColors.primary : AppColors.border,
+                color: done ? cs.primary : AppColors.border,
                 width: done ? 1.5 : 1),
           ),
           child: Column(
@@ -276,7 +281,7 @@ class _ReportViewState extends ConsumerState<ReportView> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontSize: 10.5,
-                      color: done ? AppColors.primaryDark : AppColors.subtle)),
+                      color: done ? cs.secondary : AppColors.subtle)),
             ],
           ),
         ),
@@ -313,11 +318,10 @@ class _ReportViewState extends ConsumerState<ReportView> {
 
   // ── Flusso generazione ────────────────────────────────────────────────────
   Future<void> _generate(String yearMonth, String tone) async {
-    final messenger = ScaffoldMessenger.of(context);
     final client = ref.read(supabaseProvider);
     final uid = ref.read(sessionProvider)?.user.id;
     if (uid == null) {
-      messenger.showSnackBar(const SnackBar(content: Text('Non sei loggato.')));
+      AppSnack.error(context, 'Non sei loggato.');
       return;
     }
     // Consenso GDPR.
@@ -333,8 +337,8 @@ class _ReportViewState extends ConsumerState<ReportView> {
       try {
         await client.rpc('set_report_ai_consent', params: {'p_consent': true});
       } catch (e) {
-        messenger.showSnackBar(
-            SnackBar(content: Text('Errore nel salvare il consenso: $e')));
+        if (!mounted) return;
+        AppSnack.error(context, 'Errore nel salvare il consenso: $e');
         return;
       }
     }
@@ -387,9 +391,8 @@ class _ReportViewState extends ConsumerState<ReportView> {
             FilledButton(
               onPressed: () {
                 if (!checked) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                      content:
-                          Text('Devi spuntare la casella per procedere.')));
+                  AppSnack.error(
+                      ctx, 'Devi spuntare la casella per procedere.');
                   return;
                 }
                 Navigator.pop(ctx, true);
@@ -402,21 +405,35 @@ class _ReportViewState extends ConsumerState<ReportView> {
     );
   }
 
-  Future<void> _startGeneration(String yearMonth, String tone) async {
-    final messenger = ScaffoldMessenger.of(context);
+  Future<void> _startGeneration(String yearMonth, String tone,
+      {bool isRegen = false}) async {
     final navigator = Navigator.of(context, rootNavigator: true);
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const AlertDialog(
+      builder: (_) => AlertDialog(
         content: Row(
           children: [
-            SizedBox(
+            const SizedBox(
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2.5)),
-            SizedBox(width: 16),
-            Expanded(child: Text('Generazione in corso...')),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      '${isRegen ? 'Rigenerazione' : 'Generazione'} in corso...'),
+                  const SizedBox(height: 4),
+                  const Text(
+                      'Sto analizzando i tuoi dati e scrivendo il report.',
+                      style: TextStyle(
+                          fontSize: 12.5, color: AppColors.muted)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -433,16 +450,15 @@ class _ReportViewState extends ConsumerState<ReportView> {
         },
       );
       navigator.pop(); // chiude loading
+      if (!mounted) return;
       final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
       if (data['success'] != true) {
         if (data['code'] == 'REGEN_LIMIT_REACHED') {
-          messenger.showSnackBar(SnackBar(
-              content: Text(
-                  'Hai raggiunto il limite di ${data['limit'] ?? _maxGenerations} generazioni per questo mese.')));
+          AppSnack.error(context,
+              'Hai raggiunto il limite di ${data['limit'] ?? _maxGenerations} generazioni per questo mese. Non puoi rigenerare ulteriormente.');
         } else {
-          messenger.showSnackBar(SnackBar(
-              content: Text(
-                  'Errore nella generazione: ${data['error'] ?? 'richiesta fallita'}')));
+          AppSnack.error(context,
+              'Errore nella generazione: ${data['error'] ?? 'richiesta fallita'}');
         }
         return;
       }
@@ -455,7 +471,8 @@ class _ReportViewState extends ConsumerState<ReportView> {
       if (created != null && mounted) _openDetail(created);
     } catch (e) {
       navigator.pop();
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (!mounted) return;
+      AppSnack.error(context, 'Errore: $e');
     }
   }
 
@@ -479,7 +496,7 @@ class _ReportViewState extends ConsumerState<ReportView> {
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: AppColors.borderHover,
                   borderRadius: BorderRadius.circular(2)),
             ),
             Padding(

@@ -7,149 +7,26 @@ import '../../../core/models/booking.dart';
 import '../../../core/theme/tokens.dart';
 import 'booking_providers.dart';
 
-/// "Le mie prenotazioni" (port di prenotazioni.html §7.4): tab
-/// Prossime/Passate, paginazione 5 → +20, card con badge e regole di annullo.
-class MyBookingsView extends ConsumerStatefulWidget {
-  const MyBookingsView({super.key});
+/// Card di una prenotazione del cliente (port di prenotazioni.html §7.4):
+/// data/ora/tipo, badge pagamento e regole di annullo. Riusata nelle tab
+/// Prossime/Passate del Profilo.
+class BookingCard extends ConsumerWidget {
+  const BookingCard({
+    super.key,
+    required this.booking,
+    required this.config,
+    required this.showCancel,
+  });
+
+  final Booking booking;
+  final OrgScheduleConfig config;
+
+  /// true nella tab "Prossime": mostra l'azione di annullo/richiesta.
+  final bool showCancel;
 
   @override
-  ConsumerState<MyBookingsView> createState() => _MyBookingsViewState();
-}
-
-class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
-  bool _showUpcoming = true;
-  int _visible = 5;
-
-  @override
-  Widget build(BuildContext context) {
-    final bookingsAsync = ref.watch(ownBookingsProvider);
-    final config =
-        ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
-    final primary = Theme.of(context).colorScheme.primary;
-
-    return bookingsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Errore di caricamento: $e')),
-      data: (all) {
-        final now = DateTime.now();
-        final upcoming = all
-            .where((b) => lessonStart(b.date, b.time).isAfter(now))
-            .toList()
-          ..sort((a, b) => lessonStart(a.date, a.time)
-              .compareTo(lessonStart(b.date, b.time)));
-        final past = all
-            .where((b) => !lessonStart(b.date, b.time).isAfter(now))
-            .toList()
-          ..sort((a, b) => lessonStart(b.date, b.time)
-              .compareTo(lessonStart(a.date, a.time)));
-
-        final list = _showUpcoming ? upcoming : past;
-        final visible = list.take(_visible).toList();
-        final remaining = list.length - visible.length;
-
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(ownBookingsProvider),
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            children: [
-              _tabs(primary),
-              const SizedBox(height: AppSpacing.md),
-              if (visible.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xxl),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _showUpcoming
-                          ? 'Nessuna prenotazione futura.'
-                          : 'Nessuna prenotazione passata.',
-                      style: AppText.meta,
-                    ),
-                  ),
-                )
-              else ...[
-                for (final b in visible) _bookingCard(b, config),
-                if (remaining > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: AppSpacing.sm),
-                    child: OutlinedButton(
-                      onPressed: () => setState(() => _visible += 20),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: primary,
-                        side: const BorderSide(
-                            color: Color(0xFFE5E7EB), width: 1.5),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text('Mostra altro ($remaining)'),
-                    ),
-                  ),
-              ],
-              const SizedBox(height: AppSpacing.xxxl),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _tabs(Color primary) {
-    Widget tab(String label, bool active, VoidCallback onTap) => Expanded(
-          child: GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              decoration: BoxDecoration(
-                color: active ? primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: active
-                    ? [
-                        BoxShadow(
-                            color: primary.withValues(alpha: 0.35),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3)),
-                      ]
-                    : null,
-              ),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: active ? Colors.white : AppColors.muted,
-                ),
-              ),
-            ),
-          ),
-        );
-
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          tab('Prossime', _showUpcoming, () => setState(() {
-                _showUpcoming = true;
-                _visible = 5;
-              })),
-          tab('Passate', !_showUpcoming, () => setState(() {
-                _showUpcoming = false;
-                _visible = 5;
-              })),
-        ],
-      ),
-    );
-  }
-
-  Widget _bookingCard(Booking b, OrgScheduleConfig config) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final b = booking;
     final color = config.slotColor(b.slotType);
     final day = parseYmd(b.date);
 
@@ -186,19 +63,19 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
                 Row(
                   children: [
                     const Icon(Icons.schedule,
-                        size: 14, color: Color(0xFF666666)),
+                        size: 14, color: AppColors.muted),
                     const SizedBox(width: 6),
                     Text(b.time,
                         style: const TextStyle(
                             fontSize: 13.5,
-                            color: Color(0xFF666666),
+                            color: AppColors.muted,
                             fontFeatures: AppText.tabularNums)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(config.slotName(b.slotType),
                     style: const TextStyle(
-                        fontSize: 12.5, color: Color(0xFF999999))),
+                        fontSize: 12.5, color: AppColors.subtle)),
               ],
             ),
           ),
@@ -207,7 +84,7 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
             children: [
               _paymentBadge(b),
               const SizedBox(height: 8),
-              if (_showUpcoming) _cancelAction(b),
+              if (showCancel) _cancelAction(context, ref, b),
             ],
           ),
         ],
@@ -255,16 +132,15 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
   /// Regole di annullo (§7.4): grace 10 min → sempre; group-class > 3 gg o
   /// altri tipi > 24 h → diretto; 2–24 h (non group-class) → richiesta;
   /// altrimenti bloccato.
-  Widget _cancelAction(Booking b) {
+  Widget _cancelAction(BuildContext context, WidgetRef ref, Booking b) {
     if (b.status == 'cancelled') return const SizedBox.shrink();
     if (b.status == 'cancellation_requested') {
-      return _chip('⏳ Annullamento in attesa', const Color(0xFFFEF3C7),
-          const Color(0xFF92400E));
+      return _chip('⏳ Annullamento in attesa', AppColors.cancelReqBg,
+          AppColors.cancelReqText);
     }
 
     final now = DateTime.now();
-    final msToLesson =
-        lessonStart(b.date, b.time).difference(now);
+    final msToLesson = lessonStart(b.date, b.time).difference(now);
     if (msToLesson.isNegative) return const SizedBox.shrink();
 
     final inGrace = b.createdAt != null &&
@@ -278,16 +154,18 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
         msToLesson <= const Duration(hours: 24);
 
     if (direct) {
-      return _ghostButton('Annulla prenotazione', () => _cancelDirect(b));
+      return _ghostButton(
+          'Annulla prenotazione', () => _cancelDirect(context, ref, b));
     }
     if (canRequest) {
-      return _ghostButton('Richiedi annullamento', () => _requestCancel(b));
+      return _ghostButton(
+          'Richiedi annullamento', () => _requestCancel(context, ref, b));
     }
     final reason = msToLesson <= const Duration(hours: 2)
         ? 'meno di 2 ore'
         : 'slot prenotato entro 3 giorni';
-    return _chip('🔒 Non annullabile ($reason)', const Color(0xFFF3F4F6),
-        const Color(0xFF6B7280));
+    return _chip('🔒 Non annullabile ($reason)', AppColors.cancelledBg,
+        AppColors.cancelledText);
   }
 
   Widget _chip(String text, Color bg, Color fg) => Container(
@@ -302,33 +180,32 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
   Widget _ghostButton(String text, VoidCallback onTap) => OutlinedButton(
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFFDC2626),
-          side: const BorderSide(color: Color(0xFFE5E7EB)),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          foregroundColor: AppColors.dangerDark,
+          side: const BorderSide(color: AppColors.borderGray),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           minimumSize: const Size(0, 30),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           textStyle:
               const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
         ),
         child: Text(text),
       );
 
-  Future<void> _cancelDirect(Booking b) async {
+  Future<void> _cancelDirect(
+      BuildContext context, WidgetRef ref, Booking b) async {
     final message = b.slotType == 'group-class'
         ? 'Confermare l\'annullamento?\n\nLa prenotazione sarà annullata e lo slot diventerà una Lezione di Gruppo aperta al pubblico.'
         : 'Confermare l\'annullamento della prenotazione?';
-    final confirmLabel = b.slotType == 'group-class'
-        ? 'Annulla prenotazione'
-        : 'Conferma';
-    final ok = await _confirmDialog(message, confirmLabel,
+    final confirmLabel =
+        b.slotType == 'group-class' ? 'Annulla prenotazione' : 'Conferma';
+    final ok = await _confirmDialog(context, message, confirmLabel,
         cancelLabel: b.slotType == 'group-class' ? 'Indietro' : 'Annulla');
     if (ok != true || b.sbId == null) return;
 
     final repo = await ref.read(bookingRepositoryProvider.future);
     final result = await repo.cancelBooking(b.sbId!);
-    if (!mounted) return;
+    if (!context.mounted) return;
     if (!result.ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(result.error ?? 'Errore di rete. Riprova.')));
@@ -338,8 +215,10 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
     ref.invalidate(availabilityProvider);
   }
 
-  Future<void> _requestCancel(Booking b) async {
+  Future<void> _requestCancel(
+      BuildContext context, WidgetRef ref, Booking b) async {
     final ok = await _confirmDialog(
+      context,
       'Richiedere l\'annullamento?\n\n• Se qualcuno prenota al tuo posto, la prenotazione sarà annullata.\n• Se entro 2 ore dalla lezione nessuno ha preso il tuo posto, l\'annullamento viene negato e dovrai presentarti.',
       'Richiedi annullamento',
     );
@@ -347,7 +226,7 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
 
     final repo = await ref.read(bookingRepositoryProvider.future);
     final result = await repo.requestCancellation(b.sbId!);
-    if (!mounted) return;
+    if (!context.mounted) return;
     if (!result.ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(result.error ?? 'Errore di rete. Riprova.')));
@@ -356,7 +235,8 @@ class _MyBookingsViewState extends ConsumerState<MyBookingsView> {
     ref.invalidate(ownBookingsProvider);
   }
 
-  Future<bool?> _confirmDialog(String message, String confirmLabel,
+  Future<bool?> _confirmDialog(
+      BuildContext context, String message, String confirmLabel,
       {String cancelLabel = 'Annulla'}) {
     return showDialog<bool>(
       context: context,

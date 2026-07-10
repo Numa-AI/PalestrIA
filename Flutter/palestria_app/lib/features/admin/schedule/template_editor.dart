@@ -5,6 +5,7 @@ import '../../../core/data/schedule_admin.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/theme/org_theme.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 const _weekdayOrder = [1, 2, 3, 4, 5, 6, 0];
 const _weekdayShort = {
@@ -29,13 +30,21 @@ class _TemplateEditorSectionState
 
   @override
   Widget build(BuildContext context) {
-    final templates = ref.watch(allTemplatesProvider).value ?? const [];
-    final types = (ref.watch(allSlotTypesProvider).value ?? const [])
+    final templatesAsync = ref.watch(allTemplatesProvider);
+    final typesAsync = ref.watch(allSlotTypesProvider);
+    final slotsAsync = ref.watch(allTimeSlotsProvider);
+    final templates = templatesAsync.value ?? const [];
+    final types = (typesAsync.value ?? const [])
         .where((t) => (t['is_active'] as bool?) ?? true)
         .toList();
-    final slots = (ref.watch(allTimeSlotsProvider).value ?? const [])
+    final slots = (slotsAsync.value ?? const [])
         .where((t) => (t['is_active'] as bool?) ?? true)
         .toList();
+    final loading = (templatesAsync.isLoading && templates.isEmpty) ||
+        (typesAsync.isLoading && types.isEmpty) ||
+        (slotsAsync.isLoading && slots.isEmpty);
+    final hasError =
+        templatesAsync.hasError || typesAsync.hasError || slotsAsync.hasError;
 
     // Seleziona il primo template se nessuno scelto.
     var tid = _templateId;
@@ -45,28 +54,90 @@ class _TemplateEditorSectionState
       tid = templates.isEmpty ? null : templates.first['id'] as String;
     }
 
-    return Container(
+    Widget body;
+    if (loading) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+        child: AppLoading(),
+      );
+    } else if (hasError) {
+      body = AppErrorRetry(
+        onRetry: () {
+          ref.invalidate(allTemplatesProvider);
+          ref.invalidate(allSlotTypesProvider);
+          ref.invalidate(allTimeSlotsProvider);
+        },
+      );
+    } else if (templates.isEmpty) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Text('Nessuna settimana tipo. Creane una per iniziare.',
+            style: AppText.meta),
+      );
+    } else {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: tid,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                      labelText: 'Settimana', isDense: true),
+                  items: [
+                    for (final t in templates)
+                      DropdownMenuItem(
+                          value: t['id'] as String,
+                          child: Text((t['name'] as String?) ?? '')),
+                  ],
+                  onChanged: (v) => setState(() => _templateId = v),
+                ),
+              ),
+              IconButton(
+                  icon: const Icon(Icons.edit, size: 18),
+                  tooltip: 'Rinomina',
+                  onPressed: tid == null ? null : () => _renameTemplate(tid!)),
+              IconButton(
+                  icon: const Icon(Icons.delete_outline,
+                      size: 18, color: AppColors.dangerDark),
+                  tooltip: 'Elimina',
+                  onPressed: tid == null ? null : () => _deleteTemplate(tid!)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (slots.isEmpty || types.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Text(
+                  'Servono almeno una fascia oraria e un tipo di slot attivi '
+                  'per comporre la griglia.',
+                  style: AppText.meta),
+            )
+          else ...[
+            _weekdayTabs(context),
+            const SizedBox(height: AppSpacing.sm),
+            _cellsForDay(tid!, slots, types),
+          ],
+        ],
+      );
+    }
+
+    return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-      ),
+      radius: AppRadius.cardLg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               const Expanded(
-                child: Text('🗓️ Settimana tipo',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                child: Text('🗓️ Settimana tipo', style: AppText.cardTitle),
               ),
               IconButton(
-                icon: const Icon(Icons.add_circle, color: AppColors.primary),
+                icon: Icon(Icons.add_circle,
+                    color: Theme.of(context).colorScheme.primary),
                 tooltip: 'Nuova settimana',
                 onPressed: _newTemplate,
               ),
@@ -77,62 +148,14 @@ class _TemplateEditorSectionState
               'singole settimane in "Attiva settimane".',
               style: AppText.meta),
           const SizedBox(height: AppSpacing.sm),
-          if (templates.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Text('Nessuna settimana tipo. Creane una per iniziare.',
-                  style: AppText.meta),
-            )
-          else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: tid,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                        labelText: 'Settimana', isDense: true),
-                    items: [
-                      for (final t in templates)
-                        DropdownMenuItem(
-                            value: t['id'] as String,
-                            child: Text((t['name'] as String?) ?? '')),
-                    ],
-                    onChanged: (v) => setState(() => _templateId = v),
-                  ),
-                ),
-                IconButton(
-                    icon: const Icon(Icons.edit, size: 18),
-                    tooltip: 'Rinomina',
-                    onPressed: tid == null ? null : () => _renameTemplate(tid!)),
-                IconButton(
-                    icon: const Icon(Icons.delete_outline,
-                        size: 18, color: Color(0xFFDC2626)),
-                    tooltip: 'Elimina',
-                    onPressed: tid == null ? null : () => _deleteTemplate(tid!)),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            if (slots.isEmpty || types.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                child: Text(
-                    'Servono almeno una fascia oraria e un tipo di slot attivi '
-                    'per comporre la griglia.',
-                    style: AppText.meta),
-              )
-            else ...[
-              _weekdayTabs(),
-              const SizedBox(height: AppSpacing.sm),
-              _cellsForDay(tid!, slots, types),
-            ],
-          ],
+          body,
         ],
       ),
     );
   }
 
-  Widget _weekdayTabs() {
+  Widget _weekdayTabs(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -141,8 +164,13 @@ class _TemplateEditorSectionState
             Padding(
               padding: const EdgeInsets.only(right: 6),
               child: ChoiceChip(
-                label: Text(_weekdayShort[wd]!),
+                label: Text(_weekdayShort[wd]!,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _weekday == wd ? Colors.white : null)),
                 selected: _weekday == wd,
+                showCheckmark: false,
+                selectedColor: primary,
                 onSelected: (_) => setState(() => _weekday = wd),
               ),
             ),
@@ -155,6 +183,17 @@ class _TemplateEditorSectionState
       List<Map<String, dynamic>> types) {
     final cellsAsync = ref.watch(templateSlotsProvider(templateId));
     final cells = cellsAsync.value ?? const [];
+    if (cellsAsync.isLoading && cells.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: AppLoading(),
+      );
+    }
+    if (cellsAsync.hasError) {
+      return AppErrorRetry(
+        onRetry: () => ref.invalidate(templateSlotsProvider(templateId)),
+      );
+    }
     Map<String, dynamic>? cellFor(String timeSlotId) {
       for (final c in cells) {
         if (c['weekday'] == _weekday && c['time_slot_id'] == timeSlotId) {
@@ -200,8 +239,8 @@ class _TemplateEditorSectionState
             Padding(
               padding: const EdgeInsets.only(right: 6),
               child: Container(
-                width: 10,
-                height: 10,
+                width: 12,
+                height: 12,
                 decoration: BoxDecoration(
                     color:
                         OrgBranding.parseHex(st['color'] as String?) ??
@@ -252,7 +291,11 @@ class _TemplateEditorSectionState
     final messenger = ScaffoldMessenger.of(context);
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       await repo.setCell(
         templateId: templateId,
         weekday: _weekday,
@@ -274,7 +317,11 @@ class _TemplateEditorSectionState
     final cap = raw.trim().isEmpty ? null : int.tryParse(raw.trim());
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       await repo.setCellCapacity(existingId, cap);
       ref.invalidate(scheduleConfigProvider);
     } catch (e) {
@@ -309,7 +356,11 @@ class _TemplateEditorSectionState
     if (name == null || name.isEmpty) return;
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       final id = await repo.createTemplate(name, templates.isEmpty);
       ref.invalidate(allTemplatesProvider);
       if (mounted) setState(() => _templateId = id);
@@ -327,7 +378,11 @@ class _TemplateEditorSectionState
     if (name == null || name.isEmpty) return;
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       await repo.renameTemplate(id, name);
       ref.invalidate(allTemplatesProvider);
     } catch (e) {
@@ -351,7 +406,7 @@ class _TemplateEditorSectionState
               child: const Text('Annulla')),
           FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFDC2626)),
+                  backgroundColor: AppColors.dangerDark),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Elimina')),
         ],
@@ -360,7 +415,11 @@ class _TemplateEditorSectionState
     if (ok != true) return;
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
-      if (repo == null) return;
+      if (repo == null) {
+        if (!mounted) return;
+        AppSnack.error(context, 'Non autorizzato');
+        return;
+      }
       await repo.deleteTemplate(id);
       ref.invalidate(allTemplatesProvider);
       ref.invalidate(scheduleConfigProvider);

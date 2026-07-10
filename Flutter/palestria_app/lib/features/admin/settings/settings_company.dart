@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Sezione "Dati azienda & fiscali" (port di _settRenderCompany, admin-settings.js
 /// §3): ragione sociale, P.IVA, CF, PEC, SDI, prefisso fattura, indirizzo
@@ -54,7 +55,6 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final s = widget.service;
       await s.set('company.legal_name', _c['legal']!.text.trim());
@@ -71,11 +71,9 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
         'paese': _c['paese']!.text.trim(),
       });
       await s.set('company.maps_url', _c['maps']!.text.trim());
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Dati azienda salvati.')));
+      if (mounted) AppSnack.success(context, 'Dati azienda salvati.');
     } catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Errore nel salvataggio: $e')));
+      if (mounted) AppSnack.error(context, 'Errore nel salvataggio: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

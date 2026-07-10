@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'stats_charts.dart';
 
 const _monthsShort = [
@@ -125,15 +126,10 @@ class OccupancyDetail extends StatelessWidget {
 
     final kpiTypes = typeKeys.take(2).toList();
 
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(top: AppSpacing.md),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppShadows.card,
-        border: Border.all(color: const Color(0x2210B981)),
-      ),
+      radius: AppRadius.cardLg,
+      borderColor: AppColors.successEmerald.withValues(alpha: 0x22 / 255),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -153,12 +149,11 @@ class OccupancyDetail extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           if (totCap == 0)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                  'Nessuno slot programmato nel periodo: configura gli orari '
-                  'per vedere l\'occupazione.',
-                  style: AppText.meta),
+            const AppEmptyState(
+              compact: true,
+              icon: Icons.calendar_month_outlined,
+              title: 'Nessuno slot programmato nel periodo',
+              subtitle: 'Configura gli orari per vedere l\'occupazione.',
             )
           else ...[
             Wrap(
@@ -189,7 +184,7 @@ class OccupancyDetail extends StatelessWidget {
             MonthlyBarChart(
               labels: _dayLabels,
               solid: dowRates,
-              barColor: const Color(0xFF3B82F6),
+              barColor: AppColors.blue500,
               height: 130,
             ),
           ],

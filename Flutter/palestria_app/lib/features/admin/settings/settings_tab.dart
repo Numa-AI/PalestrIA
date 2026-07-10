@@ -5,11 +5,30 @@ import '../../../core/data/billing_saas.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/org_theme.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'settings_company.dart';
 import 'settings_payments.dart';
 import 'settings_prefs.dart';
 import 'settings_security.dart';
 import 'settings_staff.dart';
+
+/// Fusi orari IANA proposti per la Localizzazione (scelta vincolata: evita
+/// valori digitati a mano che romperebbero i calcoli DST lato server).
+const _timezoneOptions = [
+  'Europe/Rome',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Madrid',
+  'Europe/Berlin',
+  'Europe/Lisbon',
+  'Europe/Zurich',
+  'Europe/Athens',
+  'America/New_York',
+  'America/Los_Angeles',
+  'UTC',
+];
+
+const _currencyOptions = ['EUR', 'USD', 'GBP', 'CHF'];
 
 /// Tab Impostazioni org (spec-admin §12). Versione con le sezioni principali:
 /// Branding, Localizzazione, Pagamenti cliente, e Billing SaaS (Stripe web).
@@ -21,11 +40,17 @@ class SettingsTab extends ConsumerWidget {
     final settingsAsync = ref.watch(orgSettingsProvider);
 
     return settingsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Errore: $e')),
+      loading: () => const AppLoading(),
+      error: (e, _) => AppErrorRetry(
+        message: 'Errore: $e',
+        onRetry: () => ref.invalidate(orgSettingsProvider),
+      ),
       data: (service) {
         if (service == null) {
-          return const Center(child: Text('Impostazioni non disponibili.'));
+          return const AppEmptyState(
+            title: 'Impostazioni non disponibili.',
+            icon: Icons.settings_outlined,
+          );
         }
         return ListView(
           padding: const EdgeInsets.fromLTRB(
@@ -35,17 +60,19 @@ class SettingsTab extends ConsumerWidget {
               _BrandingSection(service: service),
             ]),
             _section('🌍 Localizzazione', [
-              _TextSetting(
+              _DropdownSetting(
                 service: service,
                 settingKey: 'locale.timezone',
                 label: 'Fuso orario',
                 defaultValue: 'Europe/Rome',
+                options: _timezoneOptions,
               ),
-              _TextSetting(
+              _DropdownSetting(
                 service: service,
                 settingKey: 'locale.currency',
                 label: 'Valuta',
                 defaultValue: 'EUR',
+                options: _currencyOptions,
               ),
             ]),
             _section('🏢 Dati azienda & fiscali', [
@@ -81,14 +108,9 @@ class SettingsTab extends ConsumerWidget {
     );
   }
 
-  Widget _section(String title, List<Widget> children) => Container(
+  Widget _section(String title, List<Widget> children) => AppCard(
         margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: AppShadows.card,
-        ),
+        radius: AppRadius.cardLg,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -146,10 +168,9 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
             .read(orgBrandingProvider.notifier)
             .apply(widget.service.currentBranding());
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Branding salvato.')));
-      }
+      if (mounted) AppSnack.success(context, 'Branding salvato.');
+    } catch (e) {
+      if (mounted) AppSnack.error(context, 'Errore nel salvataggio: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -182,59 +203,65 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
   }
 }
 
-class _TextSetting extends ConsumerStatefulWidget {
-  const _TextSetting({
+/// Impostazione a scelta vincolata (Localizzazione): dropdown invece di testo
+/// libero, salva subito la chiave `org_settings` al cambio.
+class _DropdownSetting extends ConsumerStatefulWidget {
+  const _DropdownSetting({
     required this.service,
     required this.settingKey,
     required this.label,
     required this.defaultValue,
+    required this.options,
   });
 
   final OrgSettingsService service;
   final String settingKey;
   final String label;
   final String defaultValue;
+  final List<String> options;
 
   @override
-  ConsumerState<_TextSetting> createState() => _TextSettingState();
+  ConsumerState<_DropdownSetting> createState() => _DropdownSettingState();
 }
 
-class _TextSettingState extends ConsumerState<_TextSetting> {
-  late final TextEditingController _controller;
+class _DropdownSettingState extends ConsumerState<_DropdownSetting> {
+  late String _value;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(
-        text: widget.service.getString(widget.settingKey, widget.defaultValue));
+    final current =
+        widget.service.getString(widget.settingKey, widget.defaultValue);
+    _value = widget.options.contains(current) ? current : widget.defaultValue;
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Future<void> _onChanged(String? v) async {
+    if (v == null || v == _value) return;
+    final previous = _value;
+    setState(() => _value = v);
+    try {
+      await widget.service.set(widget.settingKey, v);
+      if (mounted) AppSnack.success(context, 'Impostazione salvata.');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _value = previous);
+        AppSnack.error(context, 'Errore: $e');
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: TextField(
-        controller: _controller,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          suffixIcon: IconButton(
-            icon: const Icon(Icons.check, size: 18),
-            onPressed: () async {
-              await widget.service
-                  .set(widget.settingKey, _controller.text.trim());
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Impostazione salvata.')));
-              }
-            },
-          ),
-        ),
+      child: DropdownButtonFormField<String>(
+        initialValue: _value,
+        decoration: InputDecoration(labelText: widget.label),
+        items: [
+          for (final o in widget.options)
+            DropdownMenuItem(value: o, child: Text(o)),
+        ],
+        onChanged: _onChanged,
       ),
     );
   }
@@ -251,27 +278,23 @@ class _BillingSaasSection extends ConsumerWidget {
 
     Future<void> checkout(String code) async {
       final err = await billing.openCheckout(code);
-      if (err != null && context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(err)));
-      }
+      if (err != null && context.mounted) AppSnack.error(context, err);
     }
 
     Future<void> portal() async {
       final err = await billing.openPortal();
-      if (err != null && context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(err)));
-      }
+      if (err != null && context.mounted) AppSnack.error(context, err);
     }
 
     return entAsync.when(
-      loading: () => const Center(
-          child: Padding(
-              padding: EdgeInsets.all(AppSpacing.md),
-              child: CircularProgressIndicator())),
-      error: (_, _) =>
-          const Text('Stato abbonamento non disponibile.', style: AppText.meta),
+      loading: () => const Padding(
+        padding: EdgeInsets.all(AppSpacing.md),
+        child: AppLoading(),
+      ),
+      error: (_, _) => AppErrorRetry(
+        message: 'Stato abbonamento non disponibile.',
+        onRetry: () => ref.invalidate(entitlementsProvider),
+      ),
       data: (ent) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -306,7 +329,7 @@ class _BillingSaasSection extends ConsumerWidget {
   Widget _statusBanner(Entitlements ent) {
     final (bg, fg, text) = switch (ent.status) {
       'trialing' => (
-          const Color(0x1F8B5CF6),
+          AppColors.purpleGlow,
           AppColors.primaryDark,
           ent.trialEnd == null
               ? 'Periodo di prova attivo'
@@ -314,7 +337,7 @@ class _BillingSaasSection extends ConsumerWidget {
         ),
       'active' => (
           const Color(0x1F06D6A0),
-          const Color(0xFF059669),
+          AppColors.successEmeraldDark,
           'Abbonamento attivo (${ent.plan})'
         ),
       'past_due' => (
@@ -322,17 +345,37 @@ class _BillingSaasSection extends ConsumerWidget {
           const Color(0xFFB45309),
           'Pagamento in sospeso'
         ),
+      'canceled' => (
+          AppColors.dangerSurface,
+          AppColors.dangerDark,
+          'Abbonamento annullato'
+        ),
+      'unpaid' => (
+          AppColors.dangerSurface,
+          AppColors.dangerDark,
+          'Pagamento non riuscito'
+        ),
+      'incomplete' => (
+          AppColors.warnSurface,
+          AppColors.warning,
+          'Configurazione di pagamento incompleta'
+        ),
       _ => (
-          const Color(0xFFF3F4F6),
-          const Color(0xFF6B7280),
+          AppColors.cancelledBg,
+          AppColors.cancelledText,
           'Abbonamento: ${ent.status}'
         ),
     };
+    final planName = SaasPlan.all
+        .firstWhere((p) => p.code == ent.plan,
+            orElse: () => SaasPlan(ent.plan, ent.plan, '', ''))
+        .name;
+    final maxLabel = ent.maxClients == null ? '∞' : '${ent.maxClients}';
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,7 +383,7 @@ class _BillingSaasSection extends ConsumerWidget {
           Text(text,
               style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
           const SizedBox(height: 2),
-          Text('${ent.clientsCount} clienti registrati',
+          Text('Piano $planName · ${ent.clientsCount}/$maxLabel clienti',
               style: const TextStyle(fontSize: 12.5, color: AppColors.muted)),
         ],
       ),
@@ -350,14 +393,15 @@ class _BillingSaasSection extends ConsumerWidget {
   Widget _planCard(BuildContext context, SaasPlan plan, Entitlements? ent,
       VoidCallback onSelect) {
     final isCurrent = ent?.plan == plan.code && ent?.status == 'active';
+    final primary = Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         border: Border.all(
-            color: isCurrent ? AppColors.primary : AppColors.border,
+            color: isCurrent ? primary : AppColors.border,
             width: isCurrent ? 2 : 1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [

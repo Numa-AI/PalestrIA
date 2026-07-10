@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/workout_repository.dart';
 import '../../../core/models/workout.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'progress_view.dart';
 import 'workout_providers.dart';
 
@@ -29,9 +30,11 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     final logsAsync = ref.watch(allLogsProvider);
 
     return logsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, _) =>
-          const Center(child: Text('Errore caricamento storico.')),
+      loading: () => const AppLoading(),
+      error: (_, _) => AppErrorRetry(
+        message: 'Errore caricamento storico.',
+        onRetry: () => ref.invalidate(allLogsProvider),
+      ),
       data: (logs) {
         final groups = buildProgressGroups(plans, logs);
         final q = _query.trim().toLowerCase();
@@ -65,23 +68,13 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
             ),
             const SizedBox(height: AppSpacing.md),
             if (plans.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.xxl),
-                child: Text('Nessun esercizio nelle tue schede.',
-                    textAlign: TextAlign.center, style: AppText.meta),
-              )
+              const AppEmptyState(
+                  compact: true, title: 'Nessun esercizio nelle tue schede.')
             else if (groups.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.xxl),
-                child: Text('Nessun log registrato ancora.',
-                    textAlign: TextAlign.center, style: AppText.meta),
-              )
+              const AppEmptyState(
+                  compact: true, title: 'Nessun log registrato ancora.')
             else if (filtered.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.xxl),
-                child: Text('Nessun risultato.',
-                    textAlign: TextAlign.center, style: AppText.meta),
-              )
+              const AppEmptyState(compact: true, title: 'Nessun risultato.')
             else
               for (final g in filtered) _groupCard(g, logs),
             const SizedBox(height: 100),
@@ -107,13 +100,10 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
         ? null
         : (media[g.exercises.first.exerciseSlug!]?.thumbnail);
 
-    return Container(
+    return AppCard(
       margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppColors.border, width: 1.5),
-        borderRadius: BorderRadius.circular(16),
-      ),
+      radius: AppRadius.cardLg,
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           ListTile(
@@ -179,7 +169,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
               IconButton(
                 onPressed: () => _deleteDay(g, sessionLogs, label),
                 icon: const Icon(Icons.delete_outline,
-                    size: 18, color: Color(0xFFDC2626)),
+                    size: 18, color: AppColors.dangerDark),
                 tooltip: 'Elimina giornata',
               ),
             ],
@@ -245,12 +235,14 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
           ],
           IconButton(
             onPressed: () => _saveRow(l, reps, weight, rest, g.isCardio),
-            icon: const Icon(Icons.check, size: 18, color: Color(0xFF059669)),
+            icon: const Icon(Icons.check,
+                size: 18, color: AppColors.successEmeraldDark),
             visualDensity: VisualDensity.compact,
           ),
           IconButton(
             onPressed: () => _deleteSet(l),
-            icon: const Icon(Icons.close, size: 18, color: Color(0xFFDC2626)),
+            icon: const Icon(Icons.close,
+                size: 18, color: AppColors.dangerDark),
             visualDensity: VisualDensity.compact,
           ),
         ],
@@ -272,7 +264,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
       _toast('Modifica salvata');
       ref.invalidate(allLogsProvider);
     } catch (_) {
-      _toast('Errore di rete. Riprova.');
+      _toast('Errore di rete. Riprova.', isError: true);
     }
   }
 
@@ -284,7 +276,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
       _toast('Set eliminato');
       ref.invalidate(allLogsProvider);
     } catch (_) {
-      _toast('Errore di rete. Riprova.');
+      _toast('Errore di rete. Riprova.', isError: true);
     }
   }
 
@@ -304,7 +296,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
       _toast('Giornata eliminata');
       ref.invalidate(allLogsProvider);
     } catch (_) {
-      _toast('Errore di rete. Riprova.');
+      _toast('Errore di rete. Riprova.', isError: true);
     }
   }
 
@@ -323,9 +315,12 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
         ),
       );
 
-  void _toast(String message) {
+  void _toast(String message, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    if (isError) {
+      AppSnack.error(context, message);
+    } else {
+      AppSnack.success(context, message);
+    }
   }
 }

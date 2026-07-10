@@ -6,13 +6,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/data/workout_repository.dart';
 import '../../../core/models/workout.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 import 'exercise_picker.dart';
 import 'workout_providers.dart';
 
 /// Flussi di aggiunta (§8.5): FAB sheet → esercizio singolo / super serie /
 /// circuito, con i prompt sequenziali del web.
+///
+/// [onChanged] è chiamato dopo ogni scrittura (oltre a invalidare
+/// `ownPlansProvider`): l'admin lo usa per invalidare `orgPlansProvider` e
+/// riusare questi flussi sulla scheda di un cliente.
 Future<void> showAddToDay(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel) async {
+    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
   final choice = await showModalBottomSheet<String>(
     context: context,
     builder: (ctx) => SafeArea(
@@ -24,13 +29,23 @@ Future<void> showAddToDay(BuildContext context, WidgetRef ref,
             child: Text('Aggiungi al $dayLabel'.toUpperCase(),
                 style: AppText.eyebrow),
           ),
-          _option(ctx, 'single', '+', const [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+          _option(ctx, 'single', '+', brandGradient(ctx),
               'Esercizio singolo', 'Aggiungi un esercizio con riposo'),
-          _option(ctx, 'superset', 'SS',
-              const [Color(0xFFF59E0B), Color(0xFFF97316)], 'Super Serie',
+          _option(
+              ctx,
+              'superset',
+              'SS',
+              const LinearGradient(
+                  colors: [Color(0xFFF59E0B), Color(0xFFF97316)]),
+              'Super Serie',
               'Due esercizi senza pausa tra loro'),
-          _option(ctx, 'circuit', 'C',
-              const [Color(0xFF06B6D4), Color(0xFF0891B2)], 'Circuito',
+          _option(
+              ctx,
+              'circuit',
+              'C',
+              const LinearGradient(
+                  colors: [Color(0xFF06B6D4), Color(0xFF0891B2)]),
+              'Circuito',
               'Più esercizi in serie, ripetuti a giri'),
           const SizedBox(height: AppSpacing.md),
         ],
@@ -41,23 +56,23 @@ Future<void> showAddToDay(BuildContext context, WidgetRef ref,
 
   switch (choice) {
     case 'single':
-      await addSingleExercise(context, ref, plan, dayLabel);
+      await addSingleExercise(context, ref, plan, dayLabel, onChanged: onChanged);
     case 'superset':
-      await _addSuperset(context, ref, plan, dayLabel);
+      await _addSuperset(context, ref, plan, dayLabel, onChanged: onChanged);
     case 'circuit':
-      await _addCircuit(context, ref, plan, dayLabel);
+      await _addCircuit(context, ref, plan, dayLabel, onChanged: onChanged);
   }
 }
 
 Widget _option(BuildContext ctx, String value, String badge,
-    List<Color> colors, String title, String subtitle) {
+    Gradient gradient, String title, String subtitle) {
   return ListTile(
     leading: Container(
       width: 40,
       height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: colors),
+        gradient: gradient,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(badge,
@@ -113,14 +128,18 @@ Future<int?> _numericPrompt(BuildContext context, String title,
   );
 }
 
-void _toast(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+void _toast(BuildContext context, String message, {bool isError = false}) {
+  if (isError) {
+    AppSnack.error(context, message);
+  } else {
+    AppSnack.success(context, message);
+  }
 }
 
 /// Esercizio singolo: serie (3) → ripetizioni (10) → riposo (90).
 /// Cardio: nessun prompt (sets 1, reps '20', rest 0).
 Future<void> addSingleExercise(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel) async {
+    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
   final picked = await showExercisePicker(
       context, 'Aggiungi esercizio — $dayLabel');
   if (picked == null || !context.mounted) return;
@@ -158,14 +177,17 @@ Future<void> addSingleExercise(BuildContext context, WidgetRef ref,
     });
     if (context.mounted) _toast(context, 'Esercizio aggiunto!');
   } catch (_) {
-    if (context.mounted) _toast(context, 'Errore nel salvataggio');
+    if (context.mounted) {
+      _toast(context, 'Errore nel salvataggio', isError: true);
+    }
   }
   ref.invalidate(ownPlansProvider);
+  onChanged?.call();
 }
 
 /// Super Serie: 2 esercizi → reps ciascuno → serie comuni → riposo finale.
 Future<void> _addSuperset(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel) async {
+    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
   final picks = <PickedExercise>[];
   final reps = <int>[];
   for (var i = 1; i <= 2; i++) {
@@ -207,14 +229,17 @@ Future<void> _addSuperset(BuildContext context, WidgetRef ref,
     ]);
     if (context.mounted) _toast(context, 'Super Serie aggiunta!');
   } catch (_) {
-    if (context.mounted) _toast(context, 'Errore nel salvataggio');
+    if (context.mounted) {
+      _toast(context, 'Errore nel salvataggio', isError: true);
+    }
   }
   ref.invalidate(ownPlansProvider);
+  onChanged?.call();
 }
 
 /// Circuito: N≥2 esercizi con reps → giri → riposo tra giri (solo ultimo).
 Future<void> _addCircuit(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel) async {
+    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
   final picks = <PickedExercise>[];
   final reps = <String>[];
 
@@ -259,7 +284,8 @@ Future<void> _addCircuit(BuildContext context, WidgetRef ref,
   }
   if (!context.mounted) return;
   if (picks.length < 2) {
-    _toast(context, 'Un circuito deve avere almeno 2 esercizi');
+    _toast(context, 'Un circuito deve avere almeno 2 esercizi',
+        isError: true);
     return;
   }
 
@@ -292,9 +318,12 @@ Future<void> _addCircuit(BuildContext context, WidgetRef ref,
     ]);
     if (context.mounted) _toast(context, 'Circuito aggiunto!');
   } catch (_) {
-    if (context.mounted) _toast(context, 'Errore nel salvataggio');
+    if (context.mounted) {
+      _toast(context, 'Errore nel salvataggio', isError: true);
+    }
   }
   ref.invalidate(ownPlansProvider);
+  onChanged?.call();
 }
 
 /// Nuovo giorno (§8.3): nome con default "Giorno A/B/C…" → picker del primo
@@ -329,7 +358,7 @@ Future<void> addDayToScheda(
   );
   if (name == null || name.isEmpty || !context.mounted) return;
   if (existing.contains(name)) {
-    _toast(context, 'Questo giorno esiste già');
+    _toast(context, 'Questo giorno esiste già', isError: true);
     return;
   }
   await addSingleExercise(context, ref, plan, name);

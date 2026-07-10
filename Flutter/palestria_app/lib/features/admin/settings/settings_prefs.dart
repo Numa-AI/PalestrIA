@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Sezione "Policy prenotazione & cancellazione" (port di _settRenderPolicy §5,
 /// solo il form principale su `booking.policy.*`). Le toggle legacy
@@ -46,7 +47,6 @@ class _PolicySectionState extends State<PolicySection> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final s = widget.service;
       await s.set('booking.policy.free_cancel_hours',
@@ -57,10 +57,9 @@ class _PolicySectionState extends State<PolicySection> {
           int.tryParse(_maxAdvance.text.trim()) ?? 0);
       await s.set('booking.policy.requires_account', _requiresAccount);
       await s.set('booking.policy.cancel_mode', _cancelMode);
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Policy salvata.')));
+      if (mounted) AppSnack.success(context, 'Policy salvata.');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -162,7 +161,6 @@ class _NotifSectionState extends State<NotifSection> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final s = widget.service;
       await s.set('notif.booking_confirmation', _confirmation);
@@ -175,10 +173,9 @@ class _NotifSectionState extends State<NotifSection> {
         'email': _chEmail,
         'whatsapp': _chWhatsapp,
       });
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Notifiche salvate.')));
+      if (mounted) AppSnack.success(context, 'Notifiche salvate.');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -275,16 +272,15 @@ class _GdprSectionState extends State<GdprSection> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final s = widget.service;
       await s.set('gdpr.privacy_url', _privacy.text.trim());
       await s.set('gdpr.terms_url', _terms.text.trim());
       await s.set('gdpr.data_retention_days',
           int.tryParse(_retention.text.trim()) ?? 0);
-      messenger.showSnackBar(const SnackBar(content: Text('GDPR salvato.')));
+      if (mounted) AppSnack.success(context, 'GDPR salvato.');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -362,11 +358,9 @@ class _FeaturesSectionState extends State<FeaturesSection> {
     setState(() {});
     try {
       await widget.service.set('features.$key', val);
+      if (mounted) AppSnack.success(context, 'Impostazione aggiornata.');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Errore: $e')));
-      }
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     }
   }
 

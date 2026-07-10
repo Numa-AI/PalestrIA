@@ -71,7 +71,7 @@ async function _loadExercisesDB() {
                     .order('nome_it'), { timeoutMs: 30000 });
                 if (error) throw error;
                 rawData = data || [];
-                try { localStorage.setItem(_EXDB_LS_KEY, JSON.stringify({ ts: Date.now(), data: rawData })); } catch (e) { /* quota: ignora */ }
+                try { _lsSetSnapshot(_EXDB_LS_KEY, JSON.stringify({ ts: Date.now(), data: rawData })); } catch (e) { /* quota: ignora */ }
             }
             // Propaga anche alla cache di Importa se non è ancora popolata: così
             // aprire la tab Importa dopo aver aperto Schede non rifà la query.
@@ -1896,9 +1896,16 @@ async function _schedeClientRenderProgressi(container, userId, plans) {
     const allExercises = plans.flatMap(p => p.workout_exercises || []);
     const idToName = {};
     const nameToMuscle = {};
+    const nameToTarget = {};
     for (const ex of allExercises) {
         idToName[ex.id] = ex.exercise_name;
         if (ex.muscle_group && !nameToMuscle[ex.exercise_name]) nameToMuscle[ex.exercise_name] = ex.muscle_group;
+        if (!nameToTarget[ex.exercise_name]) {
+            const isCardio = (ex.muscle_group || '').toLowerCase() === 'cardio';
+            nameToTarget[ex.exercise_name] = isCardio
+                ? `${ex.reps ?? '—'} min`
+                : `${ex.sets || 0}×${ex.reps ?? '—'}${ex.weight_kg != null ? ' · ' + ex.weight_kg + 'kg' : ''}`;
+        }
     }
 
     const logsByName = {};
@@ -1931,35 +1938,58 @@ async function _schedeClientRenderProgressi(container, userId, plans) {
     const exerciseNames = Object.keys(logsByName).sort();
     let chartIdx = 0;
     const pendingCharts = [];
+    _schedeProgExData = {};   // reset dati popup zoom per questo cliente
     for (const exName of exerciseNames) {
         const exLogs = logsByName[exName];
+        // Rollup per sessione (exercise_id|log_date): weight (max), reps (media per
+        // serie), sets (n° serie loggate). L'esercizio compare anche se ha SOLO reps.
         const sessionMap = {};
         for (const l of exLogs) {
-            if (l.weight_done == null) continue;
             const key = l.exercise_id + '|' + l.log_date;
-            if (!sessionMap[key] || l.weight_done > sessionMap[key].weight) {
-                sessionMap[key] = { date: l.log_date, weight: l.weight_done };
-            }
+            let s = sessionMap[key];
+            if (!s) s = sessionMap[key] = { date: l.log_date, weight: null, repsSum: 0, repsCnt: 0, sets: 0 };
+            s.sets++;
+            if (l.weight_done != null) s.weight = (s.weight == null) ? l.weight_done : Math.max(s.weight, l.weight_done);
+            if (l.reps_done != null) { s.repsSum += l.reps_done; s.repsCnt++; }
         }
         const sessions = Object.values(sessionMap).sort((a, b) => a.date.localeCompare(b.date));
         if (!sessions.length) continue;
 
-        const values = sessions.map(s => s.weight);
-        const labels = sessions.map(s => _fmtDate(s.date));
-        const maxW = Math.max(...values);
-        const lastW = values[values.length - 1];
-        const trend = values.length >= 2 ? lastW - values[0] : 0;
+        const labels  = sessions.map(s => _fmtDate(s.date));
+        const weights = sessions.map(s => s.weight);                                              // può contenere null
+        const repsAvg = sessions.map(s => s.repsCnt ? Math.round((s.repsSum / s.repsCnt) * 10) / 10 : null);
+        const setsCnt = sessions.map(s => s.sets);
+        const hasKg = weights.some(v => v != null);
+
+        // Serie principale della card: kg se presenti, altrimenti reps (ambra).
+        const prim = _schedeProgFilterSeries(labels, hasKg ? weights : repsAvg);
+        if (!prim.values.length) continue;
+        const unit = hasKg ? 'kg' : ' rip';
+        const color = hasKg ? '#00AEEF' : '#f59e0b';
+        const maxV  = Math.max(...prim.values);
+        const lastV = prim.values[prim.values.length - 1];
+        const trend = prim.values.length >= 2 ? lastV - prim.values[0] : 0;
         const trendSign = trend > 0 ? '+' : '';
         const muscle = nameToMuscle[exName] || '';
 
-        const canvasId = 'admin-pchart-' + (chartIdx++);
+        const canvasId = 'admin-pchart-' + chartIdx;
+        const exId = 'padm' + (chartIdx++);
         const dbEx = _findExercise(exName);
         const imgUrl = dbEx ? (dbEx.immagine_url_small || dbEx.immagine_url || '') : '';
+        const videoUrl = dbEx ? (dbEx.video_url || '') : '';
         const imgHtml = imgUrl
             ? `<img src="${_escHtml(imgUrl)}" alt="${_escHtml(exName)}" loading="lazy">`
             : '<div class="schede-admin-chart-img-placeholder">🏋️</div>';
+        // Salva i dati del popup zoom (video + grafici kg/reps/serie/tutti).
+        _schedeProgExData[exId] = {
+            name: exName, muscle, target: nameToTarget[exName] || '',
+            labels, weights, repsAvg, setsCnt, imgUrl, videoUrl,
+        };
         html += `<div class="schede-admin-chart-card">
-            <div class="schede-admin-chart-img">${imgHtml}</div>
+            <div class="schede-admin-chart-img" onclick="_schedeProgOpenZoom('${exId}')" title="Amplia: video e grafici">
+                ${imgHtml}
+                <button class="schede-prog-zoom" onclick="event.stopPropagation();_schedeProgOpenZoom('${exId}')" aria-label="Amplia progressi" title="Amplia: video e grafici">${_SCHEDE_PROG_ZOOM_ICON}</button>
+            </div>
             <div class="schede-admin-chart-main">
                 <div class="schede-chart-header">
                     <strong>${_escHtml(exName)}</strong>
@@ -1967,25 +1997,33 @@ async function _schedeClientRenderProgressi(container, userId, plans) {
                 </div>
                 <canvas id="${canvasId}" width="400" height="140" style="width:100%;max-height:140px;"></canvas>
                 <div class="schede-chart-stats">
-                    <span>Max <strong>${maxW}kg</strong></span>
-                    <span>Ultimo <strong>${lastW}kg</strong></span>
-                    <span class="${trend >= 0 ? 'schede-trend-up' : 'schede-trend-down'}">Trend <strong>${trendSign}${trend.toFixed(1)}kg</strong></span>
-                    <span>${sessions.length} sessioni</span>
+                    <span>Max <strong>${maxV}${unit}</strong></span>
+                    <span>Ultimo <strong>${lastV}${unit}</strong></span>
+                    <span class="${trend >= 0 ? 'schede-trend-up' : 'schede-trend-down'}">Trend <strong>${trendSign}${trend.toFixed(1)}${unit}</strong></span>
                 </div>
             </div>
         </div>`;
-        pendingCharts.push({ canvasId, labels, values });
+        pendingCharts.push({ canvasId, labels: prim.labels, values: prim.values, color, unit });
     }
 
     container.innerHTML = html;
 
     // Draw charts dopo aver scritto il DOM
-    for (const { canvasId, labels, values } of pendingCharts) {
+    for (const { canvasId, labels, values, color, unit } of pendingCharts) {
         setTimeout(() => {
             const canvas = document.getElementById(canvasId);
-            if (canvas) _drawAdminChart(canvas, labels, values);
+            if (canvas) _drawAdminChart(canvas, labels, values, { color, unit });
         }, 50);
     }
+}
+
+// Filtra una serie (allineata a labels) togliendo i punti null → { labels, values }.
+function _schedeProgFilterSeries(labels, values) {
+    const L = [], V = [];
+    for (let i = 0; i < values.length; i++) {
+        if (values[i] != null) { L.push(labels[i]); V.push(values[i]); }
+    }
+    return { labels: L, values: V };
 }
 
 // ── Tab Report ───────────────────────────────────────────────────────────────
@@ -1994,8 +2032,12 @@ async function _schedeClientRenderReport(container, userId) {
     await _schedeRenderReportsSection(userId);
 }
 
-// Premium line chart for admin dashboard
-function _drawAdminChart(canvas, labels, values) {
+// Premium line chart for admin dashboard.
+// opts (opzionale): { color, unit } — default #00AEEF / 'kg' (usato dalle card
+// reps-only con color ambra / unit ' rip'). Le chiamate esistenti non cambiano.
+function _drawAdminChart(canvas, labels, values, opts) {
+    const color = (opts && opts.color) || '#00AEEF';
+    const unit  = (opts && opts.unit) || 'kg';
     const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
     const w = rect.width > 0 ? rect.width : 400;
@@ -2054,14 +2096,14 @@ function _drawAdminChart(canvas, labels, values) {
     ctx.lineTo(pts[pts.length - 1].x, pad.top + ch);
     ctx.closePath();
     const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
-    grad.addColorStop(0, 'rgba(0,174,239,0.22)');
-    grad.addColorStop(0.6, 'rgba(0,174,239,0.08)');
-    grad.addColorStop(1, 'rgba(0,174,239,0.01)');
+    grad.addColorStop(0, _schedeHexRgba(color, 0.22));
+    grad.addColorStop(0.6, _schedeHexRgba(color, 0.08));
+    grad.addColorStop(1, _schedeHexRgba(color, 0.01));
     ctx.fillStyle = grad;
     ctx.fill();
 
     // Line — thicker, rounded
-    ctx.strokeStyle = '#00AEEF';
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2.8;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -2074,15 +2116,15 @@ function _drawAdminChart(canvas, labels, values) {
         const isLast = i === pts.length - 1;
         ctx.beginPath();
         ctx.arc(p.x, p.y, isLast ? 4.5 : 3, 0, Math.PI * 2);
-        ctx.fillStyle = isLast ? '#00AEEF' : '#fff';
+        ctx.fillStyle = isLast ? color : '#fff';
         ctx.fill();
-        ctx.strokeStyle = isLast ? '#fff' : '#00AEEF';
+        ctx.strokeStyle = isLast ? '#fff' : color;
         ctx.lineWidth = isLast ? 2 : 1.5;
         ctx.stroke();
         if (isLast) {
             ctx.beginPath();
             ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0,174,239,0.2)';
+            ctx.strokeStyle = _schedeHexRgba(color, 0.2);
             ctx.lineWidth = 2;
             ctx.stroke();
         }
@@ -2100,7 +2142,7 @@ function _drawAdminChart(canvas, labels, values) {
     // Value badge on last point
     if (pts.length > 0) {
         const last = pts[pts.length - 1];
-        const label = last.v + 'kg';
+        const label = last.v + unit;
         ctx.font = 'bold 9.5px system-ui, sans-serif';
         const tw = ctx.measureText(label).width;
         const bx = Math.min(last.x, w - pad.right - tw / 2 - 6);
@@ -2123,6 +2165,318 @@ function _drawAdminChart(canvas, labels, values) {
         ctx.textAlign = 'center';
         ctx.fillText(label, bx, by - 1);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POPUP ZOOM PROGRESSI (video + grafici kg / reps / serie / tutti)
+// Riusa la shell del popup esercizio (.schede-ex-detail-*). Le curve in "Tutti"
+// sono sovrapposte, ognuna normalizzata sulla propria scala, con tratteggio
+// differenziato (kg pieno, reps tratteggiata, serie punteggiata).
+// ═══════════════════════════════════════════════════════════════════════════════
+let _schedeProgExData = {};        // exId -> { name, muscle, target, labels, weights, repsAvg, setsCnt, imgUrl, videoUrl }
+let _schedeProgZoomExId = null;
+let _schedeProgZoomMode = 'kg';    // 'kg' | 'reps' | 'sets' | 'all'
+
+const _SCHEDE_PROG_ZOOM_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+
+// Definizione serie per modalità (colori brand PalestrIA).
+const _SCHEDE_PROG_SERIES = {
+    kg:   { key: 'kg',   label: 'Kg sollevati',                  color: '#00AEEF', badgeBg: '#0f172a', unit: 'kg',     field: 'weights' },
+    reps: { key: 'reps', label: 'Ripetizioni (media per serie)', color: '#f59e0b', badgeBg: '#b45309', unit: ' rip',   field: 'repsAvg' },
+    sets: { key: 'sets', label: 'Serie',                         color: '#10b981', badgeBg: '#047857', unit: ' serie', field: 'setsCnt' },
+};
+
+function _schedeHexRgba(hex, alpha) {
+    const h = String(hex || '').replace('#', '');
+    const s = h.length === 3 ? h.split('').map(c => c + c).join('') : h.padEnd(6, '0').slice(0, 6);
+    const r = parseInt(s.slice(0, 2), 16) || 0;
+    const g = parseInt(s.slice(2, 4), 16) || 0;
+    const b = parseInt(s.slice(4, 6), 16) || 0;
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Modalità disponibili per l'esercizio (una serie ha dati se ≥1 punto non-null).
+function _schedeProgAvailModes(d) {
+    return {
+        kg:   (d.weights || []).some(v => v != null),
+        reps: (d.repsAvg || []).some(v => v != null),
+        sets: (d.setsCnt || []).some(v => v != null),
+    };
+}
+
+function _schedeProgOpenZoom(exId) {
+    const d = _schedeProgExData[exId];
+    if (!d) return;
+    _schedeProgZoomExId = exId;
+    const avail = _schedeProgAvailModes(d);
+    _schedeProgZoomMode = avail.kg ? 'kg' : (avail.reps ? 'reps' : 'sets');
+
+    const existing = document.getElementById('schedeProgZoomOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'schedeProgZoomOverlay';
+    overlay.className = 'schede-ex-detail-overlay';
+    overlay.onclick = (e) => { if (e.target === overlay) _schedeProgCloseZoom(); };
+
+    const canAll = [avail.kg, avail.reps, avail.sets].filter(Boolean).length >= 2;
+    const labelOf = { kg: 'Kg sollevati', reps: 'Ripetizioni', sets: 'Serie', all: 'Tutti' };
+    const pill = (mode, on) => `<button class="schede-prog-zoom-tab${_schedeProgZoomMode === mode ? ' active' : ''}" data-mode="${mode}" ${on ? '' : 'disabled'} onclick="_schedeProgSetZoomMode('${mode}')">${labelOf[mode]}</button>`;
+
+    overlay.innerHTML = `
+    <div class="schede-ex-detail-panel schede-prog-zoom-panel">
+        <div class="schede-ex-detail-header">
+            <div>
+                <h3>${_escHtml(d.name)}</h3>
+                ${d.muscle ? `<span class="schede-ex-detail-cat">${_escHtml(d.muscle)}</span>` : ''}
+                ${d.target ? `<span class="schede-ex-detail-en">Target ${_escHtml(d.target)}</span>` : ''}
+            </div>
+            <button class="schede-ex-detail-close" onclick="_schedeProgCloseZoom()">&times;</button>
+        </div>
+        <div class="schede-ex-detail-body">
+            <div class="schede-ex-detail-media" id="schedeProgZoomMedia"></div>
+            <div class="schede-prog-zoom-tabs" role="tablist">
+                ${pill('kg', avail.kg)}${pill('reps', avail.reps)}${pill('sets', avail.sets)}${pill('all', canAll)}
+            </div>
+            <div class="schede-prog-zoom-legend" id="schedeProgZoomLegend"></div>
+            <canvas id="schedeProgZoomCanvas" width="400" height="190" style="width:100%;"></canvas>
+            <div class="schede-chart-stats schede-prog-zoom-stats" id="schedeProgZoomStats"></div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    // Media: video (se presente) o immagine, creati programmaticamente.
+    const media = document.getElementById('schedeProgZoomMedia');
+    if (media) {
+        if (d.videoUrl) {
+            const v = document.createElement('video');
+            v.className = 'schede-ex-detail-video';
+            v.controls = true; v.autoplay = true; v.loop = true; v.muted = true;
+            v.playsInline = true; v.preload = 'auto'; v.src = d.videoUrl;
+            media.appendChild(v);
+            v.load(); v.play().catch(() => {});
+        } else if (d.imgUrl) {
+            const img = document.createElement('img');
+            img.className = 'schede-ex-detail-img';
+            img.src = d.imgUrl; img.alt = d.name;
+            media.appendChild(img);
+        } else {
+            media.innerHTML = '<div class="schede-prog-zoom-nomedia">🏋️</div>';
+        }
+    }
+
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+    _schedeProgRenderZoomChart();
+}
+
+function _schedeProgCloseZoom() {
+    const overlay = document.getElementById('schedeProgZoomOverlay');
+    if (!overlay) return;
+    const v = overlay.querySelector('video');
+    if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) { /* noop */ } }
+    overlay.remove();
+    _schedeProgZoomExId = null;
+}
+
+function _schedeProgSetZoomMode(mode) {
+    _schedeProgZoomMode = mode;
+    document.querySelectorAll('#schedeProgZoomOverlay .schede-prog-zoom-tab')
+        .forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+    _schedeProgRenderZoomChart();
+}
+
+// Lista di serie per la modalità corrente (in "Tutti" solo quelle con dati).
+function _schedeProgZoomSeriesList(d) {
+    const avail = _schedeProgAvailModes(d);
+    const mk = (key) => ({ ..._SCHEDE_PROG_SERIES[key], values: d[_SCHEDE_PROG_SERIES[key].field] });
+    if (_schedeProgZoomMode === 'all') return ['kg', 'reps', 'sets'].filter(k => avail[k]).map(mk);
+    return [mk(_schedeProgZoomMode)];
+}
+
+function _schedeProgRenderZoomChart() {
+    const d = _schedeProgExData[_schedeProgZoomExId];
+    if (!d) return;
+    const list = _schedeProgZoomSeriesList(d);
+
+    const legend = document.getElementById('schedeProgZoomLegend');
+    if (legend) {
+        if (list.length > 1) {   // legenda solo in "Tutti"
+            legend.style.display = 'flex';
+            legend.innerHTML = list.map(s => `<span><i style="background:${s.color}"></i>${_escHtml(s.label)}</span>`).join('');
+        } else {
+            legend.style.display = 'none';
+            legend.innerHTML = '';
+        }
+    }
+
+    const canvas = document.getElementById('schedeProgZoomCanvas');
+    if (canvas) _schedeProgDrawZoomChart(canvas, d.labels, list);
+
+    // Righe stats: una per serie (Max / Ultimo / Trend — niente "N sessioni").
+    const stats = document.getElementById('schedeProgZoomStats');
+    if (stats) {
+        stats.innerHTML = list.map(s => {
+            const f = _schedeProgFilterSeries(d.labels, s.values);
+            if (!f.values.length) return '';
+            const mx = Math.max(...f.values);
+            const last = f.values[f.values.length - 1];
+            const tr = f.values.length >= 2 ? last - f.values[0] : 0;
+            const sign = tr > 0 ? '+' : '';
+            return `<div class="schede-prog-zoom-stat-row">
+                <i style="background:${s.color}"></i>
+                <span>Max <strong>${mx}${s.unit}</strong></span>
+                <span>Ultimo <strong>${last}${s.unit}</strong></span>
+                <span class="${tr >= 0 ? 'schede-trend-up' : 'schede-trend-down'}">Trend <strong>${sign}${Math.round(tr * 10) / 10}${s.unit}</strong></span>
+            </div>`;
+        }).join('');
+    }
+}
+
+// Disegna 1-3 serie sovrapposte, ognuna normalizzata sulla PROPRIA scala.
+function _schedeProgDrawZoomChart(canvas, labels, seriesList) {
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width > 0 ? rect.width : 400;
+    const h = w > 640 ? 230 : 190;
+    canvas.width = Math.round(w * 2);
+    canvas.height = Math.round(h * 2);
+    ctx.scale(2, 2);
+
+    ctx.fillStyle = '#f8fafc';
+    const rr = 10;
+    ctx.beginPath();
+    ctx.moveTo(rr, 0); ctx.lineTo(w - rr, 0); ctx.quadraticCurveTo(w, 0, w, rr);
+    ctx.lineTo(w, h - rr); ctx.quadraticCurveTo(w, h, w - rr, h);
+    ctx.lineTo(rr, h); ctx.quadraticCurveTo(0, h, 0, h - rr);
+    ctx.lineTo(0, rr); ctx.quadraticCurveTo(0, 0, rr, 0);
+    ctx.closePath(); ctx.fill();
+
+    const pad = { top: 26, right: 46, bottom: 30, left: 46 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    const n = labels.length;
+    if (!n) return;
+
+    const dashes = [[], [7, 5], [2, 5]];   // pieno / tratteggiato / punteggiato
+    const prepared = seriesList.map((s) => {
+        const vals = s.values;
+        const nn = vals.filter(v => v != null);
+        const minV = nn.length ? Math.min(...nn) : 0;
+        const maxV = nn.length ? Math.max(...nn) : 1;
+        const range = (maxV - minV) || 1;
+        const yMin = Math.max(0, minV - range * 0.1);
+        const yMax = maxV + range * 0.1;
+        const yRange = (yMax - yMin) || 1;
+        const pts = [];
+        for (let i = 0; i < n; i++) {
+            if (vals[i] == null) continue;
+            pts.push({
+                x: pad.left + (n === 1 ? cw / 2 : (i / (n - 1)) * cw),
+                y: pad.top + ch - ((vals[i] - yMin) / yRange) * ch,
+                v: vals[i],
+            });
+        }
+        return { ...s, pts, yMin, yRange };
+    });
+
+    // Grid orizzontale tratteggiata (5 linee). Numeri asse: sx=1ª, dx=2ª serie.
+    const left = prepared[0], right = prepared[1];
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i <= 4; i++) {
+        const y = pad.top + ch - (ch * i / 4);
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+        ctx.font = '500 8.5px system-ui, sans-serif';
+        if (left) {
+            ctx.fillStyle = seriesList.length > 1 ? left.color : '#94a3b8';
+            ctx.textAlign = 'right';
+            ctx.fillText(Math.round(left.yMin + left.yRange * i / 4), pad.left - 6, y + 3);
+        }
+        if (right) {
+            ctx.fillStyle = right.color;
+            ctx.textAlign = 'left';
+            ctx.fillText(Math.round(right.yMin + right.yRange * i / 4), pad.left + cw + 6, y + 3);
+        }
+    }
+    ctx.setLineDash([]);
+
+    // Area gradient SOLO sulla 1ª serie.
+    if (left && left.pts.length) {
+        ctx.beginPath();
+        ctx.moveTo(left.pts[0].x, pad.top + ch);
+        left.pts.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.lineTo(left.pts[left.pts.length - 1].x, pad.top + ch);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+        grad.addColorStop(0, _schedeHexRgba(left.color, 0.20));
+        grad.addColorStop(1, _schedeHexRgba(left.color, 0.01));
+        ctx.fillStyle = grad; ctx.fill();
+    }
+
+    // Linee + punti per ogni serie (tratteggio differenziato, reset dopo lo stroke).
+    prepared.forEach((s, si) => {
+        if (!s.pts.length) return;
+        ctx.setLineDash(dashes[si] || []);
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 2.6;
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.beginPath();
+        s.pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        s.pts.forEach((p, i) => {
+            const isLast = i === s.pts.length - 1;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, isLast ? 4 : 2.6, 0, Math.PI * 2);
+            ctx.fillStyle = isLast ? s.color : '#fff';
+            ctx.fill();
+            ctx.strokeStyle = isLast ? '#fff' : s.color;
+            ctx.lineWidth = isLast ? 1.8 : 1.4;
+            ctx.stroke();
+        });
+    });
+
+    // X date labels (max ~7 tick).
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '500 7.5px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const step = Math.max(1, Math.floor(n / 7));
+    for (let i = 0; i < n; i++) {
+        if (i % step === 0 || i === n - 1) {
+            const x = pad.left + (n === 1 ? cw / 2 : (i / (n - 1)) * cw);
+            ctx.fillText(labels[i], x, pad.top + ch + 14);
+        }
+    }
+
+    // Badge ultimo valore (sfalsati per 3 serie: sopra / sotto / più in alto).
+    const badgeDy = [-14, 18, -30];
+    prepared.forEach((s, si) => {
+        if (!s.pts.length) return;
+        const last = s.pts[s.pts.length - 1];
+        const label = last.v + s.unit;
+        ctx.font = 'bold 9.5px system-ui, sans-serif';
+        const tw = ctx.measureText(label).width;
+        const bx = Math.min(last.x, w - pad.right - tw / 2 - 6);
+        const by = last.y + (badgeDy[si] || -14);
+        ctx.fillStyle = s.badgeBg;
+        const br = 4;
+        ctx.beginPath();
+        ctx.moveTo(bx - tw/2 - 5 + br, by - 8);
+        ctx.lineTo(bx + tw/2 + 5 - br, by - 8);
+        ctx.quadraticCurveTo(bx + tw/2 + 5, by - 8, bx + tw/2 + 5, by - 8 + br);
+        ctx.lineTo(bx + tw/2 + 5, by + 2 - br);
+        ctx.quadraticCurveTo(bx + tw/2 + 5, by + 2, bx + tw/2 + 5 - br, by + 2);
+        ctx.lineTo(bx - tw/2 - 5 + br, by + 2);
+        ctx.quadraticCurveTo(bx - tw/2 - 5, by + 2, bx - tw/2 - 5, by + 2 - br);
+        ctx.lineTo(bx - tw/2 - 5, by - 8 + br);
+        ctx.quadraticCurveTo(bx - tw/2 - 5, by - 8, bx - tw/2 - 5 + br, by - 8);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, bx, by - 1);
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2389,8 +2743,8 @@ function _renderExercisesForDay() {
             html += `<div class="schede-ss-block">
                 <span class="schede-ss-badge">SUPER SERIE</span>
                 <div class="schede-ss-move">
-                    ${ssUp ? `<button onclick="_schedeMoveSuperset('${ex.superset_group}', -1)" title="Su">▲</button>` : ''}
-                    ${ssDown ? `<button onclick="_schedeMoveSuperset('${ex.superset_group}', 1)" title="Giù">▼</button>` : ''}
+                    <button ${ssUp ? '' : 'disabled'} onclick="event.preventDefault();event.stopPropagation();_schedeMoveSuperset('${ex.superset_group}', -1)" title="Sposta su" aria-label="Sposta super serie su">▲</button>
+                    <button ${ssDown ? '' : 'disabled'} onclick="event.preventDefault();event.stopPropagation();_schedeMoveSuperset('${ex.superset_group}', 1)" title="Sposta giù" aria-label="Sposta super serie giù">▼</button>
                 </div>
                 <button class="schede-ss-delete" onclick="_schedeDeleteSuperset('${ex.superset_group}')" title="Elimina super serie">✕ SS</button>`;
             pair.forEach(ssEx => {
@@ -2458,8 +2812,8 @@ function _renderExercisesForDay() {
             html += `<div class="schede-cc-block">
                 <span class="schede-cc-badge">CIRCUITO</span>
                 <div class="schede-ss-move">
-                    ${ccUp ? `<button onclick="_schedeMoveCircuit('${ex.circuit_group}', -1)" title="Su">▲</button>` : ''}
-                    ${ccDown ? `<button onclick="_schedeMoveCircuit('${ex.circuit_group}', 1)" title="Giù">▼</button>` : ''}
+                    <button ${ccUp ? '' : 'disabled'} onclick="event.preventDefault();event.stopPropagation();_schedeMoveCircuit('${ex.circuit_group}', -1)" title="Sposta su" aria-label="Sposta circuito su">▲</button>
+                    <button ${ccDown ? '' : 'disabled'} onclick="event.preventDefault();event.stopPropagation();_schedeMoveCircuit('${ex.circuit_group}', 1)" title="Sposta giù" aria-label="Sposta circuito giù">▼</button>
                 </div>
                 <button class="schede-ss-delete" onclick="_schedeDeleteCircuit('${ex.circuit_group}')" title="Elimina circuito">✕ C</button>
                 <div class="schede-cc-params">

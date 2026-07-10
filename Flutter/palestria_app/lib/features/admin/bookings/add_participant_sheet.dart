@@ -92,7 +92,7 @@ class _AddParticipantSheetState extends ConsumerState<_AddParticipantSheet> {
               : results.isEmpty
                   ? const Center(
                       child: Text('Nessun cliente trovato',
-                          style: TextStyle(color: Color(0xFF999999))))
+                          style: TextStyle(color: AppColors.subtle)))
                   : ListView(
                       children: [
                         for (final c in results)

@@ -1,9 +1,12 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_repository.dart';
+import '../../core/theme/org_theme.dart';
 import '../../core/theme/tokens.dart';
+import '../../core/theme/ui_kit.dart';
 
 /// Login email/password (port di login.html — grafica da rifinire con
 /// docs/spec-client.md).
@@ -49,20 +52,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _forgotPassword() async {
     final email = _email.text.trim();
     if (email.isEmpty) {
-      setState(() => _error = 'Inserisci la tua email per il recupero.');
+      AppSnack.error(context, 'Inserisci la tua email');
       return;
     }
     final result = await ref.read(authRepositoryProvider).resetPassword(email);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(result.ok
-          ? 'Email di recupero inviata: controlla la posta.'
-          : result.error!),
-    ));
+    if (result.ok) {
+      AppSnack.success(context, 'Email di recupero inviata: controlla la posta.');
+    } else {
+      AppSnack.error(context, result.error!);
+    }
+  }
+
+  /// Logo dello studio (branding org), se disponibile: nessun placeholder se
+  /// non c'è (fallback silenzioso, come richiesto — mai un'icona generica).
+  Widget _orgLogo(OrgBranding branding) {
+    final url = branding.logoUrl;
+    if (url == null || url.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: 76,
+          height: 76,
+          fit: BoxFit.cover,
+          errorWidget: (_, _, _) => const SizedBox.shrink(),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final branding = ref.watch(orgBrandingProvider);
     return Scaffold(
       backgroundColor: AppColors.lightGray,
       body: SafeArea(
@@ -84,6 +107,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Center(child: _orgLogo(branding)),
                       Text('Accedi',
                           style: AppText.pageTitle, textAlign: TextAlign.center),
                       const SizedBox(height: AppSpacing.sm),

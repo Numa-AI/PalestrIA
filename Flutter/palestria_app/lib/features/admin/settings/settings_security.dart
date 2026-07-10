@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/ui_kit.dart';
 
 /// Sezione "Sicurezza / Manutenzione" (port di _settRenderSecurity §11, adminOnly):
 /// modalità manutenzione (`maintenance.mode`/`maintenance.message`) e cancellazione
@@ -40,33 +41,31 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
 
   Future<void> _setMaintMode(bool v) async {
     setState(() => _maintMode = v);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await widget.service.set('maintenance.mode', v);
-      messenger.showSnackBar(SnackBar(
-          content: Text(
-              v ? 'Manutenzione attivata.' : 'Manutenzione disattivata.')));
+      if (mounted) {
+        AppSnack.success(context,
+            v ? 'Manutenzione attivata.' : 'Manutenzione disattivata.');
+      }
     } catch (e) {
       setState(() => _maintMode = !v);
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     }
   }
 
   Future<void> _saveMsg() async {
     setState(() => _savingMsg = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       await widget.service.set('maintenance.message', _maintMsg.text.trim());
-      messenger.showSnackBar(const SnackBar(content: Text('Messaggio salvato.')));
+      if (mounted) AppSnack.success(context, 'Messaggio salvato.');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
+      if (mounted) AppSnack.error(context, 'Errore: $e');
     } finally {
       if (mounted) setState(() => _savingMsg = false);
     }
   }
 
   Future<void> _clearAllData() async {
-    final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -80,8 +79,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Annulla')),
           FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFDC2626)),
+              style:
+                  FilledButton.styleFrom(backgroundColor: AppColors.dangerDark),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Continua')),
         ],
@@ -112,8 +111,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Annulla')),
           FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFDC2626)),
+              style:
+                  FilledButton.styleFrom(backgroundColor: AppColors.dangerDark),
               onPressed: () =>
                   Navigator.pop(ctx, controller.text.trim() == 'ELIMINA'),
               child: const Text('Cancella')),
@@ -122,8 +121,7 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
     );
     controller.dispose();
     if (confirmed != true) {
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Operazione annullata.')));
+      if (mounted) AppSnack.info(context, 'Operazione annullata.');
       return;
     }
     try {
@@ -132,11 +130,9 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
       if (res is Map && res['success'] == false) {
         throw Exception(res['error'] ?? 'Errore');
       }
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Dati organizzazione cancellati.')));
+      if (mounted) AppSnack.success(context, 'Dati organizzazione cancellati.');
     } catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Errore cancellazione: $e')));
+      if (mounted) AppSnack.error(context, 'Errore cancellazione: $e');
     }
   }
 
@@ -177,8 +173,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
+            color: AppColors.slate50,
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: AppColors.border),
           ),
           child: const Text(
@@ -191,9 +187,9 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: const Color(0xFFFEF2F2),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0x33DC2626)),
+            color: AppColors.dangerSurface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: AppColors.dangerDark.withValues(alpha: 0.2)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -202,7 +198,7 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
                   style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFFDC2626))),
+                      color: AppColors.dangerDark)),
               const SizedBox(height: 4),
               const Text(
                   'Elimina prenotazioni, schede, pagamenti e configurazioni '
@@ -212,8 +208,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
               OutlinedButton(
                 onPressed: _clearAllData,
                 style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFDC2626),
-                    side: const BorderSide(color: Color(0xFFDC2626))),
+                    foregroundColor: AppColors.dangerDark,
+                    side: const BorderSide(color: AppColors.dangerDark)),
                 child: const Text('Cancella dati org'),
               ),
             ],
