@@ -35,8 +35,7 @@ class AdminClientProgressScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(orgPlansProvider),
         ),
         data: (allPlans) {
-          final plans =
-              allPlans.where((p) => p.userId == userId).toList();
+          final plans = allPlans.where((p) => p.userId == userId).toList();
           return logsAsync.when(
             loading: () => const AppLoading(),
             error: (e, _) => AppErrorRetry(
@@ -48,7 +47,9 @@ class AdminClientProgressScreen extends ConsumerWidget {
               final sessions = logs.map((l) => l.logDate).toSet().length;
               final series = logs.length;
               final volume = logs.fold<double>(
-                  0, (s, l) => s + (l.repsDone ?? 0) * (l.weightDone ?? 0));
+                0,
+                (s, l) => s + (l.repsDone ?? 0) * (l.weightDone ?? 0),
+              );
               final volStr = volume >= 1000
                   ? '${(volume / 1000).toStringAsFixed(1)}t'
                   : '${volume.toStringAsFixed(0)}kg';
@@ -60,7 +61,11 @@ class AdminClientProgressScreen extends ConsumerWidget {
                 },
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.md, AppSpacing.md, AppSpacing.md, 40),
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    40,
+                  ),
                   children: [
                     Row(
                       children: [
@@ -90,31 +95,39 @@ class AdminClientProgressScreen extends ConsumerWidget {
   }
 
   Widget _statCard(String icon, String value, String label) => Expanded(
-        child: AppCard(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-          child: Column(
-            children: [
-              Text(icon, style: const TextStyle(fontSize: 18)),
-              const SizedBox(height: 2),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.navy)),
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.muted)),
-            ],
+    child: AppCard(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      child: Column(
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 18)),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.navy,
+            ),
           ),
-        ),
-      );
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _card(BuildContext context, ProgressGroup g) {
     String fmt(double v) =>
         v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
     final trend = g.trend;
     final trendStr =
-        '${trend > 0 ? '+' : trend < 0 ? '−' : ''}${fmt(trend.abs())}';
+        '${trend > 0
+            ? '+'
+            : trend < 0
+            ? '−'
+            : ''}${fmt(trend.abs())}';
     return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       onTap: () => showProgressZoom(context, g),
@@ -124,17 +137,21 @@ class AdminClientProgressScreen extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text(g.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14.5,
-                        color: AppColors.navy)),
-              ),
-              Text('${g.sessionCount} sess',
+                child: Text(
+                  g.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.muted)),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ),
+              Text(
+                '${g.sessionCount} sess',
+                style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+              ),
               const SizedBox(width: 6),
               const Icon(Icons.open_in_full, size: 15, color: AppColors.subtle),
             ],
@@ -145,12 +162,15 @@ class AdminClientProgressScreen extends ConsumerWidget {
             children: [
               Text('Max ${fmt(g.max)}${g.unit}', style: _st),
               Text('Ultimo ${fmt(g.last)}${g.unit}', style: _st),
-              Text('Trend $trendStr${g.unit}',
-                  style: _st.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: trend >= 0
-                          ? AppColors.successEmeraldDark
-                          : AppColors.dangerDark)),
+              Text(
+                'Trend $trendStr${g.unit}',
+                style: _st.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: trend >= 0
+                      ? AppColors.successEmeraldDark
+                      : AppColors.dangerDark,
+                ),
+              ),
             ],
           ),
         ],
@@ -159,8 +179,9 @@ class AdminClientProgressScreen extends ConsumerWidget {
   }
 
   static const _st = TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      color: AppColors.muted,
-      fontFeatures: AppText.tabularNums);
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: AppColors.muted,
+    fontFeatures: AppText.tabularNums,
+  );
 }

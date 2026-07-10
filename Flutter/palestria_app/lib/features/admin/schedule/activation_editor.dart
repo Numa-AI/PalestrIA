@@ -40,9 +40,10 @@ class _ActivationEditorSectionState
     final activeMap = <String, String>{
       for (final a in activated)
         (a['week_start'] as String).substring(0, 10):
-            a['template_id'] as String
+            a['template_id'] as String,
     };
-    final loading = (templatesAsync.isLoading && templates.isEmpty) ||
+    final loading =
+        (templatesAsync.isLoading && templates.isEmpty) ||
         (activatedAsync.isLoading && activated.isEmpty);
     final hasError = templatesAsync.hasError || activatedAsync.hasError;
 
@@ -62,17 +63,23 @@ class _ActivationEditorSectionState
     } else if (templates.isEmpty) {
       body = const Padding(
         padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-        child: Text('Crea prima almeno una settimana tipo da applicare.',
-            style: AppText.meta),
+        child: Text(
+          'Crea prima almeno una settimana tipo da applicare.',
+          style: AppText.meta,
+        ),
       );
     } else {
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i <= _windowWeeks; i++)
-            _weekRow(context,
-                _mondayOf(DateTime.now()).add(Duration(days: i * 7)),
-                templates, activeMap, i == 0),
+            _weekRow(
+              context,
+              _mondayOf(DateTime.now()).add(Duration(days: i * 7)),
+              templates,
+              activeMap,
+              i == 0,
+            ),
           ..._outsideRows(context, templates, activeMap),
         ],
       );
@@ -86,9 +93,10 @@ class _ActivationEditorSectionState
         children: [
           const Text('📆 Attiva settimane', style: AppText.cardTitle),
           const Text(
-              'Attiva il calendario una settimana alla volta scegliendo il '
-              'template. Le settimane non attivate non mostrano slot.',
-              style: AppText.meta),
+            'Attiva il calendario una settimana alla volta scegliendo il '
+            'template. Le settimane non attivate non mostrano slot.',
+            style: AppText.meta,
+          ),
           const SizedBox(height: AppSpacing.sm),
           body,
         ],
@@ -96,15 +104,18 @@ class _ActivationEditorSectionState
     );
   }
 
-  List<Widget> _outsideRows(BuildContext context,
-      List<Map<String, dynamic>> templates, Map<String, String> activeMap) {
+  List<Widget> _outsideRows(
+    BuildContext context,
+    List<Map<String, dynamic>> templates,
+    Map<String, String> activeMap,
+  ) {
     final startMon = _mondayOf(DateTime.now());
     final windowKeys = {
       for (var i = 0; i <= _windowWeeks; i++)
-        _ymd(startMon.add(Duration(days: i * 7)))
+        _ymd(startMon.add(Duration(days: i * 7))),
     };
-    final outside = activeMap.keys.where((k) => !windowKeys.contains(k)).toList()
-      ..sort();
+    final outside =
+        activeMap.keys.where((k) => !windowKeys.contains(k)).toList()..sort();
     if (outside.isEmpty) return const [];
     return [
       const Padding(
@@ -116,9 +127,13 @@ class _ActivationEditorSectionState
     ];
   }
 
-  Widget _weekRow(BuildContext context, DateTime monday,
-      List<Map<String, dynamic>> templates, Map<String, String> activeMap,
-      bool isCurrent) {
+  Widget _weekRow(
+    BuildContext context,
+    DateTime monday,
+    List<Map<String, dynamic>> templates,
+    Map<String, String> activeMap,
+    bool isCurrent,
+  ) {
     final ymd = _ymd(monday);
     final sunday = monday.add(const Duration(days: 6));
     final isActive = activeMap.containsKey(ymd);
@@ -134,27 +149,38 @@ class _ActivationEditorSectionState
           Row(
             children: [
               Expanded(
-                child: Text('🗓️ $range',
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight:
-                            isCurrent ? FontWeight.w800 : FontWeight.w600,
-                        fontFeatures: AppText.tabularNums)),
+                child: Text(
+                  '🗓️ $range',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                    fontFeatures: AppText.tabularNums,
+                  ),
+                ),
               ),
               if (isActive)
-                const Icon(Icons.check_circle,
-                    size: 16, color: AppColors.green500)
+                const Icon(
+                  Icons.check_circle,
+                  size: 16,
+                  color: AppColors.green500,
+                )
               else
-                const Icon(Icons.circle_outlined,
-                    size: 16, color: AppColors.subtle),
+                const Icon(
+                  Icons.circle_outlined,
+                  size: 16,
+                  color: AppColors.subtle,
+                ),
             ],
           ),
           if (isCurrent)
-            Text('questa settimana',
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).colorScheme.primary)),
+            Text(
+              'questa settimana',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -166,9 +192,12 @@ class _ActivationEditorSectionState
                   items: [
                     for (final t in templates)
                       DropdownMenuItem(
-                          value: t['id'] as String,
-                          child: Text((t['name'] as String?) ?? '',
-                              overflow: TextOverflow.ellipsis)),
+                        value: t['id'] as String,
+                        child: Text(
+                          (t['name'] as String?) ?? '',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                   ],
                   onChanged: (v) =>
                       setState(() => _selected[ymd] = v ?? defaultTpl),
@@ -178,14 +207,20 @@ class _ActivationEditorSectionState
               FilledButton(
                 onPressed: () => _activate(ymd, selected, activeMap),
                 style: FilledButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
                 child: Text(isActive ? 'Aggiorna' : 'Attiva'),
               ),
               if (isActive)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      size: 18, color: AppColors.dangerDark),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: AppColors.dangerDark,
+                  ),
                   tooltip: 'Disattiva',
                   onPressed: () => _deactivate(ymd),
                 ),
@@ -197,7 +232,10 @@ class _ActivationEditorSectionState
   }
 
   Future<void> _activate(
-      String weekStart, String tplId, Map<String, String> activeMap) async {
+    String weekStart,
+    String tplId,
+    Map<String, String> activeMap,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
@@ -209,18 +247,23 @@ class _ActivationEditorSectionState
       final existing = activeMap[weekStart];
       if (existing != null && existing != tplId) {
         if (await repo.weekHasBookings(weekStart)) {
-          messenger.showSnackBar(const SnackBar(
+          messenger.showSnackBar(
+            const SnackBar(
               content: Text(
-                  'Settimana con prenotazioni attive: non puoi cambiarne il '
-                  'template.')));
+                'Settimana con prenotazioni attive: non puoi cambiarne il '
+                'template.',
+              ),
+            ),
+          );
           return;
         }
       }
       await repo.activateWeek(weekStart, tplId);
       ref.invalidate(activatedWeeksProvider);
       ref.invalidate(scheduleConfigProvider);
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Settimana attivata.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Settimana attivata.')),
+      );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Errore attivazione: $e')));
     }
@@ -236,9 +279,13 @@ class _ActivationEditorSectionState
         return;
       }
       if (await repo.weekHasBookings(weekStart)) {
-        messenger.showSnackBar(const SnackBar(
+        messenger.showSnackBar(
+          const SnackBar(
             content: Text(
-                'Settimana con prenotazioni attive: non puoi disattivarla.')));
+              'Settimana con prenotazioni attive: non puoi disattivarla.',
+            ),
+          ),
+        );
         return;
       }
       if (!mounted) return;
@@ -247,17 +294,21 @@ class _ActivationEditorSectionState
         builder: (ctx) => AlertDialog(
           title: const Text('Disattiva settimana'),
           content: const Text(
-              'Disattivare questa settimana? Gli slot non saranno più '
-              'disponibili (le prenotazioni esistenti restano nel registro).'),
+            'Disattivare questa settimana? Gli slot non saranno più '
+            'disponibili (le prenotazioni esistenti restano nel registro).',
+          ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Annulla')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla'),
+            ),
             FilledButton(
-                style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.dangerDark),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Disattiva')),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.dangerDark,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Disattiva'),
+            ),
           ],
         ),
       );
@@ -266,10 +317,12 @@ class _ActivationEditorSectionState
       ref.invalidate(activatedWeeksProvider);
       ref.invalidate(scheduleConfigProvider);
       messenger.showSnackBar(
-          const SnackBar(content: Text('Settimana disattivata.')));
+        const SnackBar(content: Text('Settimana disattivata.')),
+      );
     } catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Errore disattivazione: $e')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Errore disattivazione: $e')),
+      );
     }
   }
 }

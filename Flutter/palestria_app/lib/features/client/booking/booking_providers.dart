@@ -11,23 +11,49 @@ import '../../../core/theme/tokens.dart';
 /// Colore dell'indicatore "posti residui", unificato (prima duplicato tra
 /// calendar_view e booking_sheet): 1→danger, 2→spotsOrange, altrimenti navy.
 Color spotsColor(int remaining) => switch (remaining) {
-      <= 1 => AppColors.danger,
-      2 => AppColors.spotsOrange,
-      _ => AppColors.navy,
-    };
+  <= 1 => AppColors.danger,
+  2 => AppColors.spotsOrange,
+  _ => AppColors.navy,
+};
 
 /// Nomi italiani (identici al web).
 const kDayNames = [
-  'Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'
+  'Domenica',
+  'Lunedì',
+  'Martedì',
+  'Mercoledì',
+  'Giovedì',
+  'Venerdì',
+  'Sabato',
 ];
 const kDayShort = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const kMonthShort = [
-  'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-  'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+  'Gen',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mag',
+  'Giu',
+  'Lug',
+  'Ago',
+  'Set',
+  'Ott',
+  'Nov',
+  'Dic',
 ];
 const kMonthNames = [
-  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+  'Gennaio',
+  'Febbraio',
+  'Marzo',
+  'Aprile',
+  'Maggio',
+  'Giugno',
+  'Luglio',
+  'Agosto',
+  'Settembre',
+  'Ottobre',
+  'Novembre',
+  'Dicembre',
 ];
 
 /// "GiornoNome D/M" (es. "Sabato 4/7") — formato dateDisplay del web.
@@ -67,29 +93,30 @@ class ScheduleOverride {
 /// Overrides finestrati (oggi−30gg in poi, cutoff non-admin come il web).
 final scheduleOverridesProvider =
     FutureProvider<Map<String, List<ScheduleOverride>>>((ref) async {
-  final orgContext = await ref.watch(orgContextProvider.future);
-  if (orgContext.orgId == null) return const {};
-  final cutoff = OrgScheduleConfig.localDateStr(
-      DateTime.now().subtract(const Duration(days: 30)));
-  final rows = await ref
-      .read(supabaseProvider)
-      .from('schedule_overrides')
-      .select('date, time, slot_type, capacity')
-      .eq('org_id', orgContext.orgId!)
-      .gte('date', cutoff)
-      .timeout(const Duration(seconds: 12));
-  final map = <String, List<ScheduleOverride>>{};
-  for (final r in rows) {
-    final o = ScheduleOverride(
-      date: r['date'] as String,
-      time: r['time'] as String,
-      slotType: (r['slot_type'] as String?) ?? '',
-      capacity: (r['capacity'] as num?)?.toInt(),
-    );
-    map.putIfAbsent(o.date, () => []).add(o);
-  }
-  return map;
-});
+      final orgContext = await ref.watch(orgContextProvider.future);
+      if (orgContext.orgId == null) return const {};
+      final cutoff = OrgScheduleConfig.localDateStr(
+        DateTime.now().subtract(const Duration(days: 30)),
+      );
+      final rows = await ref
+          .read(supabaseProvider)
+          .from('schedule_overrides')
+          .select('date, time, slot_type, capacity')
+          .eq('org_id', orgContext.orgId!)
+          .gte('date', cutoff)
+          .timeout(const Duration(seconds: 12));
+      final map = <String, List<ScheduleOverride>>{};
+      for (final r in rows) {
+        final o = ScheduleOverride(
+          date: r['date'] as String,
+          time: r['time'] as String,
+          slotType: (r['slot_type'] as String?) ?? '',
+          capacity: (r['capacity'] as num?)?.toInt(),
+        );
+        map.putIfAbsent(o.date, () => []).add(o);
+      }
+      return map;
+    });
 
 /// Prenotazioni dell'utente corrente (refresh: ref.invalidate).
 final ownBookingsProvider = FutureProvider<List<Booking>>((ref) async {
@@ -108,12 +135,15 @@ final ownPaymentsProvider = FutureProvider<List<ClientPayment>>((ref) async {
 });
 
 /// Disponibilità server (oggi → +90 gg), indicizzata per 'date|time|type'.
-final availabilityProvider =
-    FutureProvider<Map<String, SlotAvailability>>((ref) async {
+final availabilityProvider = FutureProvider<Map<String, SlotAvailability>>((
+  ref,
+) async {
   final repo = await ref.watch(bookingRepositoryProvider.future);
   final now = DateTime.now();
-  final list =
-      await repo.fetchAvailability(now, now.add(const Duration(days: 90)));
+  final list = await repo.fetchAvailability(
+    now,
+    now.add(const Duration(days: 90)),
+  );
   return {for (final a in list) a.key: a};
 });
 
@@ -145,9 +175,9 @@ class DaySlot {
 
   /// Cutoff web: prenotabile/visibile finché non sono passati 30 min
   /// dall'inizio della lezione.
-  bool get pastCutoff =>
-      DateTime.now().isAfter(
-          lessonStart(date, time).add(const Duration(minutes: 30)));
+  bool get pastCutoff => DateTime.now().isAfter(
+    lessonStart(date, time).add(const Duration(minutes: 30)),
+  );
 }
 
 /// Calcola gli slot di un giorno: override puntuale → template settimana
@@ -188,10 +218,9 @@ List<DaySlot> computeDaySlots({
     for (final (time, type, capacity) in entries)
       () {
         final avail = availability['$dateStr|$time|$type'];
-        final enrolled = ownBookings.any((b) =>
-            b.date == dateStr &&
-            b.time == time &&
-            b.isOccupying);
+        final enrolled = ownBookings.any(
+          (b) => b.date == dateStr && b.time == time && b.isOccupying,
+        );
         return DaySlot(
           date: dateStr,
           time: time,
@@ -199,7 +228,8 @@ List<DaySlot> computeDaySlots({
           capacity: avail?.capacity ?? capacity,
           remaining: avail?.remaining ?? capacity,
           enrolled: enrolled,
-          bookable: config.slotTypes[type]?.bookable ??
+          bookable:
+              config.slotTypes[type]?.bookable ??
               !(type == 'group-class' || type == 'cleaning'),
         );
       }(),

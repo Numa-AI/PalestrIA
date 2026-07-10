@@ -25,8 +25,11 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   /// Lunedì della settimana corrente + offset.
   DateTime _weekMonday(int offset) {
     final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
     return monday.add(Duration(days: 7 * offset));
   }
 
@@ -59,12 +62,12 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final own = ownAsync.value ?? const [];
 
     List<DaySlot> slotsOf(DateTime day) => computeDaySlots(
-          day: day,
-          config: config,
-          overrides: overrides,
-          availability: availability,
-          ownBookings: own,
-        );
+      day: day,
+      config: config,
+      overrides: overrides,
+      availability: availability,
+      ownBookings: own,
+    );
 
     bool dayHasAvailable(DateTime day) {
       final today = DateTime.now();
@@ -73,8 +76,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       return slotsOf(day).any((s) => !s.pastCutoff);
     }
 
-    bool weekHasSlots(int offset) =>
-        _weekDays(offset).any(dayHasAvailable);
+    bool weekHasSlots(int offset) => _weekDays(offset).any(dayHasAvailable);
 
     // Auto-advance: se la settimana corrente non ha più slot e la prossima sì.
     if (!_autoAdvanced) {
@@ -102,8 +104,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     }
     final selectedDay = selected;
 
-    final daySlots =
-        slotsOf(selectedDay).where((s) => !s.pastCutoff).toList();
+    final daySlots = slotsOf(selectedDay).where((s) => !s.pastCutoff).toList();
     final hadSlots = slotsOf(selectedDay).isNotEmpty;
 
     final primary = Theme.of(context).colorScheme.primary;
@@ -118,7 +119,13 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
           _bookingHero(
-              days, selectedDay, dayHasAvailable, own, primary, weekHasSlots),
+            days,
+            selectedDay,
+            dayHasAvailable,
+            own,
+            primary,
+            weekHasSlots,
+          ),
           const SizedBox(height: AppSpacing.lg),
           if (daySlots.isEmpty)
             AppEmptyState(
@@ -165,8 +172,11 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                   color: Colors.white.withValues(alpha: 0.14),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.event_available_rounded,
-                    color: Colors.white, size: 24),
+                child: const Icon(
+                  Icons.event_available_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
@@ -174,22 +184,26 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('PRENOTA LA TUA LEZIONE',
-                        style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.1,
-                            color: Colors.white.withValues(alpha: 0.7))),
+                    Text(
+                      'PRENOTA LA TUA LEZIONE',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.1,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
                     const SizedBox(height: 3),
                     Text(
                       (name != null && name.isNotEmpty) ? name : 'Prenotazioni',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.3),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: -0.3,
+                      ),
                     ),
                   ],
                 ),
@@ -209,17 +223,23 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
               Expanded(
                 child: Column(
                   children: [
-                    Text(range,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white)),
-                    Text('${days.first.year}',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                            color: Colors.white.withValues(alpha: 0.72))),
+                    Text(
+                      range,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      '${days.first.year}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -233,21 +253,28 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           ),
           const SizedBox(height: AppSpacing.md),
           _daySelector(
-              days, selectedDay, dayHasAvailable, own, primary, weekHasSlots),
+            days,
+            selectedDay,
+            dayHasAvailable,
+            own,
+            primary,
+            weekHasSlots,
+          ),
         ],
       ),
     );
   }
 
   Widget _navBtn(IconData icon, bool enabled, VoidCallback onTap) => Opacity(
-        opacity: enabled ? 1 : 0.3,
-        child: IconButton(
-          onPressed: enabled ? onTap : null,
-          icon: Icon(icon, color: Colors.white),
-          style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.12)),
-        ),
-      );
+    opacity: enabled ? 1 : 0.3,
+    child: IconButton(
+      onPressed: enabled ? onTap : null,
+      icon: Icon(icon, color: Colors.white),
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.white.withValues(alpha: 0.12),
+      ),
+    ),
+  );
 
   Widget _daySelector(
     List<DateTime> days,
@@ -313,14 +340,21 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
 
     if (isActive && enrolled) {
       gradient = const LinearGradient(
-          colors: [AppColors.danger, AppColors.dangerDark]);
+        colors: [AppColors.danger, AppColors.dangerDark],
+      );
       fg = Colors.white;
     } else if (isActive) {
-      gradient = LinearGradient(colors: [
-        primary,
-        Color.fromARGB(255, ((primary.r * 255) * 0.9).round(),
-            ((primary.g * 255) * 0.9).round(), ((primary.b * 255) * 0.9).round())
-      ]);
+      gradient = LinearGradient(
+        colors: [
+          primary,
+          Color.fromARGB(
+            255,
+            ((primary.r * 255) * 0.9).round(),
+            ((primary.g * 255) * 0.9).round(),
+            ((primary.b * 255) * 0.9).round(),
+          ),
+        ],
+      );
       fg = Colors.white;
     } else if (enrolled) {
       bg = AppColors.danger.withValues(alpha: 0.30);
@@ -330,9 +364,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     return Opacity(
       opacity: disabled ? 0.35 : 1,
       child: GestureDetector(
-        onTap: disabled
-            ? null
-            : () => setState(() => _selectedDay = d),
+        onTap: disabled ? null : () => setState(() => _selectedDay = d),
         child: AnimatedScale(
           scale: isActive ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 200),
@@ -341,21 +373,35 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             decoration: BoxDecoration(
               color: gradient == null ? bg : null,
               gradient: gradient,
-              border: gradient == null ? Border.all(color: border, width: 2) : null,
+              border: gradient == null
+                  ? Border.all(color: border, width: 2)
+                  : null,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Column(
               children: [
-                Text(kDayShort[d.weekday % 7],
-                    style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
-                Text('${d.day}',
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700, color: fg)),
+                Text(
+                  kDayShort[d.weekday % 7],
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
+                Text(
+                  '${d.day}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
                 Opacity(
                   opacity: 0.8,
-                  child: Text(kMonthShort[d.month - 1],
-                      style: TextStyle(fontSize: 10, color: fg)),
+                  child: Text(
+                    kMonthShort[d.month - 1],
+                    style: TextStyle(fontSize: 10, color: fg),
+                  ),
                 ),
               ],
             ),
@@ -366,11 +412,15 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   }
 
   Widget _slotCard(
-      BuildContext context, OrgScheduleConfig config, DaySlot slot) {
+    BuildContext context,
+    OrgScheduleConfig config,
+    DaySlot slot,
+  ) {
     final color = config.slotColor(slot.slotType);
     final name = config.slotName(slot.slotType);
     final isCleaning = slot.slotType == 'cleaning';
-    final clickable = !isCleaning && (slot.bookable || slot.isFull || slot.enrolled);
+    final clickable =
+        !isCleaning && (slot.bookable || slot.isFull || slot.enrolled);
 
     Widget trailing;
     if (slot.enrolled) {
@@ -380,11 +430,14 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           color: const Color(0x2622C55E),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Text('Qui ti alleni 💪🏼',
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF16A34A))),
+        child: const Text(
+          'Qui ti alleni 💪🏼',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF16A34A),
+          ),
+        ),
       );
     } else if (slot.bookable) {
       trailing = Container(
@@ -415,12 +468,16 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
         child: Container(
           margin: const EdgeInsets.only(bottom: AppSpacing.sm),
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [
-              color.withValues(alpha: 0.22),
-              color.withValues(alpha: 0.05),
-            ]),
+            gradient: LinearGradient(
+              colors: [
+                color.withValues(alpha: 0.22),
+                color.withValues(alpha: 0.05),
+              ],
+            ),
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border(left: BorderSide(color: color, width: 5)),
@@ -432,21 +489,27 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('🕐 ${slot.time}',
-                      style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF111111),
-                          fontFeatures: AppText.tabularNums)),
+                  Text(
+                    '🕐 ${slot.time}',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF111111),
+                      fontFeatures: AppText.tabularNums,
+                    ),
+                  ),
                   trailing,
                 ],
               ),
               const SizedBox(height: 4),
-              Text(isCleaning ? '🧹 Pulizia' : name,
-                  style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF333333))),
+              Text(
+                isCleaning ? '🧹 Pulizia' : name,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF333333),
+                ),
+              ),
             ],
           ),
         ),

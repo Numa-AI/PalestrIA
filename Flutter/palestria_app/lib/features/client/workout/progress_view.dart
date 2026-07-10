@@ -23,22 +23,22 @@ final allLogsProvider = FutureProvider<List<WorkoutLog>>((ref) async {
 /// dal popup zoom dei Progressi.
 final progressMediaProvider = FutureProvider.autoDispose
     .family<CatalogMedia?, String>((ref, slug) async {
-  if (slug.isEmpty) return null;
-  final rows = await ref
-      .read(supabaseProvider)
-      .from('imported_exercises')
-      .select('immagine, immagine_thumbnail, video')
-      .eq('slug', slug)
-      .limit(1)
-      .timeout(const Duration(seconds: 15));
-  if (rows.isEmpty) return null;
-  final r = rows.first;
-  return CatalogMedia(
-    image: r['immagine'] as String?,
-    thumbnail: r['immagine_thumbnail'] as String?,
-    video: r['video'] as String?,
-  );
-});
+      if (slug.isEmpty) return null;
+      final rows = await ref
+          .read(supabaseProvider)
+          .from('imported_exercises')
+          .select('immagine, immagine_thumbnail, video')
+          .eq('slug', slug)
+          .limit(1)
+          .timeout(const Duration(seconds: 15));
+      if (rows.isEmpty) return null;
+      final r = rows.first;
+      return CatalogMedia(
+        image: r['immagine'] as String?,
+        thumbnail: r['immagine_thumbnail'] as String?,
+        video: r['video'] as String?,
+      );
+    });
 
 /// Gruppo progressi: un esercizio (per slug, fallback nome normalizzato).
 /// Per ogni data di sessione raccoglie: max kg, media reps/serie, n° serie, e
@@ -62,7 +62,7 @@ class ProgressGroup {
   final bool isCardio;
   final Map<String, double> weights; // date → max kg
   final Map<String, double> repsAvg; // date → media reps per serie
-  final Map<String, int> setsCnt;    // date → n° serie loggate
+  final Map<String, int> setsCnt; // date → n° serie loggate
   final Map<String, double> minutes; // date → max minuti (cardio)
 
   bool get hasKg => weights.isNotEmpty;
@@ -74,31 +74,31 @@ class ProgressGroup {
 
   String get unit => isCardio ? 'min' : (hasKg ? 'kg' : ' rip');
 
-  List<String> get _primaryDates =>
-      _primaryMap.keys.toList()..sort();
+  List<String> get _primaryDates => _primaryMap.keys.toList()..sort();
 
   /// Date (ordinate) di tutte le sessioni con almeno una serie loggata.
   List<String> get allDates => setsCnt.keys.toList()..sort();
 
-  List<double> get points =>
-      _primaryDates.map((d) => _primaryMap[d]!).toList();
+  List<double> get points => _primaryDates.map((d) => _primaryMap[d]!).toList();
 
   int get sessionCount => _primaryMap.length;
 
-  double get max =>
-      points.isEmpty ? 0 : points.reduce((a, b) => a > b ? a : b);
+  double get max => points.isEmpty ? 0 : points.reduce((a, b) => a > b ? a : b);
   double get last => points.isEmpty ? 0 : points.last;
   double get trend => points.length < 2 ? 0 : points.last - points.first;
 }
 
 String _groupKey(WorkoutExercise e) =>
     (e.exerciseSlug != null && e.exerciseSlug!.isNotEmpty)
-        ? e.exerciseSlug!
-        : e.exerciseName.trim().toLowerCase();
+    ? e.exerciseSlug!
+    : e.exerciseName.trim().toLowerCase();
 
 List<ProgressGroup> buildProgressGroups(
-    List<WorkoutPlan> plans, List<WorkoutLog> logs,
-    {DateTime? from, String? muscle}) {
+  List<WorkoutPlan> plans,
+  List<WorkoutLog> logs, {
+  DateTime? from,
+  String? muscle,
+}) {
   final byId = <String, WorkoutExercise>{};
   for (final p in plans) {
     for (final e in p.exercises) {
@@ -107,7 +107,8 @@ List<ProgressGroup> buildProgressGroups(
   }
   final groups = <String, ProgressGroup>{};
   final repsSum = <String, Map<String, double>>{}; // key → date → somma reps
-  final repsCnt = <String, Map<String, int>>{};    // key → date → n° serie con reps
+  final repsCnt =
+      <String, Map<String, int>>{}; // key → date → n° serie con reps
   for (final l in logs) {
     final e = byId[l.exerciseId];
     if (e == null) continue;
@@ -115,17 +116,18 @@ List<ProgressGroup> buildProgressGroups(
     if (from != null && DateTime.parse(l.logDate).isBefore(from)) continue;
     final key = _groupKey(e);
     final g = groups.putIfAbsent(
-        key,
-        () => ProgressGroup(
-              key: key,
-              name: e.exerciseName,
-              exercises: [],
-              isCardio: e.isCardio,
-              weights: {},
-              repsAvg: {},
-              setsCnt: {},
-              minutes: {},
-            ));
+      key,
+      () => ProgressGroup(
+        key: key,
+        name: e.exerciseName,
+        exercises: [],
+        isCardio: e.isCardio,
+        weights: {},
+        repsAvg: {},
+        setsCnt: {},
+        minutes: {},
+      ),
+    );
     if (!g.exercises.contains(e)) g.exercises.add(e);
     final d = l.logDate;
     g.setsCnt[d] = (g.setsCnt[d] ?? 0) + 1;
@@ -182,11 +184,11 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
   };
 
   String get _periodEyebrow => switch (_periodDays) {
-        7 => ' · ULTIMI 7 GG',
-        30 => ' · ULTIMI 30 GG',
-        90 => ' · ULTIMI 3 MESI',
-        _ => ' · TUTTO',
-      };
+    7 => ' · ULTIMI 7 GG',
+    30 => ' · ULTIMI 30 GG',
+    90 => ' · ULTIMI 3 MESI',
+    _ => ' · TUTTO',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -204,22 +206,31 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
         final from = _periodDays == 0
             ? null
             : DateTime.now().subtract(Duration(days: _periodDays));
-        final groups =
-            buildProgressGroups(plans, logs, from: from, muscle: _muscle);
+        final groups = buildProgressGroups(
+          plans,
+          logs,
+          from: from,
+          muscle: _muscle,
+        );
 
         // KPI
-        final periodLogs = logs.where((l) =>
-            from == null || !DateTime.parse(l.logDate).isBefore(from));
+        final periodLogs = logs.where(
+          (l) => from == null || !DateTime.parse(l.logDate).isBefore(from),
+        );
         final sessions = periodLogs.map((l) => l.logDate).toSet().length;
         final series = periodLogs.length;
         final volume = periodLogs.fold<double>(
-            0, (sum, l) => sum + (l.repsDone ?? 0) * (l.weightDone ?? 0));
+          0,
+          (sum, l) => sum + (l.repsDone ?? 0) * (l.weightDone ?? 0),
+        );
         final now = DateTime.now();
         final trainings = bookings
-            .where((b) =>
-                b.isOccupying &&
-                lessonStart(b.date, b.time).isBefore(now) &&
-                (from == null || !DateTime.parse(b.date).isBefore(from)))
+            .where(
+              (b) =>
+                  b.isOccupying &&
+                  lessonStart(b.date, b.time).isBefore(now) &&
+                  (from == null || !DateTime.parse(b.date).isBefore(from)),
+            )
             .map((b) => b.date)
             .toSet()
             .length;
@@ -228,9 +239,8 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
           for (final p in plans)
             for (final e in p.exercises)
               if (e.muscleGroup != null && e.muscleGroup!.isNotEmpty)
-                e.muscleGroup!
-        }.toList()
-          ..sort();
+                e.muscleGroup!,
+        }.toList()..sort();
 
         return Stack(
           children: [
@@ -240,9 +250,15 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
                 _hero(trainings, sessions, series, volume),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 4),
-                  child: Text('ESERCIZI · ${groups.length}',
-                      style: AppText.eyebrow),
+                    AppSpacing.lg,
+                    AppSpacing.lg,
+                    AppSpacing.lg,
+                    4,
+                  ),
+                  child: Text(
+                    'ESERCIZI · ${groups.length}',
+                    style: AppText.eyebrow,
+                  ),
                 ),
                 if (groups.isEmpty)
                   AppEmptyState(
@@ -253,8 +269,9 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
                   )
                 else
                   Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                    ),
                     child: Column(
                       children: [for (final g in groups) _exCard(g)],
                     ),
@@ -272,17 +289,22 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
                   onTap: () => _muscleSheet(muscles),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 9),
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.navy,
                       borderRadius: BorderRadius.circular(999),
                       boxShadow: AppShadows.cardMd,
                     ),
-                    child: Text('🔽 ${_muscle ?? 'Tutti i muscoli'}',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700)),
+                    child: Text(
+                      '🔽 ${_muscle ?? 'Tutti i muscoli'}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -294,11 +316,11 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
   }
 
   String _periodLabelSuffix() => switch (_periodDays) {
-        7 => ' negli ultimi 7 giorni',
-        30 => ' negli ultimi 30 giorni',
-        90 => ' negli ultimi 3 mesi',
-        _ => '',
-      };
+    7 => ' negli ultimi 7 giorni',
+    30 => ' negli ultimi 30 giorni',
+    90 => ' negli ultimi 3 mesi',
+    _ => '',
+  };
 
   Widget _hero(int trainings, int sessions, int series, double volume) {
     String volumeLabel = volume >= 1000
@@ -306,27 +328,32 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
         : volume.toStringAsFixed(0);
 
     Widget kpi(String label, String value) => Expanded(
-          child: Column(
-            children: [
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      fontFeatures: AppText.tabularNums)),
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 10.5, color: Color(0xA6FFFFFF))),
-            ],
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              fontFeatures: AppText.tabularNums,
+            ),
           ),
-        );
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10.5, color: Color(0xA6FFFFFF)),
+          ),
+        ],
+      ),
+    );
 
     return Container(
       padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + AppSpacing.md,
-          left: AppSpacing.lg,
-          right: AppSpacing.lg,
-          bottom: AppSpacing.lg),
+        top: MediaQuery.of(context).padding.top + AppSpacing.md,
+        left: AppSpacing.lg,
+        right: AppSpacing.lg,
+        bottom: AppSpacing.lg,
+      ),
       decoration: const BoxDecoration(
         gradient: AppGradients.workoutHero,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
@@ -340,14 +367,20 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
                   onTap: _periodSheet,
                   child: Row(
                     children: [
-                      Text('PROGRESSI$_periodEyebrow',
-                          style: const TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.1,
-                              color: Color(0xD9C4B5FD))),
-                      const Icon(Icons.expand_more,
-                          size: 16, color: Color(0xD9C4B5FD)),
+                      Text(
+                        'PROGRESSI$_periodEyebrow',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: Color(0xD9C4B5FD),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.expand_more,
+                        size: 16,
+                        color: Color(0xD9C4B5FD),
+                      ),
                     ],
                   ),
                 ),
@@ -355,9 +388,9 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
               IconButton(
                 onPressed: widget.onOpenHistory,
                 style: IconButton.styleFrom(
-                    backgroundColor: const Color(0x1FFFFFFF)),
-                icon: const Icon(Icons.history,
-                    size: 18, color: Colors.white),
+                  backgroundColor: const Color(0x1FFFFFFF),
+                ),
+                icon: const Icon(Icons.history, size: 18, color: Colors.white),
                 tooltip: 'Storico',
               ),
             ],
@@ -404,17 +437,23 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(g.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14.5,
-                              color: AppColors.navy)),
                       Text(
-                          'Target ${e.sets}×${e.reps}${e.weightKg != null && e.weightKg! > 0 ? ' · ${e.weightKg!.toStringAsFixed(e.weightKg! % 1 == 0 ? 0 : 1)}kg' : ''}',
-                          style: const TextStyle(
-                              fontSize: 11.5, color: AppColors.muted)),
+                        g.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14.5,
+                          color: AppColors.navy,
+                        ),
+                      ),
+                      Text(
+                        'Target ${e.sets}×${e.reps}${e.weightKg != null && e.weightKg! > 0 ? ' · ${e.weightKg!.toStringAsFixed(e.weightKg! % 1 == 0 ? 0 : 1)}kg' : ''}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.muted,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -422,20 +461,24 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.purpleGlow,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text('${g.sessionCount} sess',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context).colorScheme.secondary)),
+                      child: Text(
+                        '${g.sessionCount} sess',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 6),
-                    Icon(Icons.open_in_full,
-                        size: 15, color: AppColors.subtle),
+                    Icon(Icons.open_in_full, size: 15, color: AppColors.subtle),
                   ],
                 ),
               ],
@@ -446,24 +489,33 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
               child: CustomPaint(
                 size: const Size(double.infinity, 56),
                 painter: _SparklinePainter(
-                    points, Theme.of(context).colorScheme.primary),
+                  points,
+                  Theme.of(context).colorScheme.primary,
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _stat('Max',
-                    '${g.max % 1 == 0 ? g.max.toStringAsFixed(0) : g.max.toStringAsFixed(1)}${g.unit}'),
-                _stat('Ultimo',
-                    '${g.last % 1 == 0 ? g.last.toStringAsFixed(0) : g.last.toStringAsFixed(1)}${g.unit}'),
-                Text('Trend $trendStr${g.unit}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: trend >= 0
-                            ? AppColors.successEmeraldDark
-                            : AppColors.dangerDark)),
+                _stat(
+                  'Max',
+                  '${g.max % 1 == 0 ? g.max.toStringAsFixed(0) : g.max.toStringAsFixed(1)}${g.unit}',
+                ),
+                _stat(
+                  'Ultimo',
+                  '${g.last % 1 == 0 ? g.last.toStringAsFixed(0) : g.last.toStringAsFixed(1)}${g.unit}',
+                ),
+                Text(
+                  'Trend $trendStr${g.unit}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: trend >= 0
+                        ? AppColors.successEmeraldDark
+                        : AppColors.dangerDark,
+                  ),
+                ),
               ],
             ),
           ],
@@ -472,12 +524,15 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
     );
   }
 
-  Widget _stat(String label, String value) => Text('$label $value',
-      style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: AppColors.muted,
-          fontFeatures: AppText.tabularNums));
+  Widget _stat(String label, String value) => Text(
+    '$label $value',
+    style: const TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: AppColors.muted,
+      fontFeatures: AppText.tabularNums,
+    ),
+  );
 
   Future<void> _periodSheet() async {
     final v = await showModalBottomSheet<int>(
@@ -530,10 +585,7 @@ class _ProgressViewState extends ConsumerState<ProgressView> {
               onTap: () => Navigator.pop(ctx, ''),
             ),
             for (final m in muscles)
-              ListTile(
-                title: Text(m),
-                onTap: () => Navigator.pop(ctx, m),
-              ),
+              ListTile(title: Text(m), onTap: () => Navigator.pop(ctx, m)),
           ],
         ),
       ),
@@ -580,13 +632,14 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
   bool get _hasKg => g.weights.isNotEmpty;
   bool get _hasReps => g.repsAvg.isNotEmpty;
   bool get _hasSets => g.setsCnt.isNotEmpty;
-  bool get _canAll =>
-      [_hasKg, _hasReps, _hasSets].where((b) => b).length >= 2;
+  bool get _canAll => [_hasKg, _hasReps, _hasSets].where((b) => b).length >= 2;
 
   @override
   void initState() {
     super.initState();
-    _mode = _hasKg ? _ZoomMetric.kg : (_hasReps ? _ZoomMetric.reps : _ZoomMetric.sets);
+    _mode = _hasKg
+        ? _ZoomMetric.kg
+        : (_hasReps ? _ZoomMetric.reps : _ZoomMetric.sets);
   }
 
   @override
@@ -600,10 +653,15 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.9),
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.lg),
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -614,14 +672,21 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(g.name,
-                            style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.navy)),
-                        Text('Target ${g.exercises.first.targetLabel}',
-                            style: const TextStyle(
-                                fontSize: 12, color: AppColors.muted)),
+                        Text(
+                          g.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                        Text(
+                          'Target ${g.exercises.first.targetLabel}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -684,16 +749,21 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
               decoration: BoxDecoration(
                 color: active ? accent.withValues(alpha: 0.12) : Colors.white,
                 border: Border.all(
-                    color: active ? accent : AppColors.border, width: 1.5),
+                  color: active ? accent : AppColors.border,
+                  width: 1.5,
+                ),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Opacity(
                 opacity: enabled ? 1 : 0.4,
-                child: Text(label,
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: active ? accent : AppColors.muted)),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: active ? accent : AppColors.muted,
+                  ),
+                ),
               ),
             ),
           ),
@@ -712,29 +782,34 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
   }
 
   Widget _legend(List<_ZoomSeries> series) => Wrap(
-        spacing: 12,
-        runSpacing: 4,
-        children: [
-          for (final s in series)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                        color: s.color,
-                        borderRadius: BorderRadius.circular(3))),
-                const SizedBox(width: 4),
-                Text(s.label,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.muted)),
-              ],
+    spacing: 12,
+    runSpacing: 4,
+    children: [
+      for (final s in series)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: s.color,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
-        ],
-      );
+            const SizedBox(width: 4),
+            Text(
+              s.label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
+          ],
+        ),
+    ],
+  );
 
   Widget _statRow(_ZoomSeries s) {
     final vals = [for (final v in s.values) ?v];
@@ -749,44 +824,48 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
       child: Row(
         children: [
           Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                  color: s.color, borderRadius: BorderRadius.circular(3))),
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: s.color,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
           const SizedBox(width: 8),
-          Text('Max ${fmt(mx)}${s.unit}',
-              style: _statStyle),
+          Text('Max ${fmt(mx)}${s.unit}', style: _statStyle),
           const SizedBox(width: 12),
           Text('Ultimo ${fmt(last)}${s.unit}', style: _statStyle),
           const SizedBox(width: 12),
-          Text('Trend ${tr > 0 ? '+' : ''}${fmt(tr)}${s.unit}',
-              style: _statStyle.copyWith(
-                  color: tr >= 0
-                      ? AppColors.successEmeraldDark
-                      : AppColors.dangerDark)),
+          Text(
+            'Trend ${tr > 0 ? '+' : ''}${fmt(tr)}${s.unit}',
+            style: _statStyle.copyWith(
+              color: tr >= 0
+                  ? AppColors.successEmeraldDark
+                  : AppColors.dangerDark,
+            ),
+          ),
         ],
       ),
     );
   }
 
   static const _statStyle = TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      color: AppColors.muted,
-      fontFeatures: AppText.tabularNums);
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: AppColors.muted,
+    fontFeatures: AppText.tabularNums,
+  );
 
   List<_ZoomSeries> _seriesForMode() {
     final dates = g.isCardio ? (g.minutes.keys.toList()..sort()) : g.allDates;
-    List<double?> alignedFrom(Map<String, num> m) =>
-        [for (final d in dates) m[d]?.toDouble()];
+    List<double?> alignedFrom(Map<String, num> m) => [
+      for (final d in dates) m[d]?.toDouble(),
+    ];
 
     if (g.isCardio) {
-      return [
-        _ZoomSeries('Minuti', _kg, ' min', alignedFrom(g.minutes)),
-      ];
+      return [_ZoomSeries('Minuti', _kg, ' min', alignedFrom(g.minutes))];
     }
-    _ZoomSeries kg() =>
-        _ZoomSeries('Kg', _kg, 'kg', alignedFrom(g.weights));
+    _ZoomSeries kg() => _ZoomSeries('Kg', _kg, 'kg', alignedFrom(g.weights));
     _ZoomSeries reps() =>
         _ZoomSeries('Ripetizioni', _reps, ' rip', alignedFrom(g.repsAvg));
     _ZoomSeries sets() =>
@@ -800,11 +879,7 @@ class _ProgressZoomSheetState extends ConsumerState<_ProgressZoomSheet> {
       case _ZoomMetric.sets:
         return [sets()];
       case _ZoomMetric.all:
-        return [
-          if (_hasKg) kg(),
-          if (_hasReps) reps(),
-          if (_hasSets) sets(),
-        ];
+        return [if (_hasKg) kg(), if (_hasReps) reps(), if (_hasSets) sets()];
     }
   }
 }
@@ -837,8 +912,10 @@ class _MultiSeriesPainter extends CustomPainter {
       ..strokeWidth = 1;
     for (var i = 1; i <= 3; i++) {
       final y = size.height * i / 4;
-      _dashedLine(canvas, Offset(0, y), Offset(size.width, y), const [3, 4],
-          gridPaint);
+      _dashedLine(canvas, Offset(0, y), Offset(size.width, y), const [
+        3,
+        4,
+      ], gridPaint);
     }
 
     for (var si = 0; si < series.length; si++) {
@@ -906,19 +983,26 @@ class _MultiSeriesPainter extends CustomPainter {
       for (final o in [pts.first, pts.last]) {
         canvas.drawCircle(o, 4, Paint()..color = Colors.white);
         canvas.drawCircle(
-            o,
-            4,
-            Paint()
-              ..color = s.color
-              ..strokeWidth = 2
-              ..style = PaintingStyle.stroke);
+          o,
+          4,
+          Paint()
+            ..color = s.color
+            ..strokeWidth = 2
+            ..style = PaintingStyle.stroke,
+        );
       }
     }
   }
 
-  void _dashedLine(
-      Canvas c, Offset a, Offset b, List<double> dash, Paint p) {
-    _dashedPath(c, Path()..moveTo(a.dx, a.dy)..lineTo(b.dx, b.dy), dash, p);
+  void _dashedLine(Canvas c, Offset a, Offset b, List<double> dash, Paint p) {
+    _dashedPath(
+      c,
+      Path()
+        ..moveTo(a.dx, a.dy)
+        ..lineTo(b.dx, b.dy),
+      dash,
+      p,
+    );
   }
 
   void _dashedPath(Canvas c, Path path, List<double> dash, Paint p) {
@@ -960,9 +1044,8 @@ class _SparklinePainter extends CustomPainter {
       final x = points.length == 1
           ? size.width / 2
           : i * size.width / (points.length - 1);
-      final y = size.height -
-          ((points[i] - minV) / range) * (size.height - 8) -
-          4;
+      final y =
+          size.height - ((points[i] - minV) / range) * (size.height - 8) - 4;
       return Offset(x, y);
     }
 
@@ -981,10 +1064,7 @@ class _SparklinePainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            color.withValues(alpha: 0.2),
-            color.withValues(alpha: 0.02),
-          ],
+          colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.02)],
         ).createShader(Offset.zero & size),
     );
     canvas.drawPath(
@@ -998,12 +1078,13 @@ class _SparklinePainter extends CustomPainter {
     for (final i in [0, points.length - 1]) {
       canvas.drawCircle(pt(i), 3.5, Paint()..color = Colors.white);
       canvas.drawCircle(
-          pt(i),
-          3.5,
-          Paint()
-            ..color = color
-            ..strokeWidth = 2
-            ..style = PaintingStyle.stroke);
+        pt(i),
+        3.5,
+        Paint()
+          ..color = color
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke,
+      );
     }
   }
 

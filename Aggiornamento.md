@@ -10,6 +10,67 @@ una *Parte tecnica* autosufficiente (file, identificatori, prima/dopo, deploy).
 ---
 
 <!-- Le prossime voci vanno qui, in cima. -->
+## 2026-07-10 - Modulo operativo SaaS per clienti, pacchetti, mensili e override capienza
+
+**Problema/feature.** Il trainer non poteva vendere entitlement dall'app Flutter, modificare il modello economico di un cliente o aumentare in sicurezza la capienza di una singola data. La PWA esponeva parti del flusso, ma senza una transazione unica e senza una vista salute coerente. I retry potevano inoltre duplicare vendite o consumi.
+
+### Parte tecnica
+
+- Migration 00000000000031_client_operations_hardening.sql: payments.idempotency_key e indice univoco parziale per organizzazione.
+- Migration 00000000000032_trainer_billing_operations.sql: ledger auditabile (admin_audit_log), vincoli su sessioni/prezzi/periodi e RPC idempotenti admin_sell_package / admin_record_membership_payment.
+- Migration 00000000000033_client_financial_health.sql: RPC per modello cliente, rettifiche, cancellazione entitlement, modifica/archiviazione/reset cliente e riepilogo economico. I clienti archiviati non consumano il limite del piano.
+- Migration 00000000000034_schedule_override_and_booking_guards.sql: upsert/delete sicuri degli override; book_slot blocca overbooking, identita errata, archiviati, debiti e copertura assente. Usa la data della lezione, consuma pacchetto/quota sotto lock e deduplica tramite local_id.
+- Migration 00000000000035_atomic_stripe_client_payment.sql: record_stripe_client_payment riservata a service_role; entitlement e ledger sono atomici e deduplicati per PaymentIntent. stripe-webhook usa questa RPC.
+- Migration 00000000000036_profiles_archived_state.sql: roster admin con archived_at.
+- Migration 00000000000037_pay_per_session_custom_price.sql: trigger BEFORE INSERT che fotografa su booking il prezzo concordato per-cliente.
+- Migration 00000000000038_billing_coverage_health.sql: health economica coerente con modello, quota mensile e grace period.
+- Edge admin-manage-client: valida Bearer e membership owner/admin, aggiorna i dati via RPC tenant-scoped e sincronizza il cambio email con Supabase Auth.
+- Flutter: client_operations.dart, client_sale_sheet.dart, client_financial_panel.dart, client_manage_sheet.dart, override_editor.dart; integrazione nei tab Clienti, Pagamenti e Orari. UI con banner salute, KPI, progressi entitlement, azioni guidate e layout responsive.
+- PWA: admin-clients.js, admin-payments.js, admin-schedule.js, booking.js, data.js e admin-saas-ops.css; stessa copertura funzionale, messaggi errore azionabili e controlli accessibili.
+- Test: client_operations_test.dart; dart analyze lib test pulito, 7 test Flutter passati, node --check pulito. Cache bust finale: admin-clients.js?v=20, admin-payments.js?v=22, booking.js?v=26, CSS v=2, service worker palestria-v591.
+
+### Deploy
+
+1. Eseguire supabase db push per le migration 31-38 (insieme alle precedenti non ancora remote).
+2. Eseguire supabase functions deploy admin-manage-client stripe-webhook.
+3. Pubblicare gli asset statici PWA e forzare l'aggiornamento del service worker.
+4. Eseguire QA con due organizzazioni, concorrenza su ultimo posto, retry delle vendite, consumo/refund entitlement, grace period, cambio email e webhook Stripe reale.
+
+## 2026-07-10 — Chiusura bug funzionali Flutter: auth, staff, feature SaaS, notifiche e dati profilo
+
+**Problema/feature.** La seconda review ha individuato flussi apparentemente disponibili ma non completi: cambio email non sincronizzato, inviti staff fittizi, ruolo staff senza destinazione, feature SaaS non enforceate, notifiche mancanti nell'app, recovery password incompleta, membership e grafici con selezione dati errata.
+
+### Parte tecnica
+
+- Migration `00000000000030_auth_email_and_invite_hardening.sql`: trigger `on_auth_user_email_changed` su `auth.users` → `sync_confirmed_auth_email()` aggiorna `profiles.email` e `bookings.email` soltanto dopo il cambio confermato; RPC legacy `invite_org_member` ora fallisce su utente inesistente; helper `is_org_staff()` e policy read-only per profili/prenotazioni staff.
+- Edge `invite-org-member`: autentica owner/admin, deriva `org_id` dalla membership, trova o invita davvero l'utente con Admin Auth, impedisce membership/profilo in altra org e upserta `org_members`. `config.toml`: `verify_jwt=true`.
+- `billing_saas.dart`: `Entitlements.features`, `featureEnabledProvider` e `FeatureGate`. Gate UI su schede, messaggi, report AI e Connect; toggle disabilitati se non inclusi nel piano. Le Edge `send-admin-message`, `generate-monthly-report` e `stripe-connect` ripetono il controllo server-side su subscription + org setting.
+- Recovery: `resetPasswordForEmail(... redirectTo: 'palestria://app/recovery')`, nuova route/schermata `recovery_screen.dart`, intent Android `/recovery`. Configurare lo stesso URL nella allowlist Auth remota.
+- Prenotazioni Flutter: dopo successo invoca `notify-admin-booking`; dopo annullo invoca `notify-admin-cancellation` e `notify-slot-available`, sempre best-effort.
+- Staff: nuova `/staff` protetta e `StaffScreen`, agenda odierna read-only; nessuna promozione implicita ad admin.
+- Dati: membership filtrata `status=active` e `period_end>=oggi`; finestra storico prenotazioni 60→190 giorni; entitlements invalidati su resume dopo Stripe.
+- Test: aggiunto `billing_saas_test.dart`; analyze pulito e 4 test passati. Build AAB da rifare fuori dal path Nextcloud virtualizzato.
+
+### Deploy
+
+1. `supabase db push`.
+2. `supabase functions deploy invite-org-member send-admin-message generate-monthly-report stripe-connect` (oppure un deploy per funzione).
+3. Supabase Auth → Redirect URLs: aggiungere `palestria://app/recovery`.
+4. Ricostruire AAB e fare QA su dispositivo.
+## 2026-07-10 — Hardening sicurezza app Flutter/Android
+
+**Problema/feature.** Una code review pre-pubblicazione ha rilevato: fallback della build release alla firma debug, route admin montabile da qualsiasi sessione, registrazione trainer differita non legata all'account, URL Stripe aperti senza validazione, intent custom troppo ampio e test Flutter rimasto al template Counter.
+
+### Parte tecnica
+
+- `android/app/build.gradle.kts`: rilevare i task il cui nome contiene `release` e lanciare `GradleException` se manca `key.properties`; il fallback debug resta raggiungibile solo durante la configurazione di task non-release.
+- `lib/core/router.dart`: sostituire il builder diretto di `/admin` con `_AdminGate`, che mostra `AdminShell` solo per `OrgContext.isOrgAdmin`; gli altri utenti vengono rinviati a `/client/prenotazioni`. RLS e RPC restano i controlli autoritativi.
+- `lib/core/auth/auth_repository.dart`: salvare in `pending_studio` anche email normalizzata e `created_at`; completare lo studio solo per la stessa email ed entro 48 ore; eliminare la chiave al logout.
+- Nuovo `lib/core/security/external_url.dart`: `trustedExternalUri()` accetta solo HTTPS senza user-info e host applicativi o `stripe.com`/sottodomini. Usarlo in `billing_saas.dart` e `settings_payments.dart` prima di `launchUrl`.
+- `AndroidManifest.xml`: limitare lo schema custom a host `app` e path `/join`; per QR/inviti preferire sempre l'App Link HTTPS verificato.
+- Eliminare `test/widget_test.dart` del template e aggiungere `test/external_url_test.dart` con casi positivi e tentativi di bypass della allowlist.
+
+Non sono richiesti migration DB, deploy edge o cache-bust PWA. Dopo il port eseguire `dart format`, `flutter analyze` e `flutter test`.
 
 ## 2026-07-08 — Profilo cliente: sezioni Prossime/Passate/Transazioni + tab Prenotazioni ridotto al solo calendario
 

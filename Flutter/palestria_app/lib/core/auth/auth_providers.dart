@@ -3,12 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/user_profile.dart';
 
-final supabaseProvider =
-    Provider<SupabaseClient>((ref) => Supabase.instance.client);
+final supabaseProvider = Provider<SupabaseClient>(
+  (ref) => Supabase.instance.client,
+);
 
 /// Stream degli eventi auth (INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED, ...).
 final authChangesProvider = StreamProvider<AuthState>(
-    (ref) => ref.watch(supabaseProvider).auth.onAuthStateChange);
+  (ref) => ref.watch(supabaseProvider).auth.onAuthStateChange,
+);
 
 /// Sessione corrente (null = non autenticato).
 final sessionProvider = Provider<Session?>((ref) {

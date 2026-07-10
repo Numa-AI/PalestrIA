@@ -65,14 +65,15 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
         if (_query.trim().isNotEmpty) {
           final q = _query.trim().toLowerCase();
           visible = all
-              .where((c) =>
-                  c.name.toLowerCase().contains(q) ||
-                  (c.whatsapp ?? '').toLowerCase().contains(q) ||
-                  (c.email ?? '').toLowerCase().contains(q))
+              .where(
+                (c) =>
+                    c.name.toLowerCase().contains(q) ||
+                    (c.whatsapp ?? '').toLowerCase().contains(q) ||
+                    (c.email ?? '').toLowerCase().contains(q),
+              )
               .toList();
         } else if (_filter != ClientFilter.none) {
-          final base =
-              _mode == ClientsListMode.active ? active : all;
+          final base = _mode == ClientsListMode.active ? active : all;
           visible = base.where(_matchesFilter).toList();
         } else if (_mode == ClientsListMode.active) {
           visible = active;
@@ -82,7 +83,8 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
           visible = const [];
         }
 
-        final listVisible = _mode != ClientsListMode.none ||
+        final listVisible =
+            _mode != ClientsListMode.none ||
             _filter != ClientFilter.none ||
             _query.trim().isNotEmpty;
 
@@ -93,7 +95,11 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              100,
+            ),
             children: [
               _title(all.length, active.length),
               const SizedBox(height: AppSpacing.md),
@@ -116,7 +122,10 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
                   for (final c in visible.take(_shown))
                     Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: ClientCard(key: ValueKey(c.userId ?? c.name), client: c),
+                      child: ClientCard(
+                        key: ValueKey(c.userId ?? c.name),
+                        client: c,
+                      ),
                     ),
                   if (visible.length > _shown)
                     _loadMore(visible.length - _shown),
@@ -151,33 +160,33 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
   }
 
   Widget _title(int total, int active) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Clienti', style: AppText.pageTitle),
-          Text('$total totali · $active attivi', style: AppText.meta),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('Clienti', style: AppText.pageTitle),
+      Text('$total totali · $active attivi', style: AppText.meta),
+    ],
+  );
 
   Widget _searchBar() => TextField(
-        controller: _searchController,
-        onChanged: (v) => setState(() {
-          _query = v;
-          _shown = _pageSize;
-        }),
-        decoration: InputDecoration(
-          hintText: 'Cerca cliente..',
-          prefixIcon: const Icon(Icons.search, size: 20),
-          suffixIcon: _query.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _query = '');
-                  },
-                )
-              : null,
-        ),
-      );
+    controller: _searchController,
+    onChanged: (v) => setState(() {
+      _query = v;
+      _shown = _pageSize;
+    }),
+    decoration: InputDecoration(
+      hintText: 'Cerca cliente..',
+      prefixIcon: const Icon(Icons.search, size: 20),
+      suffixIcon: _query.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: () {
+                _searchController.clear();
+                setState(() => _query = '');
+              },
+            )
+          : null,
+    ),
+  );
 
   Widget _filterChips() {
     Widget chip(ClientFilter f) {
@@ -192,15 +201,19 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
           decoration: BoxDecoration(
             color: active ? AppColors.dangerSurface : Colors.white,
             border: Border.all(
-                color: active ? AppColors.danger : AppColors.borderGray,
-                width: 1.5),
+              color: active ? AppColors.danger : AppColors.borderGray,
+              width: 1.5,
+            ),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Text(f.label,
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: active ? AppColors.dangerDark : AppColors.muted)),
+          child: Text(
+            f.label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: active ? AppColors.dangerDark : AppColors.muted,
+            ),
+          ),
         ),
       );
     }
@@ -219,16 +232,21 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
   }
 
   Widget _filterResult(int count) => Column(
-        children: [
-          Text(_filter.label,
-              style: const TextStyle(fontSize: 15, color: Color(0xFF666666))),
-          Text('$count',
-              style: const TextStyle(
-                  fontSize: 35,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.danger)),
-        ],
-      );
+    children: [
+      Text(
+        _filter.label,
+        style: const TextStyle(fontSize: 15, color: Color(0xFF666666)),
+      ),
+      Text(
+        '$count',
+        style: const TextStyle(
+          fontSize: 35,
+          fontWeight: FontWeight.w700,
+          color: AppColors.danger,
+        ),
+      ),
+    ],
+  );
 
   Widget _statCards(int total, int active) {
     Widget card(String emoji, String label, int value, ClientsListMode mode) {
@@ -258,27 +276,36 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
                     ),
                     child: Text(emoji, style: const TextStyle(fontSize: 20)),
                   ),
-                  Text(isActive ? 'Nascondi ▲' : 'Dettagli ▼',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: isActive
-                              ? AppColors.primary
-                              : AppColors.borderHover)),
+                  Text(
+                    isActive ? 'Nascondi ▲' : 'Dettagli ▼',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isActive
+                          ? AppColors.primary
+                          : AppColors.borderHover,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
-              Text(label.toUpperCase(),
-                  style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                      color: AppColors.subtle)),
-              Text('$value',
-                  style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.navy,
-                      fontFeatures: AppText.tabularNums)),
+              Text(
+                label.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: AppColors.subtle,
+                ),
+              ),
+              Text(
+                '$value',
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.navy,
+                  fontFeatures: AppText.tabularNums,
+                ),
+              ),
             ],
           ),
         ),
@@ -295,16 +322,17 @@ class _ClientsTabState extends ConsumerState<ClientsTab> {
   }
 
   Widget _loadMore(int remaining) => Padding(
-        padding: const EdgeInsets.only(top: AppSpacing.sm),
-        child: OutlinedButton(
-          onPressed: () => setState(() => _shown += _pageSize),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.muted,
-            side: const BorderSide(color: AppColors.borderHover),
-            minimumSize: const Size.fromHeight(44),
-          ),
-          child: Text(
-              '▼ Mostra altri ${remaining < _pageSize ? remaining : _pageSize} clienti ($remaining rimanenti)'),
-        ),
-      );
+    padding: const EdgeInsets.only(top: AppSpacing.sm),
+    child: OutlinedButton(
+      onPressed: () => setState(() => _shown += _pageSize),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.muted,
+        side: const BorderSide(color: AppColors.borderHover),
+        minimumSize: const Size.fromHeight(44),
+      ),
+      child: Text(
+        '▼ Mostra altri ${remaining < _pageSize ? remaining : _pageSize} clienti ($remaining rimanenti)',
+      ),
+    ),
+  );
 }

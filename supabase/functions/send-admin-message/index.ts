@@ -32,6 +32,23 @@ function jsonResponse(payload: unknown, status = 200) {
     });
 }
 
+async function tenantFeatureEnabled(orgId: string, feature: string): Promise<boolean> {
+    const { data: sub, error: subError } = await supabase
+        .from("subscriptions")
+        .select("status, plans(features)")
+        .eq("org_id", orgId)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!sub || !["trialing", "active"].includes(sub.status)) return false;
+    const planRaw: any = sub.plans;
+    const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw;
+    if (plan?.features?.[feature] !== true) return false;
+    const { data: setting, error: settingError } = await supabase
+        .from("org_settings").select("value")
+        .eq("org_id", orgId).eq("key", `features.${feature}`).maybeSingle();
+    if (settingError) throw settingError;
+    return setting == null || setting.value === true;
+}
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders });
@@ -58,6 +75,9 @@ Deno.serve(async (req) => {
         if (memberErr) throw memberErr;
         if (!membership?.org_id) return jsonResponse({ ok: false, error: "Permessi insufficienti" }, 403);
         const orgId = membership.org_id;
+        if (!await tenantFeatureEnabled(orgId, "messaging")) {
+            return jsonResponse({ ok: false, error: "Funzione non disponibile per il piano o disattivata" }, 403);
+        }
 
         const { title, body, mode, date, time } = await req.json();
 

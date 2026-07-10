@@ -9,48 +9,46 @@ import '../../../core/models/workout.dart';
 final ownPlansProvider = FutureProvider<List<WorkoutPlan>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return const [];
-  return ref
-      .read(workoutRepositoryProvider)
-      .fetchOwnPlans(session.user.id);
+  return ref.read(workoutRepositoryProvider).fetchOwnPlans(session.user.id);
 });
 
 /// Log del piano corrente (family per planId).
 final planLogsProvider = FutureProvider.autoDispose
     .family<List<WorkoutLog>, String>((ref, planId) async {
-  final plans = await ref.watch(ownPlansProvider.future);
-  final plan = plans.where((p) => p.id == planId).firstOrNull;
-  if (plan == null) return const [];
-  final ids = [for (final e in plan.exercises) e.id];
-  return ref.read(workoutRepositoryProvider).fetchLogsForExercises(ids);
-});
+      final plans = await ref.watch(ownPlansProvider.future);
+      final plan = plans.where((p) => p.id == planId).firstOrNull;
+      if (plan == null) return const [];
+      final ids = [for (final e in plan.exercises) e.id];
+      return ref.read(workoutRepositoryProvider).fetchLogsForExercises(ids);
+    });
 
 /// Thumbnail/video del catalogo per gli slug degli esercizi del piano.
 final catalogMediaProvider = FutureProvider.autoDispose
     .family<Map<String, CatalogMedia>, String>((ref, planId) async {
-  final plans = await ref.watch(ownPlansProvider.future);
-  final plan = plans.where((p) => p.id == planId).firstOrNull;
-  if (plan == null) return const {};
-  final slugs = {
-    for (final e in plan.exercises)
-      if (e.exerciseSlug != null && e.exerciseSlug!.isNotEmpty)
-        e.exerciseSlug!
-  }.toList();
-  if (slugs.isEmpty) return const {};
-  final rows = await ref
-      .read(supabaseProvider)
-      .from('imported_exercises')
-      .select('slug, immagine, immagine_thumbnail, video')
-      .inFilter('slug', slugs)
-      .timeout(const Duration(seconds: 15));
-  return {
-    for (final r in rows)
-      (r['slug'] as String): CatalogMedia(
-        image: r['immagine'] as String?,
-        thumbnail: r['immagine_thumbnail'] as String?,
-        video: r['video'] as String?,
-      )
-  };
-});
+      final plans = await ref.watch(ownPlansProvider.future);
+      final plan = plans.where((p) => p.id == planId).firstOrNull;
+      if (plan == null) return const {};
+      final slugs = {
+        for (final e in plan.exercises)
+          if (e.exerciseSlug != null && e.exerciseSlug!.isNotEmpty)
+            e.exerciseSlug!,
+      }.toList();
+      if (slugs.isEmpty) return const {};
+      final rows = await ref
+          .read(supabaseProvider)
+          .from('imported_exercises')
+          .select('slug, immagine, immagine_thumbnail, video')
+          .inFilter('slug', slugs)
+          .timeout(const Duration(seconds: 15));
+      return {
+        for (final r in rows)
+          (r['slug'] as String): CatalogMedia(
+            image: r['immagine'] as String?,
+            thumbnail: r['immagine_thumbnail'] as String?,
+            video: r['video'] as String?,
+          ),
+      };
+    });
 
 class CatalogMedia {
   const CatalogMedia({this.image, this.thumbnail, this.video});

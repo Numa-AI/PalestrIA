@@ -24,8 +24,9 @@ class CatalogExercise {
 }
 
 /// Catalogo caricato una volta per sessione (come il web).
-final exerciseCatalogProvider =
-    FutureProvider<List<CatalogExercise>>((ref) async {
+final exerciseCatalogProvider = FutureProvider<List<CatalogExercise>>((
+  ref,
+) async {
   final rows = await ref
       .read(supabaseProvider)
       .from('imported_exercises')
@@ -40,17 +41,13 @@ final exerciseCatalogProvider =
         categoria: (r['categoria'] as String?) ?? 'Altro',
         thumbnail: r['immagine_thumbnail'] as String?,
         popolarita: (r['popolarita'] as num?)?.toInt() ?? 0,
-      )
+      ),
   ];
 });
 
 /// Risultato del picker: esercizio dal catalogo o personalizzato.
 class PickedExercise {
-  const PickedExercise({
-    required this.name,
-    this.slug,
-    this.muscleGroup,
-  });
+  const PickedExercise({required this.name, this.slug, this.muscleGroup});
 
   final String name;
   final String? slug;
@@ -60,12 +57,13 @@ class PickedExercise {
 }
 
 /// Picker esercizi fullscreen (§8.5): ricerca, categorie, personalizzato.
-Future<PickedExercise?> showExercisePicker(
-    BuildContext context, String title) {
-  return Navigator.of(context).push<PickedExercise>(MaterialPageRoute(
-    fullscreenDialog: true,
-    builder: (_) => _ExercisePickerPage(title: title),
-  ));
+Future<PickedExercise?> showExercisePicker(BuildContext context, String title) {
+  return Navigator.of(context).push<PickedExercise>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => _ExercisePickerPage(title: title),
+    ),
+  );
 }
 
 class _ExercisePickerPage extends ConsumerStatefulWidget {
@@ -128,8 +126,7 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
                     suffixIcon: _category != null
                         ? InputChip(
                             label: Text(_category!),
-                            onDeleted: () =>
-                                setState(() => _category = null),
+                            onDeleted: () => setState(() => _category = null),
                           )
                         : null,
                   ),
@@ -141,7 +138,8 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
                         crossAxisCount: 2,
                         childAspectRatio: 2.6,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md),
+                          horizontal: AppSpacing.md,
+                        ),
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
                         children: [
@@ -150,21 +148,28 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
                               onTap: () =>
                                   setState(() => _category = entry.key),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 12),
+                                horizontal: 12,
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
-                                    child: Text(entry.key,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13.5)),
-                                  ),
-                                  Text('${entry.value}',
+                                    child: Text(
+                                      entry.key,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
-                                          color: AppColors.subtle,
-                                          fontSize: 12)),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${entry.value}',
+                                    style: const TextStyle(
+                                      color: AppColors.subtle,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -182,33 +187,42 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
                                         height: 44,
                                         color: Colors.white,
                                         child: const Icon(
-                                            Icons.fitness_center,
-                                            size: 20,
-                                            color: AppColors.subtle))
+                                          Icons.fitness_center,
+                                          size: 20,
+                                          color: AppColors.subtle,
+                                        ),
+                                      )
                                     : CachedNetworkImage(
                                         imageUrl: e.thumbnail!,
                                         width: 44,
                                         height: 44,
                                         fit: BoxFit.cover,
-                                        errorWidget: (_, _, _) =>
-                                            Container(
-                                                width: 44,
-                                                height: 44,
-                                                color: Colors.white)),
+                                        errorWidget: (_, _, _) => Container(
+                                          width: 44,
+                                          height: 44,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                               ),
-                              title: Text(e.nomeIt,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14.5)),
-                              subtitle: Text(e.categoria,
-                                  style: const TextStyle(fontSize: 12.5)),
+                              title: Text(
+                                e.nomeIt,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                              subtitle: Text(
+                                e.categoria,
+                                style: const TextStyle(fontSize: 12.5),
+                              ),
                               onTap: () => Navigator.pop(
-                                  context,
-                                  PickedExercise(
-                                    name: e.nomeIt,
-                                    slug: e.slug,
-                                    muscleGroup: e.categoria,
-                                  )),
+                                context,
+                                PickedExercise(
+                                  name: e.nomeIt,
+                                  slug: e.slug,
+                                  muscleGroup: e.categoria,
+                                ),
+                              ),
                             ),
                           if (overflow > 0)
                             Padding(
@@ -228,7 +242,8 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
                   child: OutlinedButton(
                     onPressed: _customExercise,
                     style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44)),
+                      minimumSize: const Size.fromHeight(44),
+                    ),
                     child: const Text('✏️ Personalizzato'),
                   ),
                 ),
@@ -249,11 +264,13 @@ class _ExercisePickerPageState extends ConsumerState<_ExercisePickerPage> {
         content: TextField(controller: controller, autofocus: true),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: const Text('Aggiungi')),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Aggiungi'),
+          ),
         ],
       ),
     );

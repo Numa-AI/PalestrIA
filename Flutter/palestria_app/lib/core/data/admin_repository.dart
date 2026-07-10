@@ -21,6 +21,7 @@ class AdminProfile {
     this.documentoFirmato = false,
     this.privacyPrenotazioni = true,
     this.pushEnabled = false,
+    this.archivedAt,
   });
 
   final String id;
@@ -36,33 +37,38 @@ class AdminProfile {
   final bool documentoFirmato;
   final bool privacyPrenotazioni;
   final bool pushEnabled;
+  final DateTime? archivedAt;
+
+  bool get isArchived => archivedAt != null;
 
   bool get anagraficaIncompleta => !isAnagraficaComplete(
-        whatsapp: whatsapp,
-        codiceFiscale: codiceFiscale,
-        indirizzoVia: indirizzoVia,
-        indirizzoPaese: indirizzoPaese,
-        indirizzoCap: indirizzoCap,
-      );
+    whatsapp: whatsapp,
+    codiceFiscale: codiceFiscale,
+    indirizzoVia: indirizzoVia,
+    indirizzoPaese: indirizzoPaese,
+    indirizzoCap: indirizzoCap,
+  );
 
   static AdminProfile fromRow(Map<String, dynamic> row) => AdminProfile(
-        id: row['id'] as String,
-        name: (row['name'] as String?) ?? '',
-        email: (row['email'] as String?) ?? '',
-        whatsapp: row['whatsapp'] as String?,
-        medicalCertExpiry: _date(row['medical_cert_expiry']),
-        insuranceExpiry: _date(row['insurance_expiry']),
-        codiceFiscale: row['codice_fiscale'] as String?,
-        indirizzoVia: row['indirizzo_via'] as String?,
-        indirizzoCap: row['indirizzo_cap'] as String?,
-        indirizzoPaese: row['indirizzo_paese'] as String?,
-        documentoFirmato: (row['documento_firmato'] as bool?) ?? false,
-        privacyPrenotazioni: (row['privacy_prenotazioni'] as bool?) ?? true,
-        pushEnabled: (row['push_enabled'] as bool?) ?? false,
-      );
+    id: row['id'] as String,
+    name: (row['name'] as String?) ?? '',
+    email: (row['email'] as String?) ?? '',
+    whatsapp: row['whatsapp'] as String?,
+    medicalCertExpiry: _date(row['medical_cert_expiry']),
+    insuranceExpiry: _date(row['insurance_expiry']),
+    codiceFiscale: row['codice_fiscale'] as String?,
+    indirizzoVia: row['indirizzo_via'] as String?,
+    indirizzoCap: row['indirizzo_cap'] as String?,
+    indirizzoPaese: row['indirizzo_paese'] as String?,
+    documentoFirmato: (row['documento_firmato'] as bool?) ?? false,
+    privacyPrenotazioni: (row['privacy_prenotazioni'] as bool?) ?? true,
+    pushEnabled: (row['push_enabled'] as bool?) ?? false,
+    archivedAt: _date(row['archived_at']),
+  );
 
-  static DateTime? _date(Object? v) =>
-      (v == null || v.toString().isEmpty) ? null : DateTime.tryParse(v.toString());
+  static DateTime? _date(Object? v) => (v == null || v.toString().isEmpty)
+      ? null
+      : DateTime.tryParse(v.toString());
 }
 
 /// Cliente aggregato (profilo + sue prenotazioni), come getAllClients() web.
@@ -85,6 +91,7 @@ class AdminClient {
 
   /// Attivo: ≥1 prenotazione non cancellata tra 2 mesi fa e 1 mese avanti.
   bool get isActive {
+    if (profile?.isArchived == true) return false;
     final now = DateTime.now();
     final from = DateTime(now.year, now.month - 2, now.day);
     final to = DateTime(now.year, now.month + 1, now.day);
@@ -164,9 +171,7 @@ class AdminRepository {
       final rows = await _client
           .rpc('get_all_profiles_basic')
           .timeout(const Duration(seconds: 15));
-      return [
-        for (final r in (rows as List)) AdminProfile.fromRow(r)
-      ];
+      return [for (final r in (rows as List)) AdminProfile.fromRow(r)];
     } catch (_) {
       final rows = await _client
           .rpc('get_all_profiles')
@@ -177,10 +182,12 @@ class AdminRepository {
 
   /// Registra i pagamenti via RPC admin_pay_bookings (ledger payments).
   Future<int> payBookings(List<String> bookingIds, String method) async {
-    final res = await _client.rpc('admin_pay_bookings', params: {
-      'p_booking_ids': bookingIds,
-      'p_method': method,
-    }).timeout(const Duration(seconds: 30));
+    final res = await _client
+        .rpc(
+          'admin_pay_bookings',
+          params: {'p_booking_ids': bookingIds, 'p_method': method},
+        )
+        .timeout(const Duration(seconds: 30));
     return (res as num?)?.toInt() ?? 0;
   }
 
@@ -189,11 +196,11 @@ class AdminRepository {
     var query = _client
         .from('payments')
         .select(
-            'id, amount, kind, method, client_email, created_at, note, period_start, period_end')
+          'id, amount, kind, method, client_email, created_at, note, period_start, period_end',
+        )
         .eq('org_id', orgId);
     if (since != null) {
-      query = query.gte(
-          'created_at', since.toIso8601String());
+      query = query.gte('created_at', since.toIso8601String());
     }
     final rows = await query
         .order('created_at', ascending: false)
@@ -227,21 +234,25 @@ class AdminRepository {
     String dateDisplay = '',
     String? forUserId,
   }) async {
-    final localId =
-        '${DateTime.now().millisecondsSinceEpoch}-${_rand36(9)}';
+    final localId = '${DateTime.now().millisecondsSinceEpoch}-${_rand36(9)}';
     try {
-      final res = await _client.rpc('book_slot', params: {
-        'p_org_slug': orgSlug,
-        'p_local_id': localId,
-        'p_date': date,
-        'p_time': time,
-        'p_name': name,
-        'p_email': email,
-        'p_whatsapp': whatsapp ?? '',
-        'p_notes': '',
-        'p_date_display': dateDisplay,
-        'p_for_user_id': forUserId,
-      }).timeout(const Duration(seconds: 45));
+      final res = await _client
+          .rpc(
+            'book_slot',
+            params: {
+              'p_org_slug': orgSlug,
+              'p_local_id': localId,
+              'p_date': date,
+              'p_time': time,
+              'p_name': name,
+              'p_email': email,
+              'p_whatsapp': whatsapp ?? '',
+              'p_notes': '',
+              'p_date_display': dateDisplay,
+              'p_for_user_id': forUserId,
+            },
+          )
+          .timeout(const Duration(seconds: 45));
       final map = (res as Map).cast<String, dynamic>();
       if (map['success'] == true) return null;
       return (map['error'] as String?) ?? 'server_error';
@@ -259,13 +270,16 @@ class AdminRepository {
     String? date,
     String? time,
   }) async {
-    final res = await _client.functions.invoke('send-admin-message', body: {
-      'title': title,
-      'body': body,
-      'mode': mode,
-      'date': ?date,
-      'time': ?time,
-    });
+    final res = await _client.functions.invoke(
+      'send-admin-message',
+      body: {
+        'title': title,
+        'body': body,
+        'mode': mode,
+        'date': ?date,
+        'time': ?time,
+      },
+    );
     final data = (res.data as Map?)?.cast<String, dynamic>();
     if (data?['ok'] == true) return (data?['sent'] as num?)?.toInt() ?? 0;
     throw Exception(data?['error'] ?? 'Invio non riuscito');
@@ -275,8 +289,7 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> fetchAdminMessages() async {
     final rows = await _client
         .from('admin_messages')
-        .select(
-            'created_at, type, date, title, body, client_name, sent_count')
+        .select('created_at, type, date, title, body, client_name, sent_count')
         .eq('org_id', orgId)
         .order('created_at', ascending: false)
         .limit(300)
@@ -289,7 +302,8 @@ class AdminRepository {
     final rows = await _client
         .from('client_notifications')
         .select(
-            'created_at, type, status, user_name, user_email, title, body, error, booking_date')
+          'created_at, type, status, user_name, user_email, title, body, error, booking_date',
+        )
         .eq('org_id', orgId)
         .order('created_at', ascending: false)
         .limit(300)
@@ -338,16 +352,16 @@ class PaymentRow {
   final DateTime? periodEnd;
 
   static PaymentRow fromRow(Map<String, dynamic> row) => PaymentRow(
-        id: row['id'] as String,
-        amount: (row['amount'] as num?)?.toDouble() ?? 0,
-        kind: (row['kind'] as String?) ?? 'session',
-        method: (row['method'] as String?) ?? 'contanti',
-        clientEmail: row['client_email'] as String?,
-        createdAt: _date(row['created_at']),
-        note: row['note'] as String?,
-        periodStart: _date(row['period_start']),
-        periodEnd: _date(row['period_end']),
-      );
+    id: row['id'] as String,
+    amount: (row['amount'] as num?)?.toDouble() ?? 0,
+    kind: (row['kind'] as String?) ?? 'session',
+    method: (row['method'] as String?) ?? 'contanti',
+    clientEmail: row['client_email'] as String?,
+    createdAt: _date(row['created_at']),
+    note: row['note'] as String?,
+    periodStart: _date(row['period_start']),
+    periodEnd: _date(row['period_end']),
+  );
 
   static const kindLabels = {
     'session': 'Lezione',
@@ -427,7 +441,11 @@ final adminClientsProvider = FutureProvider<List<AdminClient>>((ref) async {
     if (ek != null && byEmail.containsKey(ek)) return byEmail[ek]!;
     if (pk != null && byPhone.containsKey(pk)) return byPhone[pk]!;
     final c = AdminClient(
-        name: name, email: email, whatsapp: whatsapp, bookings: []);
+      name: name,
+      email: email,
+      whatsapp: whatsapp,
+      bookings: [],
+    );
     clients.add(c);
     if (ek != null) byEmail[ek] = c;
     if (pk != null) byPhone[pk] = c;
@@ -453,31 +471,38 @@ final adminClientsProvider = FutureProvider<List<AdminClient>>((ref) async {
     }
     if (existing != null) {
       consumed.add(existing);
-      result.add(AdminClient(
-        userId: p.id,
-        name: existing.name.isNotEmpty ? existing.name : p.name,
-        email: p.email,
-        whatsapp: p.whatsapp ?? existing.whatsapp,
-        bookings: existing.bookings
-          ..sort((a, b) => '${b.date}${b.time}'.compareTo('${a.date}${a.time}')),
-        profile: p,
-      ));
+      result.add(
+        AdminClient(
+          userId: p.id,
+          name: existing.name.isNotEmpty ? existing.name : p.name,
+          email: p.email,
+          whatsapp: p.whatsapp ?? existing.whatsapp,
+          bookings: existing.bookings
+            ..sort(
+              (a, b) => '${b.date}${b.time}'.compareTo('${a.date}${a.time}'),
+            ),
+          profile: p,
+        ),
+      );
     } else {
-      result.add(AdminClient(
-        userId: p.id,
-        name: p.name,
-        email: p.email,
-        whatsapp: p.whatsapp,
-        bookings: [],
-        profile: p,
-      ));
+      result.add(
+        AdminClient(
+          userId: p.id,
+          name: p.name,
+          email: p.email,
+          whatsapp: p.whatsapp,
+          bookings: [],
+          profile: p,
+        ),
+      );
     }
   }
   // Clienti solo da prenotazioni (senza profilo).
   for (final c in clients) {
     if (!consumed.contains(c)) {
       c.bookings.sort(
-          (a, b) => '${b.date}${b.time}'.compareTo('${a.date}${a.time}'));
+        (a, b) => '${b.date}${b.time}'.compareTo('${a.date}${a.time}'),
+      );
       result.add(c);
     }
   }
@@ -502,15 +527,17 @@ final statsPaymentsProvider = FutureProvider<List<PaymentRow>>((ref) async {
   return repo.fetchPayments(since: DateTime(now.year - 1, 1, 1));
 });
 
-final adminMessagesProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final adminMessagesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = await ref.watch(adminRepositoryProvider.future);
   if (repo == null) return const [];
   return repo.fetchAdminMessages();
 });
 
-final clientNotificationsProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final clientNotificationsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = await ref.watch(adminRepositoryProvider.future);
   if (repo == null) return const [];
   return repo.fetchClientNotifications();

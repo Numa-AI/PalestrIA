@@ -40,7 +40,8 @@ class AuthRepository {
       return AuthResult.fail(_mapAuthError(e));
     } catch (_) {
       return const AuthResult.fail(
-          'Errore di connessione. Riprova tra qualche istante.');
+        'Errore di connessione. Riprova tra qualche istante.',
+      );
     }
   }
 
@@ -60,27 +61,35 @@ class AuthRepository {
     final slug = orgSlug.trim().toLowerCase();
     if (slug.isEmpty) {
       return const AuthResult.fail(
-          'Studio non identificato: inserisci il codice della tua palestra.');
+        'Studio non identificato: inserisci il codice della tua palestra.',
+      );
     }
 
-    final phone =
-        (whatsapp == null || whatsapp.trim().isEmpty) ? null : normalizePhone(whatsapp);
+    final phone = (whatsapp == null || whatsapp.trim().isEmpty)
+        ? null
+        : normalizePhone(whatsapp);
     try {
       // Verifica che lo studio esista PRIMA di creare l'account: se lo slug non
       // corrisponde a nessuna org l'utente nascerebbe orfano (nessuna palestra).
-      final orgCheck = await _client
-          .rpc('get_public_org_settings', params: {'p_org_slug': slug});
+      final orgCheck = await _client.rpc(
+        'get_public_org_settings',
+        params: {'p_org_slug': slug},
+      );
       if (orgCheck is! Map || orgCheck.isEmpty) {
         return AuthResult.fail(
-            'Palestra non riconosciuta (codice "$slug"). Controlla il link di invito.');
+          'Palestra non riconosciuta (codice "$slug"). Controlla il link di invito.',
+        );
       }
 
       if (phone != null) {
-        final taken = await _client
-            .rpc('is_whatsapp_taken', params: {'phone': phone});
+        final taken = await _client.rpc(
+          'is_whatsapp_taken',
+          params: {'phone': phone},
+        );
         if (taken == true) {
           return const AuthResult.fail(
-              'Questo numero WhatsApp è già registrato.');
+            'Questo numero WhatsApp è già registrato.',
+          );
         }
       }
 
@@ -107,8 +116,7 @@ class AuthRepository {
       // join idempotente alla org.
       if (res.session != null) {
         try {
-          await _client
-              .rpc('join_organization', params: {'p_org_slug': slug});
+          await _client.rpc('join_organization', params: {'p_org_slug': slug});
         } catch (_) {
           // idempotente/fail-silent come nel web
         }
@@ -118,7 +126,8 @@ class AuthRepository {
       return AuthResult.fail(_mapAuthError(e));
     } catch (_) {
       return const AuthResult.fail(
-          'Errore di connessione. Riprova tra qualche istante.');
+        'Errore di connessione. Riprova tra qualche istante.',
+      );
     }
   }
 
@@ -134,12 +143,30 @@ class AuthRepository {
 
   String _foldAccents(String s) {
     const map = {
-      'à': 'a', 'á': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a',
-      'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
-      'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
-      'ò': 'o', 'ó': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o',
-      'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
-      'ç': 'c', 'ñ': 'n',
+      'à': 'a',
+      'á': 'a',
+      'â': 'a',
+      'ä': 'a',
+      'ã': 'a',
+      'è': 'e',
+      'é': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'ì': 'i',
+      'í': 'i',
+      'î': 'i',
+      'ï': 'i',
+      'ò': 'o',
+      'ó': 'o',
+      'ô': 'o',
+      'ö': 'o',
+      'õ': 'o',
+      'ù': 'u',
+      'ú': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'ç': 'c',
+      'ñ': 'n',
     };
     final sb = StringBuffer();
     for (final ch in s.split('')) {
@@ -190,24 +217,29 @@ class AuthRepository {
       //    utente già esistente).
       if (!hasSession) {
         try {
-          final signIn =
-              await _auth.signInWithPassword(email: mail, password: password);
+          final signIn = await _auth.signInWithPassword(
+            email: mail,
+            password: password,
+          );
           hasSession = signIn.session != null;
         } on AuthException catch (e) {
           if (e.message.toLowerCase().contains('invalid login credentials')) {
             return const AuthResult.fail(
-                'Esiste già un account con questa email (password diversa). Accedi dal login.');
+              'Esiste già un account con questa email (password diversa). Accedi dal login.',
+            );
           }
           // conferma email richiesta: memorizza lo studio, si crea al login.
-          await _savePendingStudio(name, slug);
+          await _savePendingStudio(name, slug, mail);
           return const AuthResult.emailPending(
-              'Ti abbiamo inviato una email di conferma. Confermala, poi accedi per completare la creazione dello studio.');
+            'Ti abbiamo inviato una email di conferma. Confermala, poi accedi per completare la creazione dello studio.',
+          );
         }
       }
       if (!hasSession) {
-        await _savePendingStudio(name, slug);
+        await _savePendingStudio(name, slug, mail);
         return const AuthResult.emailPending(
-            'Conferma la tua email, poi accedi per completare la creazione dello studio.');
+          'Conferma la tua email, poi accedi per completare la creazione dello studio.',
+        );
       }
 
       // 3) crea l'organizzazione (owner + settings + trial 30gg).
@@ -224,36 +256,53 @@ class AuthRepository {
       return AuthResult.fail(_mapAuthError(e));
     } catch (_) {
       return const AuthResult.fail(
-          'Errore di connessione. Riprova tra qualche istante.');
+        'Errore di connessione. Riprova tra qualche istante.',
+      );
     }
   }
 
   Future<AuthResult> _createOrganization(String name, String slug) async {
     try {
-      await _client
-          .rpc('create_organization', params: {'p_name': name, 'p_slug': slug});
+      await _client.rpc(
+        'create_organization',
+        params: {'p_name': name, 'p_slug': slug},
+      );
       return const AuthResult.ok();
     } on PostgrestException catch (e) {
       final m = e.message.toLowerCase();
       if (m.contains('slug_taken')) {
         return const AuthResult.fail(
-            'Questo nome studio è già in uso. Provane un altro.');
+          'Questo nome studio è già in uso. Provane un altro.',
+        );
       }
       if (m.contains('invalid_slug')) {
         return const AuthResult.fail(
-            'Nome studio non valido: usa lettere e numeri.');
+          'Nome studio non valido: usa lettere e numeri.',
+        );
       }
       return AuthResult.fail(
-          'Errore nella creazione dello studio: ${e.message}');
+        'Errore nella creazione dello studio: ${e.message}',
+      );
     }
   }
 
   static const _pendingStudioKey = 'pending_studio';
 
-  Future<void> _savePendingStudio(String name, String slug) async {
+  Future<void> _savePendingStudio(
+    String name,
+    String slug,
+    String email,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _pendingStudioKey, jsonEncode({'name': name, 'slug': slug}));
+      _pendingStudioKey,
+      jsonEncode({
+        'name': name,
+        'slug': slug,
+        'email': email.trim().toLowerCase(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }),
+    );
   }
 
   Future<void> _clearPendingStudio() async {
@@ -271,7 +320,17 @@ class AuthRepository {
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final name = (data['name'] as String?)?.trim() ?? '';
       final slug = (data['slug'] as String?)?.trim() ?? '';
-      if (slug.isEmpty) {
+      final pendingEmail = (data['email'] as String?)?.trim().toLowerCase();
+      final createdAt = DateTime.tryParse(data['created_at'] as String? ?? '');
+      final currentEmail = _auth.currentUser?.email?.trim().toLowerCase();
+      final expired =
+          createdAt == null ||
+          DateTime.now().toUtc().difference(createdAt.toUtc()) >
+              const Duration(days: 2);
+      if (slug.isEmpty ||
+          pendingEmail == null ||
+          pendingEmail != currentEmail ||
+          expired) {
         await prefs.remove(_pendingStudioKey);
         return;
       }
@@ -284,8 +343,10 @@ class AuthRepository {
           .eq('status', 'active')
           .limit(1);
       if (existing.isEmpty) {
-        await _client.rpc('create_organization',
-            params: {'p_name': name, 'p_slug': slug});
+        await _client.rpc(
+          'create_organization',
+          params: {'p_name': name, 'p_slug': slug},
+        );
         try {
           await _auth.refreshSession();
         } catch (_) {}
@@ -298,7 +359,10 @@ class AuthRepository {
 
   Future<AuthResult> resetPassword(String email) async {
     try {
-      await _auth.resetPasswordForEmail(email.trim());
+      await _auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: 'palestria://app/recovery',
+      );
       return const AuthResult.ok();
     } on AuthException catch (e) {
       return AuthResult.fail(_mapAuthError(e));
@@ -320,10 +384,13 @@ class AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     final orgKeys = prefs
         .getKeys()
-        .where((k) =>
-            k.startsWith('org_') ||
-            k.startsWith('cache_') ||
-            k == 'branding_snapshot')
+        .where(
+          (k) =>
+              k.startsWith('org_') ||
+              k.startsWith('cache_') ||
+              k == 'branding_snapshot' ||
+              k == _pendingStudioKey,
+        )
         .toList();
     for (final k in orgKeys) {
       await prefs.remove(k);
@@ -358,5 +425,6 @@ class AuthRepository {
   }
 }
 
-final authRepositoryProvider =
-    Provider<AuthRepository>((ref) => AuthRepository(ref.watch(supabaseProvider)));
+final authRepositoryProvider = Provider<AuthRepository>(
+  (ref) => AuthRepository(ref.watch(supabaseProvider)),
+);

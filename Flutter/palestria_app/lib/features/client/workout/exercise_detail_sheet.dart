@@ -11,11 +11,17 @@ import 'workout_providers.dart';
 
 /// Overlay dettaglio esercizio/superset/circuito con sezione log (§8.4).
 Future<void> showExerciseDetailSheet(
-    BuildContext context, WidgetRef ref, WorkoutPlan plan, ExerciseGroup group) {
-  return Navigator.of(context).push(MaterialPageRoute(
-    fullscreenDialog: true,
-    builder: (_) => _ExerciseDetailPage(plan: plan, group: group),
-  ));
+  BuildContext context,
+  WidgetRef ref,
+  WorkoutPlan plan,
+  ExerciseGroup group,
+) {
+  return Navigator.of(context).push(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => _ExerciseDetailPage(plan: plan, group: group),
+    ),
+  );
 }
 
 class _ExerciseDetailPage extends ConsumerWidget {
@@ -31,7 +37,8 @@ class _ExerciseDetailPage extends ConsumerWidget {
       ExerciseGroupKind.superset => 'Super Serie',
       ExerciseGroupKind.circuit => 'Circuito',
     };
-    final media = ref.watch(catalogMediaProvider(plan.id)).value ??
+    final media =
+        ref.watch(catalogMediaProvider(plan.id)).value ??
         const <String, CatalogMedia>{};
 
     return Scaffold(
@@ -47,14 +54,18 @@ class _ExerciseDetailPage extends ConsumerWidget {
                 '${group.first.sets} giri · ${group.exercises.length} esercizi'
                 '${group.exercises.map((e) => e.restSeconds).where((r) => r > 0).isNotEmpty ? ' · ${group.exercises.map((e) => e.restSeconds).where((r) => r > 0).last}s pausa' : ''}',
                 style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: AppColors.navy),
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.navy,
+                ),
               ),
             ),
           for (var i = 0; i < group.exercises.length; i++) ...[
             if (group.exercises.length > 1)
               Padding(
                 padding: const EdgeInsets.only(
-                    top: AppSpacing.md, bottom: AppSpacing.sm),
+                  top: AppSpacing.md,
+                  bottom: AppSpacing.sm,
+                ),
                 child: Text(
                   group.kind == ExerciseGroupKind.superset
                       ? 'Esercizio ${i + 1}'
@@ -104,55 +115,63 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
     _initialized = true;
 
     final today = todayYmd();
-    final todayLogs = logs
-        .where((l) => l.exerciseId == e.id && l.logDate == today)
-        .toList()
-      ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
+    final todayLogs =
+        logs.where((l) => l.exerciseId == e.id && l.logDate == today).toList()
+          ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
 
     // sessione precedente = data di log più recente ≠ oggi
     final prevDate = logs
         .where((l) => l.exerciseId == e.id && l.logDate != today)
         .map((l) => l.logDate)
-        .fold<String?>(null, (max, d) => max == null || d.compareTo(max) > 0 ? d : max);
+        .fold<String?>(
+          null,
+          (max, d) => max == null || d.compareTo(max) > 0 ? d : max,
+        );
     final prevLogs = prevDate == null
         ? const <WorkoutLog>[]
         : (logs
-            .where((l) => l.exerciseId == e.id && l.logDate == prevDate)
-            .toList()
-          ..sort((a, b) => a.setNumber.compareTo(b.setNumber)));
+              .where((l) => l.exerciseId == e.id && l.logDate == prevDate)
+              .toList()
+            ..sort((a, b) => a.setNumber.compareTo(b.setNumber)));
 
     final count = e.isCardio ? 1 : e.sets;
     for (var i = 1; i <= count; i++) {
       final today0 = todayLogs.where((l) => l.setNumber == i).firstOrNull;
       final prev0 = prevLogs.where((l) => l.setNumber == i).firstOrNull;
-      _rows.add(_SetRow(
-        setNumber: i,
-        reps: TextEditingController(
-            text: (today0?.repsDone ?? prev0?.repsDone)?.toString() ??
-                (int.tryParse(e.reps)?.toString() ?? e.reps)),
-        weight: TextEditingController(
-            text: _fmtW(today0?.weightDone ?? prev0?.weightDone ?? e.weightKg)),
-        rest: TextEditingController(
+      _rows.add(
+        _SetRow(
+          setNumber: i,
+          reps: TextEditingController(
+            text:
+                (today0?.repsDone ?? prev0?.repsDone)?.toString() ??
+                (int.tryParse(e.reps)?.toString() ?? e.reps),
+          ),
+          weight: TextEditingController(
+            text: _fmtW(today0?.weightDone ?? prev0?.weightDone ?? e.weightKg),
+          ),
+          rest: TextEditingController(
             text: (today0?.restDone ?? prev0?.restDone ?? e.restSeconds)
-                .toString()),
-      ));
+                .toString(),
+          ),
+        ),
+      );
     }
     // righe extra registrate oggi oltre i set target
     for (final l in todayLogs.where((l) => l.setNumber > count)) {
-      _rows.add(_SetRow(
-        setNumber: l.setNumber,
-        reps: TextEditingController(text: l.repsDone?.toString() ?? ''),
-        weight: TextEditingController(text: _fmtW(l.weightDone)),
-        rest: TextEditingController(text: l.restDone?.toString() ?? ''),
-      ));
+      _rows.add(
+        _SetRow(
+          setNumber: l.setNumber,
+          reps: TextEditingController(text: l.repsDone?.toString() ?? ''),
+          weight: TextEditingController(text: _fmtW(l.weightDone)),
+          rest: TextEditingController(text: l.restDone?.toString() ?? ''),
+        ),
+      );
     }
   }
 
   static String _fmtW(double? w) {
     if (w == null) return '';
-    return w == w.roundToDouble()
-        ? w.toStringAsFixed(0)
-        : w.toStringAsFixed(1);
+    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
   }
 
   Future<void> _save() async {
@@ -167,8 +186,9 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
     try {
       for (final row in _rows) {
         final reps = int.tryParse(row.reps.text.trim());
-        final weight =
-            double.tryParse(row.weight.text.trim().replaceAll(',', '.'));
+        final weight = double.tryParse(
+          row.weight.text.trim().replaceAll(',', '.'),
+        );
         final rest = int.tryParse(row.rest.text.trim());
         if (reps == null && weight == null) continue;
         await repo.logSet(
@@ -202,15 +222,16 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        content:
-            const Text('Eliminare il log di oggi per questo esercizio?'),
+        content: const Text('Eliminare il log di oggi per questo esercizio?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Elimina')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
         ],
       ),
     );
@@ -235,12 +256,16 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
     _initRows(logs);
 
     final today = todayYmd();
-    final hasToday =
-        logs.any((l) => l.exerciseId == e.id && l.logDate == today);
+    final hasToday = logs.any(
+      (l) => l.exerciseId == e.id && l.logDate == today,
+    );
     final prevDate = logs
         .where((l) => l.exerciseId == e.id && l.logDate != today)
         .map((l) => l.logDate)
-        .fold<String?>(null, (max, d) => max == null || d.compareTo(max) > 0 ? d : max);
+        .fold<String?>(
+          null,
+          (max, d) => max == null || d.compareTo(max) > 0 ? d : max,
+        );
 
     final imageUrl = widget.media?.image ?? widget.media?.thumbnail;
     final videoUrl = widget.media?.video;
@@ -252,29 +277,38 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
         const SizedBox(height: AppSpacing.md),
         Row(
           children: [
-            const Text('DA FARE:',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.muted)),
+            const Text(
+              'DA FARE:',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: AppColors.muted,
+              ),
+            ),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(e.targetLabel,
-                  style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.navy)),
+              child: Text(
+                e.targetLabel,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.navy,
+                ),
+              ),
             ),
           ],
         ),
         if (e.notes != null && e.notes!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(e.notes!,
-                style: const TextStyle(
-                    fontStyle: FontStyle.italic,
-                    color: AppColors.muted,
-                    fontSize: 13)),
+            child: Text(
+              e.notes!,
+              style: const TextStyle(
+                fontStyle: FontStyle.italic,
+                color: AppColors.muted,
+                fontSize: 13,
+              ),
+            ),
           ),
         if (prevDate != null) _previousSession(logs, prevDate),
         const SizedBox(height: AppSpacing.lg),
@@ -286,12 +320,14 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
         _logGrid(),
         TextButton.icon(
           onPressed: () => setState(() {
-            _rows.add(_SetRow(
-              setNumber: _rows.length + 1,
-              reps: TextEditingController(),
-              weight: TextEditingController(),
-              rest: TextEditingController(),
-            ));
+            _rows.add(
+              _SetRow(
+                setNumber: _rows.length + 1,
+                reps: TextEditingController(),
+                weight: TextEditingController(),
+                rest: TextEditingController(),
+              ),
+            );
           }),
           icon: const Icon(Icons.add, size: 16),
           label: const Text('+ Serie'),
@@ -301,17 +337,18 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
           style: FilledButton.styleFrom(
             backgroundColor: _saved ? AppColors.successEmerald : null,
           ),
-          child: Text(_saving
-              ? 'Salvataggio...'
-              : _saved
-                  ? 'Salvato!'
-                  : 'SALVA'),
+          child: Text(
+            _saving
+                ? 'Salvataggio...'
+                : _saved
+                ? 'Salvato!'
+                : 'SALVA',
+          ),
         ),
         if (hasToday)
           TextButton(
             onPressed: () => _deleteToday(logs),
-            style: TextButton.styleFrom(
-                foregroundColor: AppColors.dangerDark),
+            style: TextButton.styleFrom(foregroundColor: AppColors.dangerDark),
             child: const Text('Elimina log di oggi'),
           ),
       ],
@@ -319,29 +356,35 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
   }
 
   Widget _previousSession(List<WorkoutLog> logs, String prevDate) {
-    final prev = logs
-        .where((l) => l.exerciseId == e.id && l.logDate == prevDate)
-        .toList()
-      ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
+    final prev =
+        logs
+            .where((l) => l.exerciseId == e.id && l.logDate == prevDate)
+            .toList()
+          ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
 
     return Container(
       margin: const EdgeInsets.only(top: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-            colors: [Color(0xFFFEFCE8), AppColors.warnSurface]),
+          colors: [Color(0xFFFEFCE8), AppColors.warnSurface],
+        ),
         border: const Border(
-            left: BorderSide(color: AppColors.amber, width: 3)),
+          left: BorderSide(color: AppColors.amber, width: 3),
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Sessione precedente — ${_dateLabel(prevDate)}',
-              style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.docWarnText)),
+          Text(
+            'Sessione precedente — ${_dateLabel(prevDate)}',
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.docWarnText,
+            ),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
@@ -350,7 +393,9 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
               for (final l in prev)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
@@ -361,9 +406,10 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
                         ? '${l.repsDone ?? '-'} min'
                         : '${l.setNumber}. ${l.repsDone ?? '-'}×${_fmtW(l.weightDone)}kg',
                     style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        fontFeatures: AppText.tabularNums),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: AppText.tabularNums,
+                    ),
                   ),
                 ),
             ],
@@ -375,48 +421,54 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
 
   Widget _logGrid() {
     Widget header(String t) => Expanded(
-          child: Text(t,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.muted)),
-        );
+      child: Text(
+        t,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: AppColors.muted,
+        ),
+      ),
+    );
 
     Widget input(TextEditingController c) => Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: TextField(
-              controller: c,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: AppText.tabularNums),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: AppColors.slateBg,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            fontFeatures: AppText.tabularNums,
+          ),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: AppColors.slateBg,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     Widget setHeader() => const SizedBox(
-          width: 28,
-          child: Text('Serie',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.muted)),
-        );
+      width: 28,
+      child: Text(
+        'Serie',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: AppColors.muted,
+        ),
+      ),
+    );
 
     return Column(
       children: [
@@ -440,11 +492,14 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
               children: [
                 SizedBox(
                   width: 28,
-                  child: Text('${row.setNumber}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.muted)),
+                  child: Text(
+                    '${row.setNumber}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted,
+                    ),
+                  ),
                 ),
                 if (e.isCardio)
                   input(row.reps)
@@ -463,8 +518,18 @@ class _ExerciseBlockState extends ConsumerState<_ExerciseBlock> {
   static String _dateLabel(String ymd) {
     final d = DateTime.parse(ymd);
     const months = [
-      'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-      'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+      'Gen',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mag',
+      'Giu',
+      'Lug',
+      'Ago',
+      'Set',
+      'Ott',
+      'Nov',
+      'Dic',
     ];
     return '${d.day} ${months[d.month - 1]}';
   }

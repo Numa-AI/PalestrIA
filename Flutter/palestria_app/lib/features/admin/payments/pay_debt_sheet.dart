@@ -14,7 +14,10 @@ import 'payments_tab.dart';
 /// Popup "Segna come pagato" (spec-admin §7.5): lista lezioni non pagate del
 /// contatto (passate + future), metodo, conferma → admin_pay_bookings.
 Future<bool?> showPayDebtSheet(
-    BuildContext context, WidgetRef ref, DebtorContact contact) {
+  BuildContext context,
+  WidgetRef ref,
+  DebtorContact contact,
+) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -57,10 +60,10 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
     final config =
         ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
     final settings = ref.watch(orgSettingsProvider).value;
-    final bookings = widget.contact.bookings
-        .where((b) => b.sbId != null)
-        .toList()
-      ..sort((a, b) => '${a.date}${a.time}'.compareTo('${b.date}${b.time}'));
+    final bookings =
+        widget.contact.bookings.where((b) => b.sbId != null).toList()..sort(
+          (a, b) => '${a.date}${a.time}'.compareTo('${b.date}${b.time}'),
+        );
     final allIds = [for (final b in bookings) b.sbId!];
     final allSelected = allIds.isNotEmpty && allIds.every(_selected.contains);
 
@@ -71,44 +74,54 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
 
     return SafeArea(
       child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(widget.contact.name,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
+              Text(
+                widget.contact.name,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const SizedBox(height: 2),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                      bookings.length == 1
-                          ? '1 lezione non pagata'
-                          : '${bookings.length} lezioni non pagate',
-                      style: AppText.meta),
+                    bookings.length == 1
+                        ? '1 lezione non pagata'
+                        : '${bookings.length} lezioni non pagate',
+                    style: AppText.meta,
+                  ),
                   TextButton(
                     onPressed: allIds.isEmpty
                         ? null
                         : () => setState(() {
-                              if (allSelected) {
-                                _selected.removeAll(allIds);
-                              } else {
-                                _selected.addAll(allIds);
-                              }
-                            }),
+                            if (allSelected) {
+                              _selected.removeAll(allIds);
+                            } else {
+                              _selected.addAll(allIds);
+                            }
+                          }),
                     style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     child: Text(
-                        allSelected ? 'Deseleziona tutto' : 'Seleziona tutto',
-                        style: const TextStyle(
-                            fontSize: 12.5, fontWeight: FontWeight.w700)),
+                      allSelected ? 'Deseleziona tutto' : 'Seleziona tutto',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -125,8 +138,9 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
               const SizedBox(height: AppSpacing.md),
               DropdownButtonFormField<String>(
                 initialValue: _method,
-                decoration:
-                    const InputDecoration(labelText: 'Metodo di pagamento'),
+                decoration: const InputDecoration(
+                  labelText: 'Metodo di pagamento',
+                ),
                 hint: const Text('Seleziona…'),
                 items: [
                   for (final (v, l) in _methods)
@@ -138,14 +152,17 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Dovuto: €${formatEuro(total)}',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w800)),
+                  Text(
+                    'Dovuto: €${formatEuro(total)}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   FilledButton(
-                    onPressed:
-                        (_selected.isEmpty || _method == null || _paying)
-                            ? null
-                            : _confirm,
+                    onPressed: (_selected.isEmpty || _method == null || _paying)
+                        ? null
+                        : _confirm,
                     child: Text(_paying ? 'Salvataggio...' : '✓ Conferma'),
                   ),
                 ],
@@ -157,7 +174,11 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
     );
   }
 
-  Widget _row(OrgScheduleConfig config, OrgSettingsService? settings, Booking b) {
+  Widget _row(
+    OrgScheduleConfig config,
+    OrgSettingsService? settings,
+    Booking b,
+  ) {
     final now = DateTime.now();
     final past = lessonStart(b.date, b.time).isBefore(now);
     final d = DateTime.parse(b.date);
@@ -173,13 +194,21 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
       controlAffinity: ListTileControlAffinity.leading,
       contentPadding: EdgeInsets.zero,
       tileColor: past ? const Color(0xFFFFF1F2) : null,
-      title: Text('${d.day}/${d.month} ${b.time}',
-          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-      subtitle: Text(config.slotName(b.slotType),
-          style: const TextStyle(fontSize: 12)),
-      secondary: Text('€${formatEuro(bookingPrice(b, settings, config))}',
-          style: const TextStyle(
-              fontWeight: FontWeight.w700, color: AppColors.dangerDark)),
+      title: Text(
+        '${d.day}/${d.month} ${b.time}',
+        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        config.slotName(b.slotType),
+        style: const TextStyle(fontSize: 12),
+      ),
+      secondary: Text(
+        '€${formatEuro(bookingPrice(b, settings, config))}',
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          color: AppColors.dangerDark,
+        ),
+      ),
     );
   }
 
@@ -197,7 +226,9 @@ class _PayDebtSheetState extends ConsumerState<_PayDebtSheet> {
       if (!mounted) return;
       Navigator.pop(context, true);
       AppSnack.success(
-          context, '$n pagament${n == 1 ? 'o registrato' : 'i registrati'}');
+        context,
+        '$n pagament${n == 1 ? 'o registrato' : 'i registrati'}',
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _paying = false);

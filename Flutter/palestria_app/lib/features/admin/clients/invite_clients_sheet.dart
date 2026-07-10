@@ -41,10 +41,13 @@ class _InviteSheet extends ConsumerWidget {
         ),
         child: slugAsync.when(
           loading: () => const SizedBox(
-              height: 240, child: Center(child: CircularProgressIndicator())),
+            height: 240,
+            child: Center(child: CircularProgressIndicator()),
+          ),
           error: (e, _) => SizedBox(
-              height: 160,
-              child: Center(child: Text('Errore: $e', style: AppText.meta))),
+            height: 160,
+            child: Center(child: Text('Errore: $e', style: AppText.meta)),
+          ),
           data: (slug) => _content(context, slug),
         ),
       ),
@@ -56,7 +59,8 @@ class _InviteSheet extends ConsumerWidget {
       return const SizedBox(
         height: 160,
         child: Center(
-            child: Text('Studio non identificato.', style: AppText.meta)),
+          child: Text('Studio non identificato.', style: AppText.meta),
+        ),
       );
     }
     final link = '${AppConfig.webBaseUrl}/login.html?org=$slug';
@@ -104,18 +108,25 @@ class _InviteSheet extends ConsumerWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(link,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.slate800)),
+                child: Text(
+                  link,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.slate800,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
-              Text('Codice: $slug',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary)),
+              Text(
+                'Codice: $slug',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
             ],
           ),
         ),
@@ -128,7 +139,8 @@ class _InviteSheet extends ConsumerWidget {
                   await Clipboard.setData(ClipboardData(text: link));
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Link copiato!')));
+                      const SnackBar(content: Text('Link copiato!')),
+                    );
                   }
                 },
                 icon: const Icon(Icons.copy, size: 18),
@@ -138,13 +150,14 @@ class _InviteSheet extends ConsumerWidget {
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: FilledButton.icon(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.whatsapp),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.whatsapp,
+                ),
                 onPressed: () async {
-                  final text =
-                      'Iscriviti al mio studio su PalestrIA: $link';
+                  final text = 'Iscriviti al mio studio su PalestrIA: $link';
                   final wa = Uri.parse(
-                      'https://wa.me/?text=${Uri.encodeComponent(text)}');
+                    'https://wa.me/?text=${Uri.encodeComponent(text)}',
+                  );
                   await launchUrl(wa, mode: LaunchMode.externalApplication);
                 },
                 icon: const Icon(Icons.share, size: 18),

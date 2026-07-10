@@ -466,6 +466,23 @@ async function callAnthropic(
 // MAIN HANDLER
 // ─────────────────────────────────────────────────────────────────────
 
+async function tenantFeatureEnabled(orgId: string, feature: string): Promise<boolean> {
+    const { data: sub, error: subError } = await supabase
+        .from("subscriptions")
+        .select("status, plans(features)")
+        .eq("org_id", orgId)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!sub || !["trialing", "active"].includes(sub.status)) return false;
+    const planRaw: any = sub.plans;
+    const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw;
+    if (plan?.features?.[feature] !== true) return false;
+    const { data: setting, error: settingError } = await supabase
+        .from("org_settings").select("value")
+        .eq("org_id", orgId).eq("key", `features.${feature}`).maybeSingle();
+    if (settingError) throw settingError;
+    return setting == null || setting.value === true;
+}
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders });
@@ -503,6 +520,7 @@ Deno.serve(async (req) => {
         const isAdmin = ["owner", "admin"].includes(callerMember?.role ?? "");
         // org del chiamante: staff/admin da org_members, cliente self-service da profiles.
         let callerOrgId = callerMember?.org_id ?? null;
+
         if (!callerOrgId) {
             const { data: callerProfile } = await supabase
                 .from("profiles")
@@ -539,6 +557,10 @@ Deno.serve(async (req) => {
         // Il chiamante deve appartenere a una org. Self-service: un cliente può
         // generare SOLO il proprio report; l'admin può generarlo per chiunque
         // nella propria org (il target è poi verificato per org_id più sotto).
+        if (callerOrgId && !await tenantFeatureEnabled(callerOrgId, "ai_reports")) {
+            return json({ error: "Feature AI reports disabled", code: "FEATURE_DISABLED" }, 403);
+        }
+
         if (!callerOrgId) {
             return json({
                 error: "Forbidden: chiamante senza org",

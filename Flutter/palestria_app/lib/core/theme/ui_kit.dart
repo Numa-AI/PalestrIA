@@ -128,8 +128,10 @@ class SectionHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (eyebrow != null) ...[
-                  Text(eyebrow!.toUpperCase(),
-                      style: AppText.eyebrow.copyWith(color: primary)),
+                  Text(
+                    eyebrow!.toUpperCase(),
+                    style: AppText.eyebrow.copyWith(color: primary),
+                  ),
                   const SizedBox(height: 4),
                 ],
                 Text(title, style: AppText.sectionTitle),
@@ -185,7 +187,10 @@ class AppEmptyState extends StatelessWidget {
               Text(
                 subtitle!,
                 textAlign: TextAlign.center,
-                style: AppText.meta.copyWith(color: AppColors.subtle, height: 1.5),
+                style: AppText.meta.copyWith(
+                  color: AppColors.subtle,
+                  height: 1.5,
+                ),
               ),
             ],
             if (action != null) ...[
@@ -234,9 +239,13 @@ class StatusPill extends StatelessWidget {
             Icon(icon, size: 12, color: foreground),
             const SizedBox(width: 4),
           ],
-          Text(label,
-              style: AppText.badge.copyWith(
-                  color: foreground, fontSize: dense ? 11 : 12)),
+          Text(
+            label,
+            style: AppText.badge.copyWith(
+              color: foreground,
+              fontSize: dense ? 11 : 12,
+            ),
+          ),
         ],
       ),
     );
@@ -300,7 +309,9 @@ class _GradientButtonState extends State<GradientButton> {
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2.4, color: Colors.white),
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
               )
             : Row(
                 mainAxisSize: MainAxisSize.min,
@@ -309,12 +320,14 @@ class _GradientButtonState extends State<GradientButton> {
                     Icon(widget.icon, size: 18, color: Colors.white),
                     const SizedBox(width: 8),
                   ],
-                  Text(widget.label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      )),
+                  Text(
+                    widget.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
       ),
@@ -354,7 +367,11 @@ class DarkHero extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [const Color(0xFF1A1A1A), const Color(0xFF2A1F3D), cs.secondary],
+          colors: [
+            const Color(0xFF1A1A1A),
+            const Color(0xFF2A1F3D),
+            cs.secondary,
+          ],
           stops: const [0, 0.5, 1],
         ),
         boxShadow: [
@@ -376,7 +393,10 @@ class DarkHero extends StatelessWidget {
                   gradient: RadialGradient(
                     center: const Alignment(0.75, 0.85),
                     radius: 0.95,
-                    colors: [cs.primary.withValues(alpha: 0.45), Colors.transparent],
+                    colors: [
+                      cs.primary.withValues(alpha: 0.45),
+                      Colors.transparent,
+                    ],
                     stops: const [0, 0.62],
                   ),
                 ),
@@ -387,7 +407,9 @@ class DarkHero extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(radius),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
                 ),
               ),
             ),
@@ -456,10 +478,7 @@ class AppStatCard extends StatelessWidget {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: content,
-          ),
+          Padding(padding: const EdgeInsets.only(top: 6), child: content),
         ],
       ),
     );
@@ -481,7 +500,9 @@ class AppLoading extends StatelessWidget {
             width: 34,
             height: 34,
             child: CircularProgressIndicator(
-                strokeWidth: 3, backgroundColor: AppColors.border),
+              strokeWidth: 3,
+              backgroundColor: AppColors.border,
+            ),
           ),
           if (label != null) ...[
             const SizedBox(height: AppSpacing.md),
@@ -512,11 +533,17 @@ class AppErrorRetry extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded, size: 40, color: AppColors.subtle),
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 40,
+              color: AppColors.subtle,
+            ),
             const SizedBox(height: AppSpacing.md),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: AppText.body.copyWith(color: AppColors.muted)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: AppText.body.copyWith(color: AppColors.muted),
+            ),
             const SizedBox(height: AppSpacing.lg),
             OutlinedButton.icon(
               onPressed: onRetry,
@@ -535,32 +562,48 @@ class AppErrorRetry extends StatelessWidget {
 class AppSnack {
   AppSnack._();
 
-  static void success(BuildContext context, String message) =>
-      _show(context, message, AppColors.successEmerald, Icons.check_circle_rounded);
+  static void success(BuildContext context, String message) => _show(
+    context,
+    message,
+    AppColors.successEmerald,
+    Icons.check_circle_rounded,
+  );
 
   static void error(BuildContext context, String message) =>
       _show(context, message, AppColors.danger, Icons.error_rounded);
 
-  static void info(BuildContext context, String message) =>
-      _show(context, message, Theme.of(context).colorScheme.primary,
-          Icons.info_rounded);
+  static void info(BuildContext context, String message) => _show(
+    context,
+    message,
+    Theme.of(context).colorScheme.primary,
+    Icons.info_rounded,
+  );
 
   static void _show(
-      BuildContext context, String message, Color bg, IconData icon) {
+    BuildContext context,
+    String message,
+    Color bg,
+    IconData icon,
+  ) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        content: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-                child: Text(message,
-                    style: const TextStyle(color: Colors.white))),
-          ],
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: bg,
+          behavior: SnackBarBehavior.floating,
         ),
-        backgroundColor: bg,
-        behavior: SnackBarBehavior.floating,
-      ));
+      );
   }
 }

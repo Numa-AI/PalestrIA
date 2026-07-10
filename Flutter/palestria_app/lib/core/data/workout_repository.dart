@@ -27,7 +27,8 @@ class WorkoutRepository {
 
   /// Log per gli esercizi di un piano, paginati (batch 1000 con tiebreaker id).
   Future<List<WorkoutLog>> fetchLogsForExercises(
-      List<String> exerciseIds) async {
+    List<String> exerciseIds,
+  ) async {
     if (exerciseIds.isEmpty) return const [];
     final all = <WorkoutLog>[];
     var from = 0;
@@ -36,7 +37,8 @@ class WorkoutRepository {
       final rows = await _client
           .from('workout_logs')
           .select(
-              'id, exercise_id, user_id, log_date, set_number, reps_done, weight_done, rest_done, rpe, notes')
+            'id, exercise_id, user_id, log_date, set_number, reps_done, weight_done, rest_done, rpe, notes',
+          )
           .inFilter('exercise_id', exerciseIds)
           .order('log_date', ascending: false)
           .order('set_number', ascending: true)
@@ -60,18 +62,18 @@ class WorkoutRepository {
     double? weightDone,
     int? restDone,
   }) async {
-    await _client.from('workout_logs').upsert(
-      {
-        'exercise_id': exerciseId,
-        'user_id': userId,
-        'log_date': logDate,
-        'set_number': setNumber,
-        'reps_done': repsDone,
-        'weight_done': weightDone,
-        'rest_done': restDone,
-      },
-      onConflict: 'exercise_id,user_id,log_date,set_number',
-    ).timeout(_crudTimeout);
+    await _client
+        .from('workout_logs')
+        .upsert({
+          'exercise_id': exerciseId,
+          'user_id': userId,
+          'log_date': logDate,
+          'set_number': setNumber,
+          'reps_done': repsDone,
+          'weight_done': weightDone,
+          'rest_done': restDone,
+        }, onConflict: 'exercise_id,user_id,log_date,set_number')
+        .timeout(_crudTimeout);
   }
 
   Future<void> deleteLog(String logId) async {
@@ -131,7 +133,9 @@ class WorkoutRepository {
   }
 
   Future<void> updateExercise(
-      String exerciseId, Map<String, dynamic> updates) async {
+    String exerciseId,
+    Map<String, dynamic> updates,
+  ) async {
     await _client
         .from('workout_exercises')
         .update(updates)
@@ -157,32 +161,28 @@ class WorkoutRepository {
   }
 
   Future<void> addExercise(Map<String, dynamic> data) async {
-    await _client
-        .from('workout_exercises')
-        .insert(data)
-        .timeout(_crudTimeout);
+    await _client.from('workout_exercises').insert(data).timeout(_crudTimeout);
   }
 
   Future<void> addExercises(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
-    await _client
-        .from('workout_exercises')
-        .insert(rows)
-        .timeout(_crudTimeout);
+    await _client.from('workout_exercises').insert(rows).timeout(_crudTimeout);
   }
 
   /// Rinumera i sort_order dal minimo del gruppo (come reorderExercises web).
-  Future<void> reorderExercises(
-      List<WorkoutExercise> orderedExercises) async {
+  Future<void> reorderExercises(List<WorkoutExercise> orderedExercises) async {
     if (orderedExercises.isEmpty) return;
     final minOrder = orderedExercises
         .map((e) => e.sortOrder)
         .reduce((a, b) => a < b ? a : b);
     for (var i = 0; i < orderedExercises.length; i++) {
-      await updateExercise(orderedExercises[i].id, {'sort_order': minOrder + i});
+      await updateExercise(orderedExercises[i].id, {
+        'sort_order': minOrder + i,
+      });
     }
   }
 }
 
-final workoutRepositoryProvider =
-    Provider<WorkoutRepository>((ref) => WorkoutRepository(ref.watch(supabaseProvider)));
+final workoutRepositoryProvider = Provider<WorkoutRepository>(
+  (ref) => WorkoutRepository(ref.watch(supabaseProvider)),
+);

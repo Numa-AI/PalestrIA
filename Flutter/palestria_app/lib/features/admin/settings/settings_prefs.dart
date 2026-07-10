@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/data/billing_saas.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/theme/ui_kit.dart';
@@ -28,11 +30,14 @@ class _PolicySectionState extends State<PolicySection> {
     super.initState();
     final s = widget.service;
     _freeHours = TextEditingController(
-        text: s.getNumber('booking.policy.free_cancel_hours', 24).toString());
+      text: s.getNumber('booking.policy.free_cancel_hours', 24).toString(),
+    );
     _penalty = TextEditingController(
-        text: s.getNumber('booking.policy.penalty_pct', 50).toString());
+      text: s.getNumber('booking.policy.penalty_pct', 50).toString(),
+    );
     _maxAdvance = TextEditingController(
-        text: s.getNumber('booking.policy.max_advance_days', 0).toString());
+      text: s.getNumber('booking.policy.max_advance_days', 0).toString(),
+    );
     _requiresAccount = s.getBool('booking.policy.requires_account', false);
     _cancelMode = s.getString('booking.policy.cancel_mode', 'penalty');
   }
@@ -49,12 +54,18 @@ class _PolicySectionState extends State<PolicySection> {
     setState(() => _saving = true);
     try {
       final s = widget.service;
-      await s.set('booking.policy.free_cancel_hours',
-          int.tryParse(_freeHours.text.trim()) ?? 0);
-      await s.set('booking.policy.penalty_pct',
-          int.tryParse(_penalty.text.trim()) ?? 0);
-      await s.set('booking.policy.max_advance_days',
-          int.tryParse(_maxAdvance.text.trim()) ?? 0);
+      await s.set(
+        'booking.policy.free_cancel_hours',
+        int.tryParse(_freeHours.text.trim()) ?? 0,
+      );
+      await s.set(
+        'booking.policy.penalty_pct',
+        int.tryParse(_penalty.text.trim()) ?? 0,
+      );
+      await s.set(
+        'booking.policy.max_advance_days',
+        int.tryParse(_maxAdvance.text.trim()) ?? 0,
+      );
       await s.set('booking.policy.requires_account', _requiresAccount);
       await s.set('booking.policy.cancel_mode', _cancelMode);
       if (mounted) AppSnack.success(context, 'Policy salvata.');
@@ -70,20 +81,32 @@ class _PolicySectionState extends State<PolicySection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Regole su anticipo, cancellazione gratuita e penali.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+        const Text(
+          'Regole su anticipo, cancellazione gratuita e penali.',
+          style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+        ),
         const SizedBox(height: AppSpacing.md),
         _num(_freeHours, 'Ore di cancellazione gratuita'),
         _num(_penalty, 'Penale cancellazione tardiva (%)'),
-        _num(_maxAdvance, 'Anticipo massimo prenotazione (giorni, 0 = illimitato)'),
+        _num(
+          _maxAdvance,
+          'Anticipo massimo prenotazione (giorni, 0 = illimitato)',
+        ),
         const SizedBox(height: AppSpacing.sm),
         DropdownButtonFormField<String>(
           initialValue: _cancelMode,
-          decoration: const InputDecoration(labelText: 'Modalità cancellazione'),
+          decoration: const InputDecoration(
+            labelText: 'Modalità cancellazione',
+          ),
           items: const [
-            DropdownMenuItem(value: 'penalty', child: Text('Penale percentuale')),
             DropdownMenuItem(
-                value: 'block', child: Text('Blocca cancellazione tardiva')),
+              value: 'penalty',
+              child: Text('Penale percentuale'),
+            ),
+            DropdownMenuItem(
+              value: 'block',
+              child: Text('Blocca cancellazione tardiva'),
+            ),
             DropdownMenuItem(value: 'free', child: Text('Sempre gratuita')),
           ],
           onChanged: (v) => setState(() => _cancelMode = v ?? 'penalty'),
@@ -92,11 +115,14 @@ class _PolicySectionState extends State<PolicySection> {
           contentPadding: EdgeInsets.zero,
           value: _requiresAccount,
           onChanged: (v) => setState(() => _requiresAccount = v),
-          title: const Text('Richiedi account per prenotare',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          title: const Text(
+            'Richiedi account per prenotare',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
           subtitle: const Text(
-              'Solo i clienti registrati possono prenotare.',
-              style: AppText.meta),
+            'Solo i clienti registrati possono prenotare.',
+            style: AppText.meta,
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
         FilledButton(
@@ -108,13 +134,13 @@ class _PolicySectionState extends State<PolicySection> {
   }
 
   Widget _num(TextEditingController c, String label) => Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-        child: TextField(
-          controller: c,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: label),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+    child: TextField(
+      controller: c,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(labelText: label),
+    ),
+  );
 }
 
 /// Sezione "Notifiche" (port di _settRenderNotif §6): conferme, promemoria,
@@ -144,10 +170,10 @@ class _NotifSectionState extends State<NotifSection> {
     _confirmation = s.getBool('notif.booking_confirmation', true);
     _reminderEnabled = s.getBool('notif.reminder_enabled', true);
     _reminderHours = TextEditingController(
-        text: s.getNumber('notif.reminder_hours', 24).toString());
+      text: s.getNumber('notif.reminder_hours', 24).toString(),
+    );
     _adminNew = s.getBool('notif.admin_new_booking', true);
-    final ch =
-        (s.get('notif.channels') as Map?)?.cast<String, dynamic>() ?? {};
+    final ch = (s.get('notif.channels') as Map?)?.cast<String, dynamic>() ?? {};
     _chPush = (ch['push'] as bool?) ?? true;
     _chEmail = (ch['email'] as bool?) ?? false;
     _chWhatsapp = (ch['whatsapp'] as bool?) ?? false;
@@ -165,8 +191,10 @@ class _NotifSectionState extends State<NotifSection> {
       final s = widget.service;
       await s.set('notif.booking_confirmation', _confirmation);
       await s.set('notif.reminder_enabled', _reminderEnabled);
-      await s.set('notif.reminder_hours',
-          int.tryParse(_reminderHours.text.trim()) ?? 24);
+      await s.set(
+        'notif.reminder_hours',
+        int.tryParse(_reminderHours.text.trim()) ?? 24,
+      );
       await s.set('notif.admin_new_booking', _adminNew);
       await s.set('notif.channels', {
         'push': _chPush,
@@ -186,34 +214,50 @@ class _NotifSectionState extends State<NotifSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _toggle('Conferma prenotazione al cliente', _confirmation,
-            (v) => setState(() => _confirmation = v),
-            sub: 'Notifica al cliente quando prenota.'),
-        _toggle('Promemoria lezione', _reminderEnabled,
-            (v) => setState(() => _reminderEnabled = v),
-            sub: 'Invia un promemoria prima della lezione.'),
+        _toggle(
+          'Conferma prenotazione al cliente',
+          _confirmation,
+          (v) => setState(() => _confirmation = v),
+          sub: 'Notifica al cliente quando prenota.',
+        ),
+        _toggle(
+          'Promemoria lezione',
+          _reminderEnabled,
+          (v) => setState(() => _reminderEnabled = v),
+          sub: 'Invia un promemoria prima della lezione.',
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           child: TextField(
             controller: _reminderHours,
             keyboardType: TextInputType.number,
-            decoration:
-                const InputDecoration(labelText: 'Anticipo promemoria (ore)'),
+            decoration: const InputDecoration(
+              labelText: 'Anticipo promemoria (ore)',
+            ),
           ),
         ),
-        _toggle('Avvisa admin su nuova prenotazione', _adminNew,
-            (v) => setState(() => _adminNew = v),
-            sub: 'Push agli admin della org per ogni nuova prenotazione.'),
+        _toggle(
+          'Avvisa admin su nuova prenotazione',
+          _adminNew,
+          (v) => setState(() => _adminNew = v),
+          sub: 'Push agli admin della org per ogni nuova prenotazione.',
+        ),
         const Divider(height: AppSpacing.lg),
-        const Text('Canali di invio',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.subtle)),
+        const Text(
+          'Canali di invio',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppColors.subtle,
+          ),
+        ),
         _toggle('📲 Push', _chPush, (v) => setState(() => _chPush = v)),
         _toggle('✉️ Email', _chEmail, (v) => setState(() => _chEmail = v)),
-        _toggle('💬 WhatsApp', _chWhatsapp,
-            (v) => setState(() => _chWhatsapp = v)),
+        _toggle(
+          '💬 WhatsApp',
+          _chWhatsapp,
+          (v) => setState(() => _chWhatsapp = v),
+        ),
         const SizedBox(height: AppSpacing.sm),
         FilledButton(
           onPressed: _saving ? null : _save,
@@ -223,16 +267,21 @@ class _NotifSectionState extends State<NotifSection> {
     );
   }
 
-  Widget _toggle(String title, bool value, ValueChanged<bool> onChanged,
-          {String? sub}) =>
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        value: value,
-        onChanged: onChanged,
-        title: Text(title,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-        subtitle: sub == null ? null : Text(sub, style: AppText.meta),
-      );
+  Widget _toggle(
+    String title,
+    bool value,
+    ValueChanged<bool> onChanged, {
+    String? sub,
+  }) => SwitchListTile(
+    contentPadding: EdgeInsets.zero,
+    value: value,
+    onChanged: onChanged,
+    title: Text(
+      title,
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    ),
+    subtitle: sub == null ? null : Text(sub, style: AppText.meta),
+  );
 }
 
 /// Sezione "GDPR & Privacy" (port di _settRenderGdpr §8): link privacy/termini
@@ -255,11 +304,11 @@ class _GdprSectionState extends State<GdprSection> {
   void initState() {
     super.initState();
     final s = widget.service;
-    _privacy =
-        TextEditingController(text: s.getString('gdpr.privacy_url', ''));
+    _privacy = TextEditingController(text: s.getString('gdpr.privacy_url', ''));
     _terms = TextEditingController(text: s.getString('gdpr.terms_url', ''));
     _retention = TextEditingController(
-        text: s.getNumber('gdpr.data_retention_days', 0).toString());
+      text: s.getNumber('gdpr.data_retention_days', 0).toString(),
+    );
   }
 
   @override
@@ -276,8 +325,10 @@ class _GdprSectionState extends State<GdprSection> {
       final s = widget.service;
       await s.set('gdpr.privacy_url', _privacy.text.trim());
       await s.set('gdpr.terms_url', _terms.text.trim());
-      await s.set('gdpr.data_retention_days',
-          int.tryParse(_retention.text.trim()) ?? 0);
+      await s.set(
+        'gdpr.data_retention_days',
+        int.tryParse(_retention.text.trim()) ?? 0,
+      );
       if (mounted) AppSnack.success(context, 'GDPR salvato.');
     } catch (e) {
       if (mounted) AppSnack.error(context, 'Errore: $e');
@@ -291,8 +342,10 @@ class _GdprSectionState extends State<GdprSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Link ai documenti legali e conservazione dei dati.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+        const Text(
+          'Link ai documenti legali e conservazione dei dati.',
+          style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+        ),
         const SizedBox(height: AppSpacing.md),
         Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -300,8 +353,9 @@ class _GdprSectionState extends State<GdprSection> {
             controller: _privacy,
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
-                labelText: 'URL informativa privacy',
-                hintText: 'https://…/privacy'),
+              labelText: 'URL informativa privacy',
+              hintText: 'https://…/privacy',
+            ),
           ),
         ),
         Padding(
@@ -310,8 +364,9 @@ class _GdprSectionState extends State<GdprSection> {
             controller: _terms,
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
-                labelText: 'URL termini e condizioni',
-                hintText: 'https://…/termini'),
+              labelText: 'URL termini e condizioni',
+              hintText: 'https://…/termini',
+            ),
           ),
         ),
         Padding(
@@ -320,7 +375,8 @@ class _GdprSectionState extends State<GdprSection> {
             controller: _retention,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
-                labelText: 'Conservazione dati (giorni, 0 = illimitato)'),
+              labelText: 'Conservazione dati (giorni, 0 = illimitato)',
+            ),
           ),
         ),
         FilledButton(
@@ -334,24 +390,34 @@ class _GdprSectionState extends State<GdprSection> {
 
 /// Sezione "Funzionalità" (port di _settRenderFeatures §9): toggle per modulo
 /// (`features.<key>`), salvati singolarmente al cambio.
-class FeaturesSection extends StatefulWidget {
+class FeaturesSection extends ConsumerStatefulWidget {
   const FeaturesSection({super.key, required this.service});
   final OrgSettingsService service;
 
   @override
-  State<FeaturesSection> createState() => _FeaturesSectionState();
+  ConsumerState<FeaturesSection> createState() => _FeaturesSectionState();
 }
 
-class _FeaturesSectionState extends State<FeaturesSection> {
+class _FeaturesSectionState extends ConsumerState<FeaturesSection> {
   static const _features = [
-    ('workout_plans', '💪 Schede di allenamento', 'Modulo schede, esercizi e progressi.'),
-    ('client_manage_plans', '✏️ Schede modificabili dai clienti',
-        'I clienti possono creare e modificare le proprie schede (oltre a registrare i log). Richiede la policy DB abilitata.'),
+    (
+      'workout_plans',
+      '💪 Schede di allenamento',
+      'Modulo schede, esercizi e progressi.',
+    ),
+    (
+      'client_manage_plans',
+      '✏️ Schede modificabili dai clienti',
+      'I clienti possono creare e modificare le proprie schede (oltre a registrare i log). Richiede la policy DB abilitata.',
+    ),
     ('nutrition', '🥗 Nutrizione', 'Piani alimentari per i clienti.'),
     ('messaging', '💬 Messaggistica', 'Notifiche push broadcast ai clienti.'),
     ('ai_reports', '🤖 Report AI', 'Report mensili generati con AI.'),
-    ('client_online_payments', '💳 Pagamenti online',
-        'I clienti pagano le lezioni online con Stripe.'),
+    (
+      'client_online_payments',
+      '💳 Pagamenti online',
+      'I clienti pagano le lezioni online con Stripe.',
+    ),
   ];
 
   Future<void> _set(String key, bool val) async {
@@ -366,23 +432,36 @@ class _FeaturesSectionState extends State<FeaturesSection> {
 
   @override
   Widget build(BuildContext context) {
+    final planFeatures =
+        ref.watch(entitlementsProvider).value?.features ?? const {};
+    bool allowed(String key) =>
+        planFeatures[key == 'client_manage_plans' ? 'workout_plans' : key] ==
+        true;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-            'Attiva/disattiva i moduli per la tua organizzazione. La '
-            'disponibilità per piano è gestita a parte.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+          'Attiva/disattiva i moduli per la tua organizzazione. La '
+          'disponibilità per piano è gestita a parte.',
+          style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+        ),
         const SizedBox(height: AppSpacing.sm),
         for (final f in _features)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            value: widget.service.getBool('features.${f.$1}', false),
-            onChanged: (v) => _set(f.$1, v),
-            title: Text(f.$2,
-                style:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-            subtitle: Text(f.$3, style: AppText.meta),
+            value:
+                allowed(f.$1) &&
+                widget.service.getBool('features.${f.$1}', true),
+            onChanged: allowed(f.$1) ? (v) => _set(f.$1, v) : null,
+            title: Text(
+              f.$2,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              allowed(f.$1) ? f.$3 : '${f.$3} Non incluso nel piano corrente.',
+              style: AppText.meta,
+            ),
           ),
       ],
     );

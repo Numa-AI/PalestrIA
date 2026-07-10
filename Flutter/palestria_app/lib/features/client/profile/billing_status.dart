@@ -21,8 +21,9 @@ class ClientBillingStatus {
   final String tone;
 }
 
-final clientBillingStatusProvider =
-    FutureProvider<ClientBillingStatus?>((ref) async {
+final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
+  ref,
+) async {
   final session = ref.watch(sessionProvider);
   final orgContext = await ref.watch(orgContextProvider.future);
   if (session == null || orgContext.orgId == null) return null;
@@ -47,7 +48,9 @@ final clientBillingStatusProvider =
         .select('plan_label, period_end, lessons_quota, lessons_used, status')
         .eq('org_id', orgId)
         .eq('user_id', userId)
-        .order('created_at', ascending: false)
+        .eq('status', 'active')
+        .gte('period_end', OrgScheduleConfig.localDateStr(DateTime.now()))
+        .order('period_end', ascending: false)
         .limit(1),
     client
         .from('client_packages')
@@ -74,11 +77,13 @@ final clientBillingStatusProvider =
     case 'monthly':
       final rows = results[2] as List;
       final m = rows.isEmpty ? null : rows.first as Map<String, dynamic>;
-      final active = m != null &&
+      final active =
+          m != null &&
           m['status'] == 'active' &&
           m['period_end'] != null &&
-          !DateTime.parse(m['period_end'] as String)
-              .isBefore(DateTime.now().subtract(const Duration(days: 1)));
+          !DateTime.parse(
+            m['period_end'] as String,
+          ).isBefore(DateTime.now().subtract(const Duration(days: 1)));
       if (!active) {
         return const ClientBillingStatus(
           icon: '📅',
@@ -107,7 +112,9 @@ final clientBillingStatusProvider =
     case 'package':
       final packs = (results[3] as List).cast<Map<String, dynamic>>();
       final remaining = packs.fold<int>(
-          0, (sum, p) => sum + ((p['remaining_sessions'] as num?)?.toInt() ?? 0));
+        0,
+        (sum, p) => sum + ((p['remaining_sessions'] as num?)?.toInt() ?? 0),
+      );
       if (remaining > 0) {
         return ClientBillingStatus(
           icon: '🎫',

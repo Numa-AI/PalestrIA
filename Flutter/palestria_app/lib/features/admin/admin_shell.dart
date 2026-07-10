@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_repository.dart';
+import '../../core/data/billing_saas.dart';
 import '../../core/org/org_settings_service.dart';
 import '../../core/theme/org_theme.dart';
 import '../../core/theme/tokens.dart';
@@ -60,8 +61,14 @@ class _AdminShellState extends ConsumerState<AdminShell> {
       AdminTab.analytics => const AnalyticsTab(),
       AdminTab.registro => const RegistroTab(),
       AdminTab.schedule => const ScheduleTab(),
-      AdminTab.schede => const SchedeTab(),
-      AdminTab.messaggi => const MessaggiTab(),
+      AdminTab.schede => const FeatureGate(
+        feature: 'workout_plans',
+        child: SchedeTab(),
+      ),
+      AdminTab.messaggi => const FeatureGate(
+        feature: 'messaging',
+        child: MessaggiTab(),
+      ),
       AdminTab.settings => const SettingsTab(),
     };
 
@@ -74,11 +81,17 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_tab.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(studioName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.meta),
+                  Text(
+                    _tab.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    studioName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.meta,
+                  ),
                 ],
               ),
         actions: [
@@ -129,9 +142,10 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           borderRadius: BorderRadius.circular(AppRadius.cardLg),
           boxShadow: [
             BoxShadow(
-                color: primary.withValues(alpha: 0.4),
-                blurRadius: 16,
-                offset: const Offset(0, 6)),
+              color: primary.withValues(alpha: 0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
           ],
         ),
         child: Row(
@@ -152,19 +166,25 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('SEZIONE',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.8,
-                          color: Color(0xC7FFFFFF))),
-                  Text(_tab.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white)),
+                  const Text(
+                    'SEZIONE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: Color(0xC7FFFFFF),
+                    ),
+                  ),
+                  Text(
+                    _tab.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -190,8 +210,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
             ),
             for (final t in AdminTab.values)
               ListTile(
-                tileColor:
-                    t == _tab ? primary.withValues(alpha: 0.12) : null,
+                tileColor: t == _tab ? primary.withValues(alpha: 0.12) : null,
                 leading: Container(
                   width: 36,
                   height: 36,
@@ -202,9 +221,13 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                   ),
                   child: Text(t.emoji),
                 ),
-                title: Text(t.label,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15)),
+                title: Text(
+                  t.label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
                 trailing: Icon(
                   t == _tab
                       ? Icons.radio_button_checked

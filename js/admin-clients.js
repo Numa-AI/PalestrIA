@@ -868,7 +868,7 @@ function createClientCard(client, index) {
     // ── Economia cliente (modello nuovo: pacchetto / abbonamento / incassato) ──
     // Sezione popolata async da client_packages / client_memberships / payments.
     // I pagamenti si gestiscono dal tab Pagamenti (admin_pay_bookings / admin_sell_package
-    // / admin_record_membership_payment): qui è SOLA LETTURA.
+    // / admin_record_membership_payment), con riepilogo e azioni rapide anche qui.
     const economyHTML = `<div class="client-credit-section" id="client-economy-${index}">
             <h4>📊 Situazione economica</h4>
             <div class="client-economy-body">Caricamento…</div>
@@ -982,112 +982,148 @@ async function loadClientFullHistory(btn, index) {
 // (a) pacchetto attivo + sessioni residue (client_packages)
 // (b) abbonamento attivo (client_memberships)
 // (c) totale incassato dal cliente (somma payments)
-// SOLA LETTURA: nessuna azione economica qui (vedi tab Pagamenti).
+// Riepilogo operativo con modello tariffario, condizioni economiche e azioni guidate.
 async function _loadClientEconomy(index, userId, email) {
     const section = document.getElementById(`client-economy-${index}`);
     const body = section?.querySelector('.client-economy-body');
     const sessionsStat = document.getElementById(`cv2-sessions-${index}`);
-    if (typeof supabaseClient === 'undefined') {
-        if (body) body.innerHTML = '<div class="client-economy-empty">Dati economici non disponibili offline.</div>';
+    if (!body) return;
+    if (!userId) {
+        body.innerHTML = '<div class="client-health-banner client-health-banner--warn"><span class="client-health-icon">👤</span><div><strong>Account cliente necessario</strong><small>Pacchetti e abbonamenti richiedono un profilo registrato e verificato.</small></div></div>';
         return;
     }
-
-    const emailLow = (email || '').toLowerCase();
-    const fmtDate = ds => ds ? ds.split('-').reverse().join('/') : '';
-
+    if (typeof supabaseClient === 'undefined') {
+        body.innerHTML = '<div class="client-economy-empty">Dati economici non disponibili offline.</div>';
+        return;
+    }
+    const fmtDate = ds => ds ? String(ds).slice(0, 10).split('-').reverse().join('/') : '';
+    const money = n => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     try {
-        // Query parallele: pacchetti attivi, abbonamenti attivi, pagamenti del cliente.
-        // RLS filtra già org_id; per pacchetti/abbonamenti serve lo user_id (profiles).
-        const pkgQ = userId
-            ? supabaseClient.from('client_packages')
-                .select('label, total_sessions, remaining_sessions, expires_at, status, purchased_at')
-                .eq('user_id', userId).eq('status', 'active')
-                .order('purchased_at', { ascending: false })
-            : Promise.resolve({ data: [] });
-        const memQ = userId
-            ? supabaseClient.from('client_memberships')
-                .select('plan_label, period_start, period_end, lessons_quota, lessons_used, status')
-                .eq('user_id', userId).eq('status', 'active')
-                .order('period_end', { ascending: false })
-            : Promise.resolve({ data: [] });
-        let payQ = supabaseClient.from('payments').select('amount, client_email, client_user_id');
-        // Filtra per user_id quando disponibile, altrimenti per email
-        if (userId)        payQ = payQ.eq('client_user_id', userId);
-        else if (emailLow) payQ = payQ.eq('client_email', emailLow);
-        else               payQ = null;
-
-        const [pkgRes, memRes, payRes] = await Promise.all([
-            _rpcWithTimeout(pkgQ).catch(e => ({ error: e })),
-            _rpcWithTimeout(memQ).catch(e => ({ error: e })),
-            payQ ? _rpcWithTimeout(payQ).catch(e => ({ error: e })) : Promise.resolve({ data: [] }),
-        ]);
-
-        const packages    = (pkgRes && !pkgRes.error && pkgRes.data) || [];
-        const memberships = (memRes && !memRes.error && memRes.data) || [];
-        const payments    = (payRes && !payRes.error && payRes.data) || [];
-
-        const totalCollected = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        const remainingSessions = packages.reduce((s, p) => s + (Number(p.remaining_sessions) || 0), 0);
-
-        // Aggiorna la stat "Sessioni residue"
+        const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('get_client_financial_summary', { p_user_id: userId }), 20000);
+        if (error) throw error;
+        const summary = data || {};
+        const packages = (summary.packages || []).filter(p => p.status === 'active' && Number(p.remaining_sessions) > 0);
+        const memberships = (summary.memberships || []).filter(m => m.status === 'active');
+        const totals = summary.totals || {};
+        const health = summary.health || {};
+        const billing = summary.billing_profile || { model: 'pay_per_session' };
+        section._financialSummary = summary;
+        const remaining = packages.reduce((s, p) => s + (Number(p.remaining_sessions) || 0), 0);
         if (sessionsStat) {
-            const v = sessionsStat.querySelector('.v');
-            if (v) v.textContent = packages.length ? remainingSessions : '—';
+            const value = sessionsStat.querySelector('.v');
+            if (value) value.textContent = packages.length ? remaining : '—';
         }
-
-        if (!section || !body) return;
-
-        // (a) Pacchetto attivo
-        let pkgHTML = '';
-        if (packages.length) {
-            pkgHTML = packages.map(p => `
-                <div class="client-economy-row">
-                    <span class="client-economy-icon">🎟️</span>
-                    <span class="client-economy-label">${_escHtml(p.label || 'Pacchetto')}
-                        <small style="opacity:0.7">${p.expires_at ? `scade ${fmtDate(p.expires_at)}` : 'senza scadenza'}</small>
-                    </span>
-                    <span class="client-economy-value">${Number(p.remaining_sessions) || 0}/${Number(p.total_sessions) || 0} sessioni</span>
-                </div>`).join('');
-        } else {
-            pkgHTML = '<div class="client-economy-row client-economy-empty"><span class="client-economy-icon">🎟️</span><span class="client-economy-label">Nessun pacchetto attivo</span></div>';
+        const issues = [];
+        if (health.medical_cert_expired) issues.push('certificato scaduto');
+        if (health.insurance_expired) issues.push('assicurazione scaduta');
+        if (health.unpaid_over_threshold) issues.push('nuove prenotazioni bloccate');
+        if (health.billing_coverage_missing) {
+            issues.push(billing.model === 'package' ? 'nessun pacchetto attivo' : 'nessun abbonamento attivo');
         }
-
-        // (b) Abbonamento attivo
-        let memHTML = '';
-        if (memberships.length) {
-            memHTML = memberships.map(m => {
-                const quota = m.lessons_quota != null
-                    ? `${Number(m.lessons_used) || 0}/${m.lessons_quota} lezioni`
-                    : 'illimitato';
-                return `
-                <div class="client-economy-row">
-                    <span class="client-economy-icon">📅</span>
-                    <span class="client-economy-label">${_escHtml(m.plan_label || 'Abbonamento')}
-                        <small style="opacity:0.7">fino al ${fmtDate(m.period_end)}</small>
-                    </span>
-                    <span class="client-economy-value">${quota}</span>
-                </div>`;
-            }).join('');
-        } else {
-            memHTML = '<div class="client-economy-row client-economy-empty"><span class="client-economy-icon">📅</span><span class="client-economy-label">Nessun abbonamento attivo</span></div>';
-        }
-
-        // (c) Totale incassato
-        const collectedHTML = `
-            <div class="client-economy-row client-economy-total">
-                <span class="client-economy-icon">💰</span>
-                <span class="client-economy-label">Totale incassato</span>
-                <span class="client-economy-value">€${Math.round(totalCollected * 100) / 100}</span>
-            </div>`;
-
-        body.innerHTML = pkgHTML + memHTML + collectedHTML;
+        const healthTone = health.archived || health.unpaid_over_threshold || health.billing_coverage_missing ? 'danger' : issues.length ? 'warn' : 'ok';
+        const healthTitle = health.archived ? 'Cliente archiviato' : health.unpaid_over_threshold ? 'Soglia debiti superata' : health.billing_coverage_missing ? 'Copertura economica mancante' : issues.length ? 'Documenti da verificare' : 'Cliente in regola';
+        const healthIcon = healthTone === 'ok' ? '✓' : healthTone === 'warn' ? '!' : '×';
+        const pkgHTML = packages.length ? packages.map(p => {
+            const total = Math.max(Number(p.total_sessions) || 0, 1);
+            const left = Number(p.remaining_sessions) || 0;
+            return `<div class="client-economy-row"><span class="client-economy-icon">🎟️</span><span class="client-economy-label">${_escHtml(p.label || 'Pacchetto')}<small>${p.expires_at ? `scade ${fmtDate(p.expires_at)}` : 'senza scadenza'}</small><span class="client-plan-progress"><i style="width:${Math.max(0, Math.min(100, left / total * 100))}%"></i></span></span><span class="client-economy-value">${left}/${total}</span></div>`;
+        }).join('') : '<div class="client-economy-row client-economy-empty"><span class="client-economy-icon">🎟️</span><span class="client-economy-label">Nessun pacchetto attivo</span></div>';
+        const memHTML = memberships.length ? memberships.slice(0, 2).map(m => {
+            const quota = m.lessons_quota == null ? 'illimitato' : `${Number(m.lessons_used) || 0}/${m.lessons_quota} lezioni`;
+            return `<div class="client-economy-row"><span class="client-economy-icon">📅</span><span class="client-economy-label">${_escHtml(m.plan_label || 'Abbonamento')}<small>${fmtDate(m.period_start)} → ${fmtDate(m.period_end)}${m.auto_renew ? ' · rinnovo' : ''}</small></span><span class="client-economy-value">${quota}</span></div>`;
+        }).join('') : '<div class="client-economy-row client-economy-empty"><span class="client-economy-icon">📅</span><span class="client-economy-label">Nessun abbonamento attivo</span></div>';
+        body.innerHTML = `
+            <div class="client-health-banner client-health-banner--${healthTone}"><span class="client-health-icon">${healthIcon}</span><div><strong>${healthTitle}</strong><small>${issues.length ? issues.join(' · ') : 'Pagamenti e documenti sotto controllo'}</small></div></div>
+            <div class="client-economy-metrics"><div class="client-economy-metric"><span>Incassato</span><strong>€${money(totals.collected)}</strong></div><div class="client-economy-metric"><span>Da incassare</span><strong>€${money(totals.unpaid)}</strong></div></div>
+            <div class="client-model-row"><label for="client-model-${index}">Modello tariffario</label><button type="button" class="client-model-edit" onclick="editClientBillingTerms('${_escAttr(userId)}',${index})" aria-label="Modifica prezzo personalizzato e note">Prezzo e note</button><select id="client-model-${index}" onchange="setClientBillingModel('${_escAttr(userId)}',${index},this.value)"><option value="pay_per_session" ${billing.model === 'pay_per_session' ? 'selected' : ''}>Pagamento a lezione</option><option value="package" ${billing.model === 'package' ? 'selected' : ''}>Pacchetto / carnet</option><option value="monthly" ${billing.model === 'monthly' ? 'selected' : ''}>Abbonamento mensile</option><option value="free" ${billing.model === 'free' ? 'selected' : ''}>Gratuito</option></select></div>
+            ${pkgHTML}${memHTML}
+            <div class="client-ops-actions"><button class="client-ops-btn" onclick="openClientOperation(${index},'package')">🎟️ Vendi pacchetto</button><button class="client-ops-btn" onclick="openClientOperation(${index},'membership')">📅 Nuovo mensile</button><button class="client-ops-btn" onclick="setClientArchived('${_escAttr(userId)}',${index},${health.archived ? 'false' : 'true'})">${health.archived ? '↩ Riattiva' : '📦 Archivia'}</button></div>`;
     } catch (e) {
         console.error('[_loadClientEconomy] error:', e);
-        if (body) body.innerHTML = '<div class="client-economy-empty">Errore nel caricamento dei dati economici.</div>';
+        body.innerHTML = '<div class="client-economy-empty">Errore nel caricamento. <button class="client-ops-btn" onclick="_loadClientEconomy(' + index + ',\'' + _escAttr(userId) + '\',\'' + _escAttr(email || '') + '\')">Riprova</button></div>';
     }
 }
 
-// ── Schede helpers from Clienti tab ──────────────────────────────────────────
+function openClientOperation(index, type) {
+    const client = document.getElementById(`client-card-${index}`)?._client;
+    if (!client?.userId) { showToast('Il cliente deve avere un account registrato.', 'error'); return; }
+    _openSalePopup(type);
+    selectSaleClient(client.name || '', client.whatsapp || '', client.email || '', client.userId);
+}
+
+async function setClientBillingModel(userId, index, model) {
+    try {
+        const summary = document.getElementById('client-economy-' + index)?._financialSummary || {};
+        const current = summary.billing_profile || {};
+        const { error } = await _rpcWithTimeout(supabaseClient.rpc('admin_set_client_billing_model', {
+            p_user_id: userId,
+            p_model: model,
+            p_custom_price: model === 'pay_per_session' ? (current.custom_price ?? null) : null,
+            p_notes: current.notes ?? null
+        }), 20000);
+        if (error) throw error;
+        const client = document.getElementById(`client-card-${index}`)?._client;
+        await _loadClientEconomy(index, userId, client?.email || '');
+        showToast('Modello tariffario aggiornato', 'success');
+    } catch (e) { showToast('Errore aggiornamento modello: ' + (e.message || e), 'error'); }
+}
+
+async function editClientBillingTerms(userId, index) {
+    const section = document.getElementById('client-economy-' + index);
+    const summary = section?._financialSummary || {};
+    const billing = summary.billing_profile || { model: 'pay_per_session' };
+    let customPrice = billing.custom_price ?? null;
+    if (billing.model === 'pay_per_session') {
+        const priceRaw = await showPrompt({
+            title: 'Prezzo personalizzato',
+            subtitle: 'Lascia vuoto per usare la tariffa standard della lezione.',
+            value: customPrice == null ? '' : String(customPrice).replace('.', ','),
+            inputmode: 'decimal',
+            placeholder: 'es. 25,00',
+            confirmText: 'Continua'
+        });
+        if (priceRaw === null) return;
+        const normalized = String(priceRaw).trim().replace(',', '.');
+        customPrice = normalized === '' ? null : Number(normalized);
+        if (customPrice !== null && (!Number.isFinite(customPrice) || customPrice < 0)) {
+            showToast('Inserisci un prezzo valido, uguale o maggiore di zero.', 'error');
+            return;
+        }
+    }
+    const notes = await showPrompt({
+        title: 'Note amministrative',
+        subtitle: 'Accordi, eccezioni o promemoria visibili solo allo staff.',
+        value: billing.notes || '',
+        placeholder: 'Note facoltative',
+        confirmText: 'Salva'
+    });
+    if (notes === null) return;
+    try {
+        const { error } = await _rpcWithTimeout(supabaseClient.rpc('admin_set_client_billing_model', {
+            p_user_id: userId,
+            p_model: billing.model || 'pay_per_session',
+            p_custom_price: billing.model === 'pay_per_session' ? customPrice : null,
+            p_notes: String(notes).trim() || null
+        }), 20000);
+        if (error) throw error;
+        const client = document.getElementById('client-card-' + index)?._client;
+        await _loadClientEconomy(index, userId, client?.email || '');
+        showToast('Condizioni economiche aggiornate', 'success');
+    } catch (e) {
+        showToast('Errore aggiornamento condizioni: ' + (e.message || e), 'error');
+    }
+}
+async function setClientArchived(userId, index, archived) {
+    const label = archived ? 'Archiviare il cliente? Non potrà creare nuove prenotazioni.' : 'Riattivare il cliente?';
+    if (!await showConfirm(label)) return;
+    try {
+        const { error } = await _rpcWithTimeout(supabaseClient.rpc('admin_set_client_archived', { p_user_id: userId, p_archived: archived }), 20000);
+        if (error) throw error;
+        await UserStorage.syncUsersFromSupabase();
+        renderClientsTab();
+        showToast(archived ? 'Cliente archiviato' : 'Cliente riattivato', 'success');
+    } catch (e) { showToast('Operazione non riuscita: ' + (e.message || e), 'error'); }
+}
 function clientGoToEditScheda(planId) {
     if (typeof _schedeEditPlan === 'function' && typeof switchTab === 'function') {
         switchTab('schede');
@@ -1213,7 +1249,7 @@ function closeEditClientPopup() {
 }
 
 // Helper: aggiorna profilo locale (users), cert, assic, CF, indirizzo, sessione dopo rename
-async function _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, extraFields) {
+async function _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, extraFields, skipRemote = false) {
     let _profileSyncFailed = false;
     const users  = _getUsersFull();
     const oldEmailLow = (oldEmail || '').toLowerCase();
@@ -1268,7 +1304,7 @@ async function _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName
         if (ef.cap !== undefined)   _supaFields.indirizzo_cap    = ef.cap || null;
         if (ef.documentoFirmato !== undefined) _supaFields.documento_firmato = !!ef.documentoFirmato;
         // Usa i VECCHI valori per trovare il record nel DB (non i nuovi che non esistono ancora)
-        const profileResult = await _updateSupabaseProfile(oldEmail, normOld, _supaFields);
+        const profileResult = skipRemote ? { ok: true } : await _updateSupabaseProfile(oldEmail, normOld, _supaFields);
         if (!profileResult.ok) {
             _profileSyncFailed = true;
             showToast('⚠️ Profilo locale aggiornato, ma errore Supabase: ' + profileResult.error, 'error');
@@ -1323,7 +1359,8 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
     // crea un nuovo record (profiles) quando il contatto editato non corrisponde a
     // nessun utente già presente. In quel caso (= nuovo cliente) applichiamo il limite
     // del piano. Fail-open: se Entitlements non è definito non blocchiamo nulla.
-    const _isExistingClient = !!_getUserRecord(oldEmail, oldWhatsapp);
+    const _existingProfile = _getUserRecord(oldEmail, oldWhatsapp);
+    const _isExistingClient = !!_existingProfile;
     if (!_isExistingClient && typeof Entitlements !== 'undefined' && Entitlements.atClientLimit()) {
         const _cur = Entitlements.clientsCount();
         const _max = Entitlements.maxClients();
@@ -1342,13 +1379,29 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
         // Fase 1 — RPC di rinomina (atomica server-side). Solo qui un errore = rinomina fallita.
         let renameOk = false;
         try {
-            const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_rename_client', {
-                p_old_email:    oldEmail || '',
-                p_old_whatsapp: normOld || null,
-                p_new_name:     newName,
-                p_new_email:    newEmail,
-                p_new_whatsapp: normNewPhone,
-            }));
+            let response;
+            if (_existingProfile?.userId) {
+                response = await _rpcWithTimeout(supabaseClient.functions.invoke('admin-manage-client', { body: {
+                    user_id: _existingProfile.userId,
+                    name: newName,
+                    email: newEmail,
+                    whatsapp: normNewPhone,
+                    medical_cert_expiry: newCert || null,
+                    insurance_expiry: newAssic || null,
+                    codice_fiscale: newCf || null,
+                    indirizzo_via: newVia || null,
+                    indirizzo_paese: newPaese || null,
+                    indirizzo_cap: newCap || null,
+                    documento_firmato: newDocFirmato,
+                }}), 30000);
+            } else {
+                // Contatto storico senza account: aggiorna soltanto le prenotazioni.
+                response = await _rpcWithTimeout(supabaseClient.rpc('admin_rename_client', {
+                    p_old_email: oldEmail || '', p_old_whatsapp: normOld || null,
+                    p_new_name: newName, p_new_email: newEmail, p_new_whatsapp: normNewPhone,
+                }));
+            }
+            const { data, error } = response;
             if (error) {
                 console.error('[Supabase] admin_rename_client error:', error.message);
                 // Il server rifiuta la creazione di clienti oltre la soglia del piano
@@ -1363,7 +1416,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
                 return;
             }
             // Guard difensivo: la RPC può tornare {success:false} senza errore di trasporto.
-            if (data && data.success === false) {
+            if (data && (data.success === false || data.ok === false)) {
                 console.error('[admin_rename_client] rejected:', data);
                 showAlert('Aggiornamento rifiutato dal server. Riprova.', { type:'error' });
                 return;
@@ -1384,7 +1437,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
         // Fase 2 — sync + profilo locale (best-effort: la rinomina è già persistita lato server)
         try {
             await BookingStorage.syncFromSupabase().catch(e => console.warn('[Clients] booking sync:', e?.message || e));
-            await _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, { cf: newCf, via: newVia, paese: newPaese, cap: newCap, documentoFirmato: newDocFirmato, stripeEnabled: newStripeEn });
+            await _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, { cf: newCf, via: newVia, paese: newPaese, cap: newCap, documentoFirmato: newDocFirmato, stripeEnabled: newStripeEn }, true);
         } catch (e) {
             console.error('[saveClientEdit] post-rename sync/UI exception:', e);
             showToast('Nome aggiornato. Aggiornamento vista non riuscito — ricarica la pagina per vederlo dappertutto.', 'error', 6000);
@@ -1463,7 +1516,7 @@ async function deleteClientData(index, whatsapp, email) {
                 showAlert('Errore lato server: ' + error.message + '\nNessun dato è stato rimosso.', { type:'error' });
                 return;
             }
-            if (data && data.success === false) {
+            if (data && (data.success === false || data.ok === false)) {
                 console.error('[deleteClientData] RPC rejected:', data);
                 showAlert('Eliminazione rifiutata dal server (' + (data.error || 'motivo sconosciuto') + '). Nessun dato rimosso.', { type:'error' });
                 return;

@@ -2610,6 +2610,7 @@ class UserStorage {
                     privacyPrenotazioni: row.privacy_prenotazioni ?? existing.privacyPrenotazioni ?? false,
                     geoEnabled: row.geo_enabled ?? existing.geoEnabled ?? false,
                     pushEnabled: row.push_enabled ?? existing.pushEnabled ?? false,
+                    archivedAt: row.archived_at ?? existing.archivedAt ?? null,
                     stripeEnabled: row.stripe_enabled ?? existing.stripeEnabled ?? false,
                 };
             });

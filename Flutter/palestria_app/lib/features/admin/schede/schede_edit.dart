@@ -24,10 +24,14 @@ Future<void> showExerciseEditSheet(
     showDragHandle: true,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.modalLg))),
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(AppRadius.modalLg),
+      ),
+    ),
     builder: (_) => Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: _ExerciseEditSheet(
         existing: existing,
         planId: planId,
@@ -71,11 +75,12 @@ class _ExerciseEditSheetState extends ConsumerState<_ExerciseEditSheet> {
     _sets = TextEditingController(text: (e?.sets ?? 3).toString());
     _reps = TextEditingController(text: e?.reps ?? '10');
     _weight = TextEditingController(
-        text: (e?.weightKg == null || e?.weightKg == 0)
-            ? ''
-            : (e!.weightKg! == e.weightKg!.roundToDouble()
+      text: (e?.weightKg == null || e?.weightKg == 0)
+          ? ''
+          : (e!.weightKg! == e.weightKg!.roundToDouble()
                 ? e.weightKg!.toStringAsFixed(0)
-                : e.weightKg!.toStringAsFixed(1)));
+                : e.weightKg!.toStringAsFixed(1)),
+    );
     _rest = TextEditingController(text: (e?.restSeconds ?? 90).toString());
     _notes = TextEditingController(text: e?.notes ?? '');
   }
@@ -121,8 +126,12 @@ class _ExerciseEditSheetState extends ConsumerState<_ExerciseEditSheet> {
       }
       ref.invalidate(orgPlansProvider);
       if (mounted) {
-        AppSnack.success(context,
-            widget.existing == null ? 'Esercizio aggiunto.' : 'Esercizio aggiornato.');
+        AppSnack.success(
+          context,
+          widget.existing == null
+              ? 'Esercizio aggiunto.'
+              : 'Esercizio aggiornato.',
+        );
       }
       navigator.pop();
     } catch (e) {
@@ -143,11 +152,11 @@ class _ExerciseEditSheetState extends ConsumerState<_ExerciseEditSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-                widget.existing == null
-                    ? 'Nuovo esercizio${widget.dayLabel != null ? ' · ${widget.dayLabel}' : ''}'
-                    : 'Modifica esercizio',
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              widget.existing == null
+                  ? 'Nuovo esercizio${widget.dayLabel != null ? ' · ${widget.dayLabel}' : ''}'
+                  : 'Modifica esercizio',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _name,
@@ -188,9 +197,11 @@ class _ExerciseEditSheetState extends ConsumerState<_ExerciseEditSheet> {
                 Expanded(
                   child: FilledButton(
                     onPressed: _saving ? null : _save,
-                    child: Text(_saving
-                        ? 'Salvataggio...'
-                        : (widget.existing == null ? 'Aggiungi' : 'Salva')),
+                    child: Text(
+                      _saving
+                          ? 'Salvataggio...'
+                          : (widget.existing == null ? 'Aggiungi' : 'Salva'),
+                    ),
                   ),
                 ),
               ],

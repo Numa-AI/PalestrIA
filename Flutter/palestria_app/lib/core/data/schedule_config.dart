@@ -21,16 +21,16 @@ class TemplateSlot {
   final int capacity;
 
   Map<String, dynamic> toJson() => {
-        'slotTypeId': slotTypeId,
-        'slotTypeKey': slotTypeKey,
-        'capacity': capacity,
-      };
+    'slotTypeId': slotTypeId,
+    'slotTypeKey': slotTypeKey,
+    'capacity': capacity,
+  };
 
   static TemplateSlot fromJson(Map<String, dynamic> json) => TemplateSlot(
-        slotTypeId: json['slotTypeId'] as String,
-        slotTypeKey: json['slotTypeKey'] as String,
-        capacity: (json['capacity'] as num).toInt(),
-      );
+    slotTypeId: json['slotTypeId'] as String,
+    slotTypeKey: json['slotTypeKey'] as String,
+    capacity: (json['capacity'] as num).toInt(),
+  );
 }
 
 /// Config orari per-org (port di loadOrgScheduleConfig, spec-data §5.2):
@@ -57,7 +57,11 @@ class OrgScheduleConfig {
   final Map<String, Map<int, Map<String, TemplateSlot>>> weeklyTemplates;
 
   static OrgScheduleConfig empty() => OrgScheduleConfig(
-      slotTypes: {}, timeSlots: [], activeWeeks: {}, weeklyTemplates: {});
+    slotTypes: {},
+    timeSlots: [],
+    activeWeeks: {},
+    weeklyTemplates: {},
+  );
 
   String slotName(String key) => slotTypes[key]?.label ?? key;
 
@@ -86,30 +90,46 @@ class OrgScheduleConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'slotTypes': slotTypes.map((k, v) => MapEntry(k, v.toJson())),
-        'timeSlots': timeSlots,
-        'activeWeeks': activeWeeks,
-        'weeklyTemplates': weeklyTemplates.map((tpl, days) => MapEntry(
-            tpl,
-            days.map((d, slots) => MapEntry(d.toString(),
-                slots.map((t, s) => MapEntry(t, s.toJson())))))),
-      };
+    'slotTypes': slotTypes.map((k, v) => MapEntry(k, v.toJson())),
+    'timeSlots': timeSlots,
+    'activeWeeks': activeWeeks,
+    'weeklyTemplates': weeklyTemplates.map(
+      (tpl, days) => MapEntry(
+        tpl,
+        days.map(
+          (d, slots) => MapEntry(
+            d.toString(),
+            slots.map((t, s) => MapEntry(t, s.toJson())),
+          ),
+        ),
+      ),
+    ),
+  };
 
   static OrgScheduleConfig fromJson(Map<String, dynamic> json) =>
       OrgScheduleConfig(
         slotTypes: (json['slotTypes'] as Map<String, dynamic>).map(
-            (k, v) => MapEntry(k, SlotType.fromRow(v as Map<String, dynamic>))),
+          (k, v) => MapEntry(k, SlotType.fromRow(v as Map<String, dynamic>)),
+        ),
         timeSlots: (json['timeSlots'] as List).cast<String>(),
-        activeWeeks:
-            (json['activeWeeks'] as Map<String, dynamic>).cast<String, String>(),
+        activeWeeks: (json['activeWeeks'] as Map<String, dynamic>)
+            .cast<String, String>(),
         weeklyTemplates: (json['weeklyTemplates'] as Map<String, dynamic>).map(
-            (tpl, days) => MapEntry(
-                tpl,
-                (days as Map<String, dynamic>).map((d, slots) => MapEntry(
-                    int.parse(d),
-                    (slots as Map<String, dynamic>).map((t, s) => MapEntry(
-                        t,
-                        TemplateSlot.fromJson(s as Map<String, dynamic>))))))),
+          (tpl, days) => MapEntry(
+            tpl,
+            (days as Map<String, dynamic>).map(
+              (d, slots) => MapEntry(
+                int.parse(d),
+                (slots as Map<String, dynamic>).map(
+                  (t, s) => MapEntry(
+                    t,
+                    TemplateSlot.fromJson(s as Map<String, dynamic>),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       );
 }
 
@@ -128,7 +148,8 @@ class ScheduleConfigRepository {
     if (raw == null) return null;
     try {
       return OrgScheduleConfig.fromJson(
-          jsonDecode(raw) as Map<String, dynamic>);
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
     } catch (_) {
       return null;
     }
@@ -149,14 +170,17 @@ class ScheduleConfigRepository {
           .eq('org_id', orgId)
           .eq('is_active', true)
           .order('sort_order'),
-      _client.from('activated_weeks').select('week_start, template_id').eq(
-          'org_id', orgId),
+      _client
+          .from('activated_weeks')
+          .select('week_start, template_id')
+          .eq('org_id', orgId),
       _client
           .from('weekly_template_slots')
           .select(
-              'template_id, weekday, capacity, slot_type_id, '
-              'time_slots_config(start_time, end_time), '
-              'slot_types(id, key, default_capacity)')
+            'template_id, weekday, capacity, slot_type_id, '
+            'time_slots_config(start_time, end_time), '
+            'slot_types(id, key, default_capacity)',
+          )
           .eq('org_id', orgId),
     ]).timeout(const Duration(seconds: 12));
 
@@ -172,12 +196,12 @@ class ScheduleConfigRepository {
     }
 
     final timeSlots = [
-      for (final row in results[1] as List) label(row as Map<String, dynamic>)
+      for (final row in results[1] as List) label(row as Map<String, dynamic>),
     ];
 
     final activeWeeks = <String, String>{
       for (final row in results[2] as List)
-        (row['week_start'] as String): (row['template_id'] as String)
+        (row['week_start'] as String): (row['template_id'] as String),
     };
 
     final weeklyTemplates = <String, Map<int, Map<String, TemplateSlot>>>{};
@@ -189,11 +213,13 @@ class ScheduleConfigRepository {
       final tplId = row['template_id'] as String;
       final weekday = (row['weekday'] as num).toInt();
       final time = label(ts);
-      final capacity = (row['capacity'] as num?)?.toInt() ??
+      final capacity =
+          (row['capacity'] as num?)?.toInt() ??
           (st['default_capacity'] as num?)?.toInt() ??
           1;
-      weeklyTemplates.putIfAbsent(tplId, () => {}).putIfAbsent(
-          weekday, () => {})[time] = TemplateSlot(
+      weeklyTemplates
+          .putIfAbsent(tplId, () => {})
+          .putIfAbsent(weekday, () => {})[time] = TemplateSlot(
         slotTypeId: st['id'] as String,
         slotTypeKey: st['key'] as String,
         capacity: capacity,
@@ -219,8 +245,11 @@ final scheduleConfigProvider = FutureProvider<OrgScheduleConfig>((ref) async {
   if (orgId == null) return OrgScheduleConfig.empty();
 
   final prefs = await SharedPreferences.getInstance();
-  final repo =
-      ScheduleConfigRepository(ref.watch(supabaseProvider), orgId, prefs);
+  final repo = ScheduleConfigRepository(
+    ref.watch(supabaseProvider),
+    orgId,
+    prefs,
+  );
   try {
     return await repo.load();
   } catch (_) {

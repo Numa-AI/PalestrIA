@@ -34,20 +34,20 @@ class UserProfile {
   final DateTime? createdAt;
 
   static UserProfile fromRow(Map<String, dynamic> row) => UserProfile(
-        id: row['id'] as String,
-        name: (row['name'] as String?) ?? '',
-        email: (row['email'] as String?) ?? '',
-        whatsapp: row['whatsapp'] as String?,
-        medicalCertExpiry: _date(row['medical_cert_expiry']),
-        insuranceExpiry: _date(row['insurance_expiry']),
-        codiceFiscale: row['codice_fiscale'] as String?,
-        indirizzoVia: row['indirizzo_via'] as String?,
-        indirizzoPaese: row['indirizzo_paese'] as String?,
-        indirizzoCap: row['indirizzo_cap'] as String?,
-        documentoFirmato: (row['documento_firmato'] as bool?) ?? false,
-        privacyPrenotazioni: (row['privacy_prenotazioni'] as bool?) ?? true,
-        createdAt: _date(row['created_at']),
-      );
+    id: row['id'] as String,
+    name: (row['name'] as String?) ?? '',
+    email: (row['email'] as String?) ?? '',
+    whatsapp: row['whatsapp'] as String?,
+    medicalCertExpiry: _date(row['medical_cert_expiry']),
+    insuranceExpiry: _date(row['insurance_expiry']),
+    codiceFiscale: row['codice_fiscale'] as String?,
+    indirizzoVia: row['indirizzo_via'] as String?,
+    indirizzoPaese: row['indirizzo_paese'] as String?,
+    indirizzoCap: row['indirizzo_cap'] as String?,
+    documentoFirmato: (row['documento_firmato'] as bool?) ?? false,
+    privacyPrenotazioni: (row['privacy_prenotazioni'] as bool?) ?? true,
+    createdAt: _date(row['created_at']),
+  );
 
   static DateTime? _date(Object? v) =>
       v == null ? null : DateTime.tryParse(v.toString());

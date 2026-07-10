@@ -12,13 +12,13 @@ import 'schedule_config.dart';
 /// Esito di una scrittura booking, con messaggi già in italiano.
 class BookingResult {
   const BookingResult.ok({this.bookingId, this.paid = false})
-      : ok = true,
-        error = null,
-        errorCode = null;
+    : ok = true,
+      error = null,
+      errorCode = null;
   const BookingResult.fail(this.errorCode, this.error)
-      : ok = false,
-        bookingId = null,
-        paid = false;
+    : ok = false,
+      bookingId = null,
+      paid = false;
 
   final bool ok;
   final String? bookingId;
@@ -45,10 +45,12 @@ class BookingRepository {
   /// date ≤ oggi+90 e (date ≥ oggi−60 oppure non pagata non annullata).
   Future<List<Booking>> fetchOwnBookings(String userId) async {
     final today = DateTime.now();
-    final from =
-        OrgScheduleConfig.localDateStr(today.subtract(const Duration(days: 60)));
-    final to =
-        OrgScheduleConfig.localDateStr(today.add(const Duration(days: 90)));
+    final from = OrgScheduleConfig.localDateStr(
+      today.subtract(const Duration(days: 190)),
+    );
+    final to = OrgScheduleConfig.localDateStr(
+      today.add(const Duration(days: 90)),
+    );
     final rows = await _client
         .from('bookings')
         .select(Booking.selectColumns)
@@ -77,7 +79,9 @@ class BookingRepository {
   /// Disponibilità aggregata server-authoritative (solo slot con ≥1 occupato;
   /// gli slot liberi si deducono dalla config orari locale).
   Future<List<SlotAvailability>> fetchAvailability(
-      DateTime from, DateTime to) async {
+    DateTime from,
+    DateTime to,
+  ) async {
     final fromStr = OrgScheduleConfig.localDateStr(from);
     final toStr = OrgScheduleConfig.localDateStr(to);
     final cacheKey = '$fromStr|$toStr';
@@ -88,15 +92,16 @@ class BookingRepository {
       return cached.$2;
     }
 
-    final result = await _client.rpc('get_availability_range', params: {
-      'p_org_slug': orgSlug,
-      'p_from': fromStr,
-      'p_to': toStr,
-    }).timeout(const Duration(seconds: 12));
+    final result = await _client
+        .rpc(
+          'get_availability_range',
+          params: {'p_org_slug': orgSlug, 'p_from': fromStr, 'p_to': toStr},
+        )
+        .timeout(const Duration(seconds: 12));
 
     final list = [
       for (final item in (result as List? ?? const []))
-        SlotAvailability.fromJson(item as Map<String, dynamic>)
+        SlotAvailability.fromJson(item as Map<String, dynamic>),
     ];
     _availCache[cacheKey] = (DateTime.now(), list);
     return list;
@@ -106,17 +111,18 @@ class BookingRepository {
 
   /// Iscritti a uno slot, raggruppabili per tipo (RPC get_slot_attendees).
   Future<List<SlotAttendee>> slotAttendees(String date, String time) async {
-    final rows = await _client.rpc('get_slot_attendees', params: {
-      'p_org_slug': orgSlug,
-      'p_date': date,
-      'p_time': time,
-    }).timeout(const Duration(seconds: 12));
+    final rows = await _client
+        .rpc(
+          'get_slot_attendees',
+          params: {'p_org_slug': orgSlug, 'p_date': date, 'p_time': time},
+        )
+        .timeout(const Duration(seconds: 12));
     return [
       for (final r in (rows as List? ?? const []))
         SlotAttendee(
           name: (r['name'] as String?) ?? 'Anonimo',
           slotType: (r['slot_type'] as String?) ?? '',
-        )
+        ),
     ];
   }
 
@@ -131,20 +137,24 @@ class BookingRepository {
     String? notes,
     String dateDisplay = '',
   }) async {
-    final localId =
-        '${DateTime.now().millisecondsSinceEpoch}-${_rand36(9)}';
+    final localId = '${DateTime.now().millisecondsSinceEpoch}-${_rand36(9)}';
     try {
-      final res = await _client.rpc('book_slot', params: {
-        'p_org_slug': orgSlug,
-        'p_local_id': localId,
-        'p_date': date,
-        'p_time': time,
-        'p_name': name,
-        'p_email': email,
-        'p_whatsapp': whatsapp ?? '',
-        'p_notes': notes ?? '',
-        'p_date_display': dateDisplay,
-      }).timeout(const Duration(seconds: 45));
+      final res = await _client
+          .rpc(
+            'book_slot',
+            params: {
+              'p_org_slug': orgSlug,
+              'p_local_id': localId,
+              'p_date': date,
+              'p_time': time,
+              'p_name': name,
+              'p_email': email,
+              'p_whatsapp': whatsapp ?? '',
+              'p_notes': notes ?? '',
+              'p_date_display': dateDisplay,
+            },
+          )
+          .timeout(const Duration(seconds: 45));
 
       final map = (res as Map).cast<String, dynamic>();
       invalidateAvailability();
@@ -162,22 +172,25 @@ class BookingRepository {
       // porta a un doppione e la lista si riallinea.
       invalidateAvailability();
       return const BookingResult.fail(
-          'timeout',
-          'Connessione lenta: non è chiaro se la prenotazione sia stata registrata. '
-              'Controlla "Le mie prenotazioni" prima di riprovare.');
+        'timeout',
+        'Connessione lenta: non è chiaro se la prenotazione sia stata registrata. '
+            'Controlla "Le mie prenotazioni" prima di riprovare.',
+      );
     } catch (_) {
       invalidateAvailability();
       return const BookingResult.fail(
-          'offline', 'Errore di connessione: prenotazione non salvata.');
+        'offline',
+        'Errore di connessione: prenotazione non salvata.',
+      );
     }
   }
 
   /// Annulla via RPC `cancel_booking` (cutoff/refund lato server).
   Future<BookingResult> cancelBooking(String bookingId) async {
     try {
-      final res = await _client.rpc('cancel_booking',
-          params: {'p_booking_id': bookingId}).timeout(
-          const Duration(seconds: 12));
+      final res = await _client
+          .rpc('cancel_booking', params: {'p_booking_id': bookingId})
+          .timeout(const Duration(seconds: 12));
       final map = (res as Map).cast<String, dynamic>();
       invalidateAvailability();
       if (map['success'] == true) return const BookingResult.ok();
@@ -192,9 +205,9 @@ class BookingRepository {
   /// `user_request_cancellation`.
   Future<BookingResult> requestCancellation(String bookingId) async {
     try {
-      final res = await _client.rpc('user_request_cancellation',
-          params: {'p_booking_id': bookingId}).timeout(
-          const Duration(seconds: 12));
+      final res = await _client
+          .rpc('user_request_cancellation', params: {'p_booking_id': bookingId})
+          .timeout(const Duration(seconds: 12));
       final map = (res as Map).cast<String, dynamic>();
       if (map['success'] == true) return const BookingResult.ok();
       final code = (map['error'] as String?) ?? 'server_error';
@@ -212,35 +225,44 @@ class BookingRepository {
 
   /// Messaggi utente per i codici errore di book_slot (spec-data §4.2).
   static String bookSlotErrorMessage(String code) => switch (code) {
-        'slot_full' => 'Lo slot è al completo.',
-        'slot_busy' =>
-          'Qualcun altro sta prenotando questo slot: riprova tra un attimo.',
-        'too_late' =>
-          'Prenotazione non più possibile: la lezione è già iniziata da oltre 30 minuti.',
-        'past_date' => 'Non puoi prenotare una data passata.',
-        'not_bookable' => 'Questo slot non è prenotabile.',
-        'no_package' =>
-          'Nessun pacchetto attivo: contatta il tuo trainer per acquistarne uno.',
-        'membership_expired' =>
-          'Abbonamento scaduto: contatta il tuo trainer per rinnovarlo.',
-        'quota_exceeded' =>
-          'Hai esaurito le lezioni del tuo abbonamento per questo periodo.',
-        'duplicate_booking' => 'Hai già una prenotazione per questo slot.',
-        'invalid_email' => 'Email non valida.',
-        'missing_name' => 'Inserisci il nome.',
-        'org_not_found' => 'Studio non trovato.',
-        _ => 'Errore del server. Riprova.',
-      };
+    'slot_full' => 'Lo slot è al completo.',
+    'slot_busy' =>
+      'Qualcun altro sta prenotando questo slot: riprova tra un attimo.',
+    'too_late' =>
+      'Prenotazione non più possibile: la lezione è già iniziata da oltre 30 minuti.',
+    'past_date' => 'Non puoi prenotare una data passata.',
+    'not_bookable' => 'Questo slot non è prenotabile.',
+    'no_package' =>
+      'Nessun pacchetto attivo: contatta il tuo trainer per acquistarne uno.',
+    'membership_expired' =>
+      'Abbonamento scaduto: contatta il tuo trainer per rinnovarlo.',
+    'quota_exceeded' =>
+      'Hai esaurito le lezioni del tuo abbonamento per questo periodo.',
+    'outstanding_balance' =>
+      'Hai raggiunto la soglia di pagamenti in sospeso: contatta il trainer.',
+    'login_required' =>
+      'Questa email appartiene a un account: accedi prima di prenotare.',
+    'identity_mismatch' =>
+      "L'email inserita non corrisponde all'account con cui hai effettuato l'accesso.",
+    'client_archived' =>
+      'Il profilo risulta archiviato: contatta il trainer per riattivarlo.',
+    'client_not_found' => 'Il cliente selezionato non e disponibile.',
+    'duplicate_booking' => 'Hai già una prenotazione per questo slot.',
+    'invalid_email' => 'Email non valida.',
+    'missing_name' => 'Inserisci il nome.',
+    'org_not_found' => 'Studio non trovato.',
+    _ => 'Errore del server. Riprova.',
+  };
 
   static String cancelErrorMessage(String code) => switch (code) {
-        'cancellation_window_closed' =>
-          'Finestra di cancellazione chiusa: puoi solo richiedere l\'annullo al trainer.',
-        'already_cancelled' => 'Prenotazione già annullata.',
-        'not_confirmed' => 'La prenotazione non è in stato confermato.',
-        'booking_not_found' => 'Prenotazione non trovata.',
-        'unauthorized' => 'Operazione non consentita.',
-        _ => 'Errore del server. Riprova.',
-      };
+    'cancellation_window_closed' =>
+      'Finestra di cancellazione chiusa: puoi solo richiedere l\'annullo al trainer.',
+    'already_cancelled' => 'Prenotazione già annullata.',
+    'not_confirmed' => 'La prenotazione non è in stato confermato.',
+    'booking_not_found' => 'Prenotazione non trovata.',
+    'unauthorized' => 'Operazione non consentita.',
+    _ => 'Errore del server. Riprova.',
+  };
 }
 
 /// Slug della org corrente (serve alle RPC pubbliche). Cache in-memory.
@@ -257,7 +279,9 @@ final orgSlugProvider = FutureProvider<String>((ref) async {
   return (row?['slug'] as String?) ?? '';
 });
 
-final bookingRepositoryProvider = FutureProvider<BookingRepository>((ref) async {
+final bookingRepositoryProvider = FutureProvider<BookingRepository>((
+  ref,
+) async {
   final slug = await ref.watch(orgSlugProvider.future);
   return BookingRepository(ref.watch(supabaseProvider), orgSlug: slug);
 });

@@ -522,7 +522,7 @@ async function paySelectedDebts() {
     if (payBtn) { payBtn.disabled = true; payBtn.textContent = 'Salvataggio...'; }
 
     try {
-        // #8: garantisci la sessione PRIMA della RPC NON idempotente. Dopo idle il lock auth
+        // Garantisce una sessione valida prima della RPC finanziaria. Dopo idle il lock auth
         // può essere bloccato → la RPC perderebbe il token e l'operazione andrebbe persa
         // (niente retry). ensureValidSession è veloce (lettura diretta da storage, #5) e
         // "sveglia" il lock → la RPC parte con token valido.
@@ -617,6 +617,7 @@ function closePaymentsActionSheet() {
 // ─────────────────────────────────────────────────────────────────────────────
 let _saleType = null;            // 'package' | 'membership'
 let _saleContact = null;         // { name, whatsapp, email, userId }
+let _saleOperationKey = null;    // stabile durante retry/timeout della stessa vendita
 
 function openSellPackagePopup()  { _openSalePopup('package'); }
 function openMembershipPopup()   { _openSalePopup('membership'); }
@@ -624,6 +625,7 @@ function openMembershipPopup()   { _openSalePopup('membership'); }
 function _openSalePopup(type) {
     _saleType = type;
     _saleContact = null;
+    _saleOperationKey = `pwa:${type}:${Date.now()}:${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`;
     const old = document.getElementById('saleOverlay');
     if (old) old.remove();
 
@@ -689,6 +691,11 @@ function _openSalePopup(type) {
                         <span class="manual-amount-currency">€</span>
                         <input type="number" id="salePrice" class="manual-amount-input" min="0" step="0.01" placeholder="0">
                     </div>
+                </div>
+                ${!isPkg ? `<label class="manual-entry-field" style="display:flex;align-items:center;gap:.6rem"><input type="checkbox" id="saleAutoRenew"><span class="debt-field-label" style="margin:0">Rinnovo automatico (promemoria operativo)</span></label>` : ''}
+                <div class="manual-entry-field">
+                    <span class="debt-field-label">Nota interna (opzionale)</span>
+                    <input type="text" id="saleNote" class="manual-note-input" maxlength="500" placeholder="Dettagli utili per lo storico">
                 </div>
                 <div class="manual-entry-field">
                     <span class="debt-field-label">Metodo di pagamento</span>
@@ -765,16 +772,19 @@ async function saveSale() {
         return;
     }
     const label  = document.getElementById('saleLabel').value.trim();
-    const price  = parseFloat(document.getElementById('salePrice').value);
+    const priceRaw = document.getElementById('salePrice').value.trim().replace(',', '.');
+    const price  = priceRaw === '' ? NaN : Number(priceRaw);
     const method = document.getElementById('saleMethod').value;
-    if (isNaN(price) || price < 0) { showToast('Inserisci un prezzo valido', 'error'); return; }
+    const note = (document.getElementById('saleNote')?.value || '').trim();
+    const saleType = _saleType;
+    if (!Number.isFinite(price) || price < 0) { showToast('Inserisci un prezzo valido', 'error'); return; }
 
     const saveBtn = document.getElementById('saleSaveBtn');
     _savingSale = true;
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio...'; }
 
     try {
-        // #8 + B1: sessione garantita E BLOCCA se persa → niente vendita (RPC non idempotente)
+        // Sessione garantita e blocco esplicito se persa; la chiave operazione rende sicuro il retry
         // senza token valido. Il finally riabilita il bottone.
         if (typeof ensureValidSession === 'function') {
             let _sess = null;
@@ -796,6 +806,8 @@ async function saveSale() {
                 p_price:    price,
                 p_method:   method,
                 p_expires:  expires,
+                p_idempotency_key: _saleOperationKey,
+                p_note: note || null,
             }), 30000));
         } else {
             const periodStart = document.getElementById('salePeriodStart').value;
@@ -811,6 +823,9 @@ async function saveSale() {
                 p_period_end:    periodEnd,
                 p_lessons_quota: quota,
                 p_method:        method,
+                p_auto_renew:    !!document.getElementById('saleAutoRenew')?.checked,
+                p_idempotency_key: _saleOperationKey,
+                p_note: note || null,
             }), 30000));
         }
 
@@ -820,19 +835,9 @@ async function saveSale() {
             return;
         }
 
-        // Imposta automaticamente il modello di fatturazione del cliente in base alla
-        // vendita: così book_slot applica la logica giusta (mensile/pacchetto) a QUESTO
-        // cliente, a prescindere dal default dello studio. (override per-cliente)
-        try {
-            await supabaseClient.from('client_billing_profiles').upsert({
-                org_id:         window._orgId,
-                user_id:        _saleContact.userId,
-                model_override: _saleType === 'package' ? 'package' : 'monthly',
-            }, { onConflict: 'org_id,user_id' });
-        } catch (e) { console.warn('[saveSale] model_override non impostato:', e && e.message); }
 
         closeSalePopup();
-        showToast(_saleType === 'package' ? 'Pacchetto registrato' : 'Abbonamento registrato', 'success');
+        showToast(saleType === 'package' ? 'Pacchetto registrato' : 'Abbonamento registrato', 'success');
         const activeTab = document.querySelector('.admin-tab.active');
         if (activeTab && activeTab.dataset.tab === 'payments') renderPaymentsTab('saveSale');
     } catch (e) {

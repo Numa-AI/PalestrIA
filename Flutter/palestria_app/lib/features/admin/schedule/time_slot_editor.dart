@@ -17,10 +17,12 @@ Future<void> showTimeSlotEditor(
     isScrollControlled: true,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
     builder: (_) => Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: _TimeSlotEditor(existing: existing, defaultSort: defaultSort),
     ),
   );
@@ -50,8 +52,9 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
     _end = _parse((e?['end_time'] as String?) ?? '10:00', 10);
     _label = TextEditingController(text: (e?['label'] as String?) ?? '');
     _sort = TextEditingController(
-        text: ((e?['sort_order'] as num?)?.toInt() ?? widget.defaultSort)
-            .toString());
+      text: ((e?['sort_order'] as num?)?.toInt() ?? widget.defaultSort)
+          .toString(),
+    );
   }
 
   static TimeOfDay _parse(String hhmm, int fallbackHour) {
@@ -89,7 +92,8 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
     final endM = _end.hour * 60 + _end.minute;
     if (endM <= startM) {
       messenger.showSnackBar(
-          const SnackBar(content: Text('La fine deve essere dopo l\'inizio.')));
+        const SnackBar(content: Text('La fine deve essere dopo l\'inizio.')),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -105,18 +109,30 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
       );
       ref.invalidate(allTimeSlotsProvider);
       ref.invalidate(scheduleConfigProvider);
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text(
-              widget.existing == null ? 'Fascia creata.' : 'Fascia aggiornata.')));
+            widget.existing == null ? 'Fascia creata.' : 'Fascia aggiornata.',
+          ),
+        ),
+      );
       navigator.pop();
     } catch (e) {
-      final dup = e.toString().contains('23505') ||
-          RegExp('duplicate|unique', caseSensitive: false)
-              .hasMatch(e.toString());
-      messenger.showSnackBar(SnackBar(
-          content: Text(dup
-              ? 'Esiste già una fascia con questi orari.'
-              : 'Errore nel salvataggio: $e')));
+      final dup =
+          e.toString().contains('23505') ||
+          RegExp(
+            'duplicate|unique',
+            caseSensitive: false,
+          ).hasMatch(e.toString());
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            dup
+                ? 'Esiste già una fascia con questi orari.'
+                : 'Errore nel salvataggio: $e',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -133,15 +149,17 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-                widget.existing == null
-                    ? 'Nuova fascia oraria'
-                    : 'Modifica fascia',
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              widget.existing == null
+                  ? 'Nuova fascia oraria'
+                  : 'Modifica fascia',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: AppSpacing.md),
             Row(
               children: [
-                Expanded(child: _timeButton('Inizio', _start, () => _pick(true))),
+                Expanded(
+                  child: _timeButton('Inizio', _start, () => _pick(true)),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(child: _timeButton('Fine', _end, () => _pick(false))),
               ],
@@ -150,7 +168,9 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
             TextField(
               controller: _label,
               decoration: const InputDecoration(
-                  labelText: 'Etichetta (opzionale)', hintText: 'Mattina'),
+                labelText: 'Etichetta (opzionale)',
+                hintText: 'Mattina',
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
             TextField(
@@ -171,9 +191,11 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
                 Expanded(
                   child: FilledButton(
                     onPressed: _saving ? null : _save,
-                    child: Text(_saving
-                        ? 'Salvataggio...'
-                        : (widget.existing == null ? 'Crea fascia' : 'Salva')),
+                    child: Text(
+                      _saving
+                          ? 'Salvataggio...'
+                          : (widget.existing == null ? 'Crea fascia' : 'Salva'),
+                    ),
                   ),
                 ),
               ],
@@ -188,14 +210,18 @@ class _TimeSlotEditorState extends ConsumerState<_TimeSlotEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.muted)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+        ),
         const SizedBox(height: 4),
         OutlinedButton.icon(
           onPressed: onTap,
           icon: const Icon(Icons.access_time, size: 18),
-          label: Text(_fmt(t),
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700)),
+          label: Text(
+            _fmt(t),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
         ),
       ],
     );

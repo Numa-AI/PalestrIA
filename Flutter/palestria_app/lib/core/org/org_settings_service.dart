@@ -25,8 +25,10 @@ class OrgSettingsService {
   String _prefsKey(String key) => 'org_${orgId}_$key';
 
   Future<void> load() async {
-    final rows =
-        await _client.from('org_settings').select('key, value').eq('org_id', orgId);
+    final rows = await _client
+        .from('org_settings')
+        .select('key, value')
+        .eq('org_id', orgId);
     for (final row in rows) {
       final key = row['key'] as String;
       final value = row['value'];
@@ -64,8 +66,10 @@ class OrgSettingsService {
   }
 
   Future<void> set(String key, dynamic value) async {
-    await _client.rpc('upsert_org_setting',
-        params: {'p_key': key, 'p_value': value});
+    await _client.rpc(
+      'upsert_org_setting',
+      params: {'p_key': key, 'p_value': value},
+    );
     _cache[key] = value;
     await _prefs.setString(_prefsKey(key), jsonEncode(value));
     _notify(key, value);
@@ -130,7 +134,8 @@ class OrgSettingsService {
   Future<void> reset() async {
     _cache.clear();
     final prefix = 'org_${orgId}_';
-    for (final k in _prefs.getKeys().where((k) => k.startsWith(prefix)).toList()) {
+    for (final k
+        in _prefs.getKeys().where((k) => k.startsWith(prefix)).toList()) {
       await _prefs.remove(k);
     }
     await dispose();
@@ -138,12 +143,12 @@ class OrgSettingsService {
 
   /// Costruisce l'OrgBranding corrente dalle chiavi `branding.*`.
   OrgBranding currentBranding() => OrgBranding(
-        primary: OrgBranding.parseHex(
-                get('branding.primary_color') as String?) ??
-            const OrgBranding().primary,
-        logoUrl: get('branding.logo_url') as String?,
-        studioName: get('branding.studio_name') as String?,
-      );
+    primary:
+        OrgBranding.parseHex(get('branding.primary_color') as String?) ??
+        const OrgBranding().primary,
+    logoUrl: get('branding.logo_url') as String?,
+    studioName: get('branding.studio_name') as String?,
+  );
 }
 
 /// Servizio OrgSettings caricato per la org corrente. Applica il branding al
@@ -155,8 +160,7 @@ final orgSettingsProvider = FutureProvider<OrgSettingsService?>((ref) async {
   if (orgId == null) return null;
 
   final prefs = await SharedPreferences.getInstance();
-  final service =
-      OrgSettingsService(ref.watch(supabaseProvider), orgId, prefs);
+  final service = OrgSettingsService(ref.watch(supabaseProvider), orgId, prefs);
   await service.load();
   service.subscribe();
 

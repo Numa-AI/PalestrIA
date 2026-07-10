@@ -58,11 +58,7 @@ class ScheduleAdminRepository {
   }
 
   Future<void> deleteSlotType(String id) async {
-    await _client
-        .from('slot_types')
-        .delete()
-        .eq('id', id)
-        .eq('org_id', orgId);
+    await _client.from('slot_types').delete().eq('id', id).eq('org_id', orgId);
   }
 
   // ── Fasce orarie (time_slots_config) ────────────────────────────────────────
@@ -126,7 +122,8 @@ class ScheduleAdminRepository {
   }
 
   Future<List<Map<String, dynamic>>> fetchTemplateSlots(
-      String templateId) async {
+    String templateId,
+  ) async {
     final rows = await _client
         .from('weekly_template_slots')
         .select('id,weekday,time_slot_id,slot_type_id,capacity')
@@ -223,10 +220,11 @@ class ScheduleAdminRepository {
   }
 
   Future<void> activateWeek(String weekStart, String templateId) async {
-    await _client.from('activated_weeks').upsert(
-      {'org_id': orgId, 'week_start': weekStart, 'template_id': templateId},
-      onConflict: 'org_id,week_start',
-    );
+    await _client.from('activated_weeks').upsert({
+      'org_id': orgId,
+      'week_start': weekStart,
+      'template_id': templateId,
+    }, onConflict: 'org_id,week_start');
   }
 
   Future<void> deactivateWeek(String weekStart) async {
@@ -241,8 +239,11 @@ class ScheduleAdminRepository {
   /// Fail-safe: in errore ritorna true (meglio bloccare la modifica).
   Future<bool> weekHasBookings(String weekStart) async {
     final parts = weekStart.split('-').map(int.parse).toList();
-    final end = DateTime(parts[0], parts[1], parts[2])
-        .add(const Duration(days: 6));
+    final end = DateTime(
+      parts[0],
+      parts[1],
+      parts[2],
+    ).add(const Duration(days: 6));
     final weekEnd =
         '${end.year.toString().padLeft(4, '0')}-${end.month.toString().padLeft(2, '0')}-${end.day.toString().padLeft(2, '0')}';
     try {
@@ -264,8 +265,17 @@ class ScheduleAdminRepository {
   static String _slugify(String s) {
     var out = s.toLowerCase().trim();
     const map = {
-      'à': 'a', 'á': 'a', 'â': 'a', 'è': 'e', 'é': 'e',
-      'ì': 'i', 'í': 'i', 'ò': 'o', 'ó': 'o', 'ù': 'u', 'ú': 'u'
+      'à': 'a',
+      'á': 'a',
+      'â': 'a',
+      'è': 'e',
+      'é': 'e',
+      'ì': 'i',
+      'í': 'i',
+      'ò': 'o',
+      'ó': 'o',
+      'ù': 'u',
+      'ú': 'u',
     };
     map.forEach((k, v) => out = out.replaceAll(k, v));
     out = out.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
@@ -285,48 +295,56 @@ class ScheduleAdminRepository {
   }
 }
 
-final scheduleAdminRepoProvider =
-    FutureProvider<ScheduleAdminRepository?>((ref) async {
+final scheduleAdminRepoProvider = FutureProvider<ScheduleAdminRepository?>((
+  ref,
+) async {
   final ctx = await ref.watch(orgContextProvider.future);
   if (ctx.orgId == null || !ctx.isOrgAdmin) return null;
   return ScheduleAdminRepository(ref.watch(supabaseProvider), ctx.orgId!);
 });
 
 /// Tutti i tipi slot della org (inclusi inattivi) per l'editor.
-final allSlotTypesProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allSlotTypesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = await ref.watch(scheduleAdminRepoProvider.future);
   if (repo == null) return const [];
   return repo.fetchSlotTypes();
 });
 
 /// Tutte le fasce orarie della org (incluse inattive) per l'editor.
-final allTimeSlotsProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allTimeSlotsProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = await ref.watch(scheduleAdminRepoProvider.future);
   if (repo == null) return const [];
   return repo.fetchTimeSlots();
 });
 
 /// Template settimana tipo della org.
-final allTemplatesProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final allTemplatesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = await ref.watch(scheduleAdminRepoProvider.future);
   if (repo == null) return const [];
   return repo.fetchTemplates();
 });
 
 /// Celle di un template (weekly_template_slots).
-final templateSlotsProvider = FutureProvider.family<
-    List<Map<String, dynamic>>, String>((ref, templateId) async {
-  final repo = await ref.watch(scheduleAdminRepoProvider.future);
-  if (repo == null) return const [];
-  return repo.fetchTemplateSlots(templateId);
-});
+final templateSlotsProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((
+      ref,
+      templateId,
+    ) async {
+      final repo = await ref.watch(scheduleAdminRepoProvider.future);
+      if (repo == null) return const [];
+      return repo.fetchTemplateSlots(templateId);
+    });
 
 /// Settimane attivate della org.
-final activatedWeeksProvider =
-    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final activatedWeeksProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = await ref.watch(scheduleAdminRepoProvider.future);
   if (repo == null) return const [];
   return repo.fetchActivatedWeeks();

@@ -9,7 +9,13 @@ import '../../../core/theme/ui_kit.dart';
 
 const _weekdayOrder = [1, 2, 3, 4, 5, 6, 0];
 const _weekdayShort = {
-  1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Gio', 5: 'Ven', 6: 'Sab', 0: 'Dom'
+  1: 'Lun',
+  2: 'Mar',
+  3: 'Mer',
+  4: 'Gio',
+  5: 'Ven',
+  6: 'Sab',
+  0: 'Dom',
 };
 
 /// Editor "Settimana tipo" (port di _schedRenderTemplate §Editor3): template
@@ -23,8 +29,7 @@ class TemplateEditorSection extends ConsumerStatefulWidget {
       _TemplateEditorSectionState();
 }
 
-class _TemplateEditorSectionState
-    extends ConsumerState<TemplateEditorSection> {
+class _TemplateEditorSectionState extends ConsumerState<TemplateEditorSection> {
   String? _templateId;
   int _weekday = 1;
 
@@ -40,7 +45,8 @@ class _TemplateEditorSectionState
     final slots = (slotsAsync.value ?? const [])
         .where((t) => (t['is_active'] as bool?) ?? true)
         .toList();
-    final loading = (templatesAsync.isLoading && templates.isEmpty) ||
+    final loading =
+        (templatesAsync.isLoading && templates.isEmpty) ||
         (typesAsync.isLoading && types.isEmpty) ||
         (slotsAsync.isLoading && slots.isEmpty);
     final hasError =
@@ -71,8 +77,10 @@ class _TemplateEditorSectionState
     } else if (templates.isEmpty) {
       body = const Padding(
         padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-        child: Text('Nessuna settimana tipo. Creane una per iniziare.',
-            style: AppText.meta),
+        child: Text(
+          'Nessuna settimana tipo. Creane una per iniziare.',
+          style: AppText.meta,
+        ),
       );
     } else {
       body = Column(
@@ -85,25 +93,33 @@ class _TemplateEditorSectionState
                   initialValue: tid,
                   isExpanded: true,
                   decoration: const InputDecoration(
-                      labelText: 'Settimana', isDense: true),
+                    labelText: 'Settimana',
+                    isDense: true,
+                  ),
                   items: [
                     for (final t in templates)
                       DropdownMenuItem(
-                          value: t['id'] as String,
-                          child: Text((t['name'] as String?) ?? '')),
+                        value: t['id'] as String,
+                        child: Text((t['name'] as String?) ?? ''),
+                      ),
                   ],
                   onChanged: (v) => setState(() => _templateId = v),
                 ),
               ),
               IconButton(
-                  icon: const Icon(Icons.edit, size: 18),
-                  tooltip: 'Rinomina',
-                  onPressed: tid == null ? null : () => _renameTemplate(tid!)),
+                icon: const Icon(Icons.edit, size: 18),
+                tooltip: 'Rinomina',
+                onPressed: tid == null ? null : () => _renameTemplate(tid!),
+              ),
               IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      size: 18, color: AppColors.dangerDark),
-                  tooltip: 'Elimina',
-                  onPressed: tid == null ? null : () => _deleteTemplate(tid!)),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: AppColors.dangerDark,
+                ),
+                tooltip: 'Elimina',
+                onPressed: tid == null ? null : () => _deleteTemplate(tid!),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -111,9 +127,10 @@ class _TemplateEditorSectionState
             const Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
               child: Text(
-                  'Servono almeno una fascia oraria e un tipo di slot attivi '
-                  'per comporre la griglia.',
-                  style: AppText.meta),
+                'Servono almeno una fascia oraria e un tipo di slot attivi '
+                'per comporre la griglia.',
+                style: AppText.meta,
+              ),
             )
           else ...[
             _weekdayTabs(context),
@@ -136,17 +153,20 @@ class _TemplateEditorSectionState
                 child: Text('🗓️ Settimana tipo', style: AppText.cardTitle),
               ),
               IconButton(
-                icon: Icon(Icons.add_circle,
-                    color: Theme.of(context).colorScheme.primary),
+                icon: Icon(
+                  Icons.add_circle,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 tooltip: 'Nuova settimana',
                 onPressed: _newTemplate,
               ),
             ],
           ),
           const Text(
-              'Modelli riutilizzabili. Per metterli in calendario attiva le '
-              'singole settimane in "Attiva settimane".',
-              style: AppText.meta),
+            'Modelli riutilizzabili. Per metterli in calendario attiva le '
+            'singole settimane in "Attiva settimane".',
+            style: AppText.meta,
+          ),
           const SizedBox(height: AppSpacing.sm),
           body,
         ],
@@ -164,10 +184,13 @@ class _TemplateEditorSectionState
             Padding(
               padding: const EdgeInsets.only(right: 6),
               child: ChoiceChip(
-                label: Text(_weekdayShort[wd]!,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: _weekday == wd ? Colors.white : null)),
+                label: Text(
+                  _weekdayShort[wd]!,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: _weekday == wd ? Colors.white : null,
+                  ),
+                ),
                 selected: _weekday == wd,
                 showCheckmark: false,
                 selectedColor: primary,
@@ -179,8 +202,11 @@ class _TemplateEditorSectionState
     );
   }
 
-  Widget _cellsForDay(String templateId, List<Map<String, dynamic>> slots,
-      List<Map<String, dynamic>> types) {
+  Widget _cellsForDay(
+    String templateId,
+    List<Map<String, dynamic>> slots,
+    List<Map<String, dynamic>> types,
+  ) {
     final cellsAsync = ref.watch(templateSlotsProvider(templateId));
     final cells = cellsAsync.value ?? const [];
     if (cellsAsync.isLoading && cells.isEmpty) {
@@ -212,14 +238,24 @@ class _TemplateEditorSectionState
     return Column(
       children: [
         for (final ts in slots)
-          _cellRow(templateId, ts['id'] as String, slotLabel(ts),
-              cellFor(ts['id'] as String), types),
+          _cellRow(
+            templateId,
+            ts['id'] as String,
+            slotLabel(ts),
+            cellFor(ts['id'] as String),
+            types,
+          ),
       ],
     );
   }
 
-  Widget _cellRow(String templateId, String timeSlotId, String label,
-      Map<String, dynamic>? cell, List<Map<String, dynamic>> types) {
+  Widget _cellRow(
+    String templateId,
+    String timeSlotId,
+    String label,
+    Map<String, dynamic>? cell,
+    List<Map<String, dynamic>> types,
+  ) {
     final stId = cell?['slot_type_id'] as String?;
     final cap = (cell?['capacity'] as num?)?.toInt();
     final st = types.where((t) => t['id'] == stId).firstOrNull;
@@ -229,11 +265,14 @@ class _TemplateEditorSectionState
         children: [
           SizedBox(
             width: 78,
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: AppText.tabularNums)),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFeatures: AppText.tabularNums,
+              ),
+            ),
           ),
           if (st != null)
             Padding(
@@ -242,10 +281,11 @@ class _TemplateEditorSectionState
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
-                    color:
-                        OrgBranding.parseHex(st['color'] as String?) ??
-                            AppColors.primary,
-                    shape: BoxShape.circle),
+                  color:
+                      OrgBranding.parseHex(st['color'] as String?) ??
+                      AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           Expanded(
@@ -258,12 +298,19 @@ class _TemplateEditorSectionState
                 const DropdownMenuItem<String?>(value: null, child: Text('—')),
                 for (final t in types)
                   DropdownMenuItem<String?>(
-                      value: t['id'] as String,
-                      child: Text((t['label'] as String?) ?? '',
-                          overflow: TextOverflow.ellipsis)),
+                    value: t['id'] as String,
+                    child: Text(
+                      (t['label'] as String?) ?? '',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
               onChanged: (v) => _setCellType(
-                  templateId, timeSlotId, v, cell?['id'] as String?),
+                templateId,
+                timeSlotId,
+                v,
+                cell?['id'] as String?,
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -276,7 +323,10 @@ class _TemplateEditorSectionState
               keyboardType: TextInputType.number,
               textAlign: TextAlign.center,
               decoration: const InputDecoration(
-                  hintText: 'cap', isDense: true, counterText: ''),
+                hintText: 'cap',
+                isDense: true,
+                counterText: '',
+              ),
               onFieldSubmitted: (v) =>
                   _setCellCapacity(cell?['id'] as String?, v),
             ),
@@ -286,8 +336,12 @@ class _TemplateEditorSectionState
     );
   }
 
-  Future<void> _setCellType(String templateId, String timeSlotId,
-      String? slotTypeId, String? existingId) async {
+  Future<void> _setCellType(
+    String templateId,
+    String timeSlotId,
+    String? slotTypeId,
+    String? existingId,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
@@ -338,11 +392,13 @@ class _TemplateEditorSectionState
         content: TextField(controller: controller, autofocus: true),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: const Text('OK')),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -351,8 +407,10 @@ class _TemplateEditorSectionState
   Future<void> _newTemplate() async {
     final messenger = ScaffoldMessenger.of(context);
     final templates = ref.read(allTemplatesProvider).value ?? const [];
-    final name =
-        await _promptName('Nuova settimana tipo', 'Settimana ${templates.length + 1}');
+    final name = await _promptName(
+      'Nuova settimana tipo',
+      'Settimana ${templates.length + 1}',
+    );
     if (name == null || name.isEmpty) return;
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
@@ -373,8 +431,10 @@ class _TemplateEditorSectionState
     final messenger = ScaffoldMessenger.of(context);
     final templates = ref.read(allTemplatesProvider).value ?? const [];
     final cur = templates.where((t) => t['id'] == id).firstOrNull;
-    final name =
-        await _promptName('Rinomina settimana', (cur?['name'] as String?) ?? '');
+    final name = await _promptName(
+      'Rinomina settimana',
+      (cur?['name'] as String?) ?? '',
+    );
     if (name == null || name.isEmpty) return;
     try {
       final repo = await ref.read(scheduleAdminRepoProvider.future);
@@ -399,16 +459,20 @@ class _TemplateEditorSectionState
       builder: (ctx) => AlertDialog(
         title: const Text('Elimina settimana'),
         content: Text(
-            'Eliminare la settimana "${cur?['name'] ?? ''}" e tutte le sue celle?'),
+          'Eliminare la settimana "${cur?['name'] ?? ''}" e tutte le sue celle?',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Elimina')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
         ],
       ),
     );
@@ -425,7 +489,9 @@ class _TemplateEditorSectionState
       ref.invalidate(scheduleConfigProvider);
       if (mounted) setState(() => _templateId = null);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Errore eliminazione: $e')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Errore eliminazione: $e')),
+      );
     }
   }
 }

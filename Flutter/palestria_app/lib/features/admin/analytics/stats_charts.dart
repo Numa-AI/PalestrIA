@@ -30,8 +30,8 @@ class BookingsLineChart extends StatelessWidget {
       child: hasData
           ? CustomPaint(painter: _LinePainter(labels, values, color))
           : const Center(
-              child: Text('Nessun dato nel periodo',
-                  style: AppText.meta)),
+              child: Text('Nessun dato nel periodo', style: AppText.meta),
+            ),
     );
   }
 }
@@ -62,8 +62,14 @@ class _LinePainter extends CustomPainter {
       final y = _padTop + chartH * (i / 2);
       canvas.drawLine(Offset(_padLeft, y), Offset(size.width, y), gridPaint);
       final val = (maxV * (1 - i / 2)).round();
-      _text(canvas, '$val', Offset(0, y - 6),
-          const TextStyle(fontSize: 9, color: Color(0xFF9CA3AF)), maxWidth: _padLeft - 4, align: TextAlign.right);
+      _text(
+        canvas,
+        '$val',
+        Offset(0, y - 6),
+        const TextStyle(fontSize: 9, color: Color(0xFF9CA3AF)),
+        maxWidth: _padLeft - 4,
+        align: TextAlign.right,
+      );
     }
 
     Offset pt(int i) {
@@ -88,7 +94,10 @@ class _LinePainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [color.withValues(alpha: 0.22), color.withValues(alpha: 0.02)],
+          colors: [
+            color.withValues(alpha: 0.22),
+            color.withValues(alpha: 0.02),
+          ],
         ).createShader(Rect.fromLTWH(_padLeft, _padTop, chartW, chartH)),
     );
     canvas.drawPath(
@@ -106,14 +115,25 @@ class _LinePainter extends CustomPainter {
     for (var i = 0; i < labels.length; i++) {
       if (i % step != 0 || labels[i].isEmpty) continue;
       final x = pt(i).dx;
-      _text(canvas, labels[i], Offset(x - 14, size.height - _padBottom + 5),
-          const TextStyle(fontSize: 9, color: Color(0xFF9CA3AF)),
-          maxWidth: 28, align: TextAlign.center);
+      _text(
+        canvas,
+        labels[i],
+        Offset(x - 14, size.height - _padBottom + 5),
+        const TextStyle(fontSize: 9, color: Color(0xFF9CA3AF)),
+        maxWidth: 28,
+        align: TextAlign.center,
+      );
     }
   }
 
-  void _text(Canvas canvas, String s, Offset at, TextStyle style,
-      {double maxWidth = 60, TextAlign align = TextAlign.left}) {
+  void _text(
+    Canvas canvas,
+    String s,
+    Offset at,
+    TextStyle style, {
+    double maxWidth = 60,
+    TextAlign align = TextAlign.left,
+  }) {
     final tp = TextPainter(
       text: TextSpan(text: s, style: style),
       textDirection: TextDirection.ltr,
@@ -164,29 +184,44 @@ class MonthlyBarChart extends StatelessWidget {
       for (var i = 0; i < solid.length; i++)
         solid[i].toDouble() +
             (projected != null ? projected![i].toDouble() : 0) +
-            (estimate != null ? estimate![i].toDouble() : 0)
+            (estimate != null ? estimate![i].toDouble() : 0),
     ];
     if (total.every((v) => v <= 0)) {
       return SizedBox(
         height: height,
         child: const Center(
-            child: Text('Nessun dato nel periodo', style: AppText.meta)),
+          child: Text('Nessun dato nel periodo', style: AppText.meta),
+        ),
       );
     }
     return SizedBox(
       height: height,
       width: double.infinity,
       child: CustomPaint(
-        painter: _BarPainter(labels, solid, projected, estimate,
-            highlightIndex, barColor, projectedColor),
+        painter: _BarPainter(
+          labels,
+          solid,
+          projected,
+          estimate,
+          highlightIndex,
+          barColor,
+          projectedColor,
+        ),
       ),
     );
   }
 }
 
 class _BarPainter extends CustomPainter {
-  _BarPainter(this.labels, this.solid, this.projected, this.estimate,
-      this.highlight, this.barColor, this.projectedColor);
+  _BarPainter(
+    this.labels,
+    this.solid,
+    this.projected,
+    this.estimate,
+    this.highlight,
+    this.barColor,
+    this.projectedColor,
+  );
 
   final List<String> labels;
   final List<num> solid;
@@ -212,7 +247,9 @@ class _BarPainter extends CustomPainter {
         (projected != null ? projected![i].toDouble() : 0) +
         (estimate != null ? estimate![i].toDouble() : 0);
     final maxV = math.max(
-        1.0, List.generate(n, stacked).reduce((a, b) => a > b ? a : b));
+      1.0,
+      List.generate(n, stacked).reduce((a, b) => a > b ? a : b),
+    );
 
     for (var i = 0; i < n; i++) {
       final cx = slotW * i + slotW / 2;
@@ -252,11 +289,15 @@ class _BarPainter extends CustomPainter {
       if (i % step == 0 && i < labels.length) {
         final tp = TextPainter(
           text: TextSpan(
-              text: labels[i],
-              style: const TextStyle(fontSize: 8.5, color: Color(0xFF9CA3AF))),
+            text: labels[i],
+            style: const TextStyle(fontSize: 8.5, color: Color(0xFF9CA3AF)),
+          ),
           textDirection: TextDirection.ltr,
         )..layout();
-        tp.paint(canvas, Offset(cx - tp.width / 2, size.height - _padBottom + 4));
+        tp.paint(
+          canvas,
+          Offset(cx - tp.width / 2, size.height - _padBottom + 4),
+        );
       }
     }
   }
@@ -289,7 +330,8 @@ class TypeDonutChart extends StatelessWidget {
       return const SizedBox(
         height: 120,
         child: Center(
-            child: Text('Nessun dato nel periodo', style: AppText.meta)),
+          child: Text('Nessun dato nel periodo', style: AppText.meta),
+        ),
       );
     }
     final total = visible.fold<double>(0, (s, e) => s + e.value);
@@ -316,22 +358,26 @@ class TypeDonutChart extends StatelessWidget {
                         width: 10,
                         height: 10,
                         decoration: BoxDecoration(
-                            color: s.color,
-                            borderRadius: BorderRadius.circular(3)),
+                          color: s.color,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(s.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12.5)),
+                        child: Text(
+                          s.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12.5),
+                        ),
                       ),
                       Text(
                         '${s.value.round()} · ${(s.value / total * 100).round()}%',
                         style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.muted),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.muted,
+                        ),
                       ),
                     ],
                   ),
@@ -374,22 +420,29 @@ class _DonutPainter extends CustomPainter {
     }
     // Totale al centro.
     final tp = TextPainter(
-      text: TextSpan(children: [
-        TextSpan(
+      text: TextSpan(
+        children: [
+          TextSpan(
             text: '${total.round()}\n',
             style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111111))),
-        const TextSpan(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111111),
+            ),
+          ),
+          const TextSpan(
             text: 'tot',
-            style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-      ]),
+            style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+          ),
+        ],
+      ),
       textAlign: TextAlign.center,
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas,
-        Offset(center.dx - tp.width / 2, center.dy - tp.height / 2));
+    tp.paint(
+      canvas,
+      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+    );
   }
 
   @override

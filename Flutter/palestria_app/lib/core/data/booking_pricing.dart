@@ -26,8 +26,8 @@ double bookingPrice(
   if (custom != null && !custom.isNaN) return custom;
 
   if (settings != null && b.slotType.isNotEmpty) {
-    final prices =
-        (settings.get('billing_client.prices') as Map?)?.cast<String, dynamic>();
+    final prices = (settings.get('billing_client.prices') as Map?)
+        ?.cast<String, dynamic>();
     final p = (prices?[b.slotType] as num?)?.toDouble();
     if (p != null && p.isFinite) return p;
 

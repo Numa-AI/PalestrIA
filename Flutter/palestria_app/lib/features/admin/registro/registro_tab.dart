@@ -78,12 +78,15 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
                 ),
               ),
             ),
-            child: Text(label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: active ? cs.secondary : AppColors.muted)),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: active ? cs.secondary : AppColors.muted,
+              ),
+            ),
           ),
         ),
       );
@@ -121,7 +124,11 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
           onRefresh: () async => ref.invalidate(adminBookingsProvider),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              100,
+            ),
             children: [
               TextField(
                 onChanged: (v) => setState(() => _query = v),
@@ -165,14 +172,18 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
           gradient: active ? brandGradient(context) : null,
           color: active ? null : AppColors.slate50,
           border: Border.all(
-              color: active ? Colors.transparent : AppColors.border),
+            color: active ? Colors.transparent : AppColors.border,
+          ),
           borderRadius: BorderRadius.circular(AppRadius.chip),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: active ? Colors.white : const Color(0xFF475569))),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
       ),
     );
   }
@@ -186,47 +197,57 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     for (final b in bookings) {
       final name = b.name ?? '—';
       final amount = bookingPrice(b, settings, config);
-      events.add(RegistroEvent(
-        type: 'created',
-        timestamp: b.createdAt ?? DateTime.tryParse('${b.date}T08:00:00') ??
-            DateTime.now(),
-        clientName: name,
-        slotType: b.slotType,
-        lessonDate: b.date,
-        lessonTime: b.time,
-        amount: amount,
-      ));
-      if (b.paidAt != null) {
-        events.add(RegistroEvent(
-          type: 'paid',
-          timestamp: b.paidAt!,
+      events.add(
+        RegistroEvent(
+          type: 'created',
+          timestamp:
+              b.createdAt ??
+              DateTime.tryParse('${b.date}T08:00:00') ??
+              DateTime.now(),
           clientName: name,
           slotType: b.slotType,
           lessonDate: b.date,
           lessonTime: b.time,
           amount: amount,
-          method: b.paymentMethod,
-        ));
+        ),
+      );
+      if (b.paidAt != null) {
+        events.add(
+          RegistroEvent(
+            type: 'paid',
+            timestamp: b.paidAt!,
+            clientName: name,
+            slotType: b.slotType,
+            lessonDate: b.date,
+            lessonTime: b.time,
+            amount: amount,
+            method: b.paymentMethod,
+          ),
+        );
       }
       if (b.cancellationRequestedAt != null) {
-        events.add(RegistroEvent(
-          type: 'cancel_req',
-          timestamp: b.cancellationRequestedAt!,
-          clientName: name,
-          slotType: b.slotType,
-          lessonDate: b.date,
-          lessonTime: b.time,
-        ));
+        events.add(
+          RegistroEvent(
+            type: 'cancel_req',
+            timestamp: b.cancellationRequestedAt!,
+            clientName: name,
+            slotType: b.slotType,
+            lessonDate: b.date,
+            lessonTime: b.time,
+          ),
+        );
       }
       if (b.status == 'cancelled' && b.cancelledAt != null) {
-        events.add(RegistroEvent(
-          type: 'cancelled',
-          timestamp: b.cancelledAt!,
-          clientName: name,
-          slotType: b.slotType,
-          lessonDate: b.date,
-          lessonTime: b.time,
-        ));
+        events.add(
+          RegistroEvent(
+            type: 'cancelled',
+            timestamp: b.cancelledAt!,
+            clientName: name,
+            slotType: b.slotType,
+            lessonDate: b.date,
+            lessonTime: b.time,
+          ),
+        );
       }
     }
     events.sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -249,13 +270,25 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
 
   Widget _eventRow(OrgScheduleConfig config, RegistroEvent e) {
     final (label, bg, fg, emoji) = switch (e.type) {
-      'created' => ('Prenotazione', AppColors.infoSurface, AppColors.blue600,
-          '📅'),
+      'created' => (
+        'Prenotazione',
+        AppColors.infoSurface,
+        AppColors.blue600,
+        '📅',
+      ),
       'paid' => ('Pagamento', AppColors.paidBg, AppColors.paidText, '✅'),
-      'cancelled' => ('Annullamento', AppColors.cancelledBg,
-          AppColors.cancelledText, '❌'),
-      _ => ('Rich. Annullamento', AppColors.warnSurface,
-          AppColors.docWarnText, '⏳'),
+      'cancelled' => (
+        'Annullamento',
+        AppColors.cancelledBg,
+        AppColors.cancelledText,
+        '❌',
+      ),
+      _ => (
+        'Rich. Annullamento',
+        AppColors.warnSurface,
+        AppColors.docWarnText,
+        '⏳',
+      ),
     };
     final ts = e.timestamp;
     final tsStr =
@@ -267,35 +300,58 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
       child: Row(
         children: [
           StatusPill(
-              label: '$emoji $label', background: bg, foreground: fg,
-              dense: true),
+            label: '$emoji $label',
+            background: bg,
+            foreground: fg,
+            dense: true,
+          ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(e.clientName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13.5)),
-                Text('$tsStr · ${config.slotName(e.slotType)}',
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.subtle)),
-                Text('Lezione ${_fmtLessonDate(e.lessonDate)} · ${e.lessonTime}',
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.subtle)),
+                Text(
+                  e.clientName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5,
+                  ),
+                ),
+                Text(
+                  '$tsStr · ${config.slotName(e.slotType)}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.subtle,
+                  ),
+                ),
+                Text(
+                  'Lezione ${_fmtLessonDate(e.lessonDate)} · ${e.lessonTime}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.subtle,
+                  ),
+                ),
               ],
             ),
           ),
           if (e.type == 'paid' && e.amount != null)
-            Text('+€${_fmt(e.amount!)}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: AppColors.paidText))
+            Text(
+              '+€${_fmt(e.amount!)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppColors.paidText,
+              ),
+            )
           else if (e.type == 'created' && e.amount != null)
-            Text('€${_fmt(e.amount!)}',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: AppColors.muted)),
+            Text(
+              '€${_fmt(e.amount!)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
         ],
       ),
     );
@@ -321,17 +377,24 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
           onRefresh: () async => ref.invalidate(adminMessagesProvider),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              100,
+            ),
             children: [
-              for (final m in msgs) _notifCard(
-                title: (m['title'] as String?) ?? _adminMsgTypeLabel(m['type']),
-                subtitle: _adminMsgTypeLabel(m['type']),
-                client: m['client_name'] as String?,
-                createdAt: m['created_at'],
-                sent: (m['sent_count'] as num?) != null &&
-                    (m['sent_count'] as num) > 0,
-                sentCount: (m['sent_count'] as num?)?.toInt(),
-              ),
+              for (final m in msgs)
+                _notifCard(
+                  title:
+                      (m['title'] as String?) ?? _adminMsgTypeLabel(m['type']),
+                  subtitle: _adminMsgTypeLabel(m['type']),
+                  client: m['client_name'] as String?,
+                  createdAt: m['created_at'],
+                  sent:
+                      (m['sent_count'] as num?) != null &&
+                      (m['sent_count'] as num) > 0,
+                  sentCount: (m['sent_count'] as num?)?.toInt(),
+                ),
             ],
           ),
         );
@@ -359,13 +422,18 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
           onRefresh: () async => ref.invalidate(clientNotificationsProvider),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              100,
+            ),
             children: [
               for (final n in notifs)
                 _notifCard(
                   title: (n['title'] as String?) ?? _cnTypeLabel(n['type']),
                   subtitle: _cnTypeLabel(n['type']),
-                  client: n['user_name'] as String? ?? n['user_email'] as String?,
+                  client:
+                      n['user_name'] as String? ?? n['user_email'] as String?,
                   createdAt: n['created_at'],
                   sent: n['status'] == 'sent',
                   statusText: _cnStatusLabel(n['status']),
@@ -388,7 +456,9 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     String? statusText,
     Object? status,
   }) {
-    final ts = createdAt == null ? null : DateTime.tryParse(createdAt.toString());
+    final ts = createdAt == null
+        ? null
+        : DateTime.tryParse(createdAt.toString());
     final tsStr = ts == null
         ? ''
         : '${ts.day.toString().padLeft(2, '0')}/${ts.month.toString().padLeft(2, '0')} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
@@ -397,9 +467,10 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     final (pillBg, pillFg) = sent
         ? (AppColors.successSurface, AppColors.green700)
         : status == 'no_subscription'
-            ? (AppColors.warnSurface, AppColors.docWarnText)
-            : (AppColors.dangerSurface, AppColors.docDangerText);
-    final pillLabel = statusText ??
+        ? (AppColors.warnSurface, AppColors.docWarnText)
+        : (AppColors.dangerSurface, AppColors.docDangerText);
+    final pillLabel =
+        statusText ??
         (sent
             ? '✅ Inviata${sentCount != null ? ' ($sentCount)' : ''}'
             : '❌ Non inviata');
@@ -412,51 +483,61 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13.5)),
                 Text(
-                    '$subtitle${client != null ? ' · $client' : ''}${tsStr.isNotEmpty ? ' · $tsStr' : ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style:
-                        const TextStyle(fontSize: 11.5, color: AppColors.subtle)),
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                  ),
+                ),
+                Text(
+                  '$subtitle${client != null ? ' · $client' : ''}${tsStr.isNotEmpty ? ' · $tsStr' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.subtle,
+                  ),
+                ),
               ],
             ),
           ),
           StatusPill(
-              label: pillLabel, background: pillBg, foreground: pillFg,
-              dense: true),
+            label: pillLabel,
+            background: pillBg,
+            foreground: pillFg,
+            dense: true,
+          ),
         ],
       ),
     );
   }
 
   static String _adminMsgTypeLabel(Object? t) => switch (t) {
-        'booking' => '✔️ Prenotazione',
-        'cancellation' => '❌ Annullamento',
-        'new_client' => '🆕 Nuovo iscritto',
-        'broadcast' => '📢 Broadcast',
-        'proximity' => '📍 Arrivo',
-        _ => '📩 Notifica',
-      };
+    'booking' => '✔️ Prenotazione',
+    'cancellation' => '❌ Annullamento',
+    'new_client' => '🆕 Nuovo iscritto',
+    'broadcast' => '📢 Broadcast',
+    'proximity' => '📍 Arrivo',
+    _ => '📩 Notifica',
+  };
 
   static String _cnTypeLabel(Object? t) => switch (t) {
-        'reminder_24h' => '⏰ Promemoria 24h',
-        'reminder_1h' => '⏰ Promemoria 1h',
-        'slot_available' => '🟢 Slot disponibile',
-        'broadcast' => '📢 Broadcast',
-        _ => '📬 Notifica',
-      };
+    'reminder_24h' => '⏰ Promemoria 24h',
+    'reminder_1h' => '⏰ Promemoria 1h',
+    'slot_available' => '🟢 Slot disponibile',
+    'broadcast' => '📢 Broadcast',
+    _ => '📬 Notifica',
+  };
 
   static String _cnStatusLabel(Object? s) => switch (s) {
-        'sent' => '✅ Inviata',
-        'failed' => '❌ Fallita',
-        'no_subscription' => '⚠️ No sub',
-        _ => '—',
-      };
+    'sent' => '✅ Inviata',
+    'failed' => '❌ Fallita',
+    'no_subscription' => '⚠️ No sub',
+    _ => '—',
+  };
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);

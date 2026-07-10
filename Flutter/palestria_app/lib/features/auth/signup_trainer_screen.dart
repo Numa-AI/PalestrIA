@@ -56,7 +56,9 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
       _error = null;
       _info = null;
     });
-    final result = await ref.read(authRepositoryProvider).registerTrainer(
+    final result = await ref
+        .read(authRepositoryProvider)
+        .registerTrainer(
           studioName: _studioName.text,
           trainerName: _trainerName.text,
           email: _email.text,
@@ -93,8 +95,10 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Registrati come personal trainer',
-                        style: AppText.pageTitle),
+                    Text(
+                      'Registrati come personal trainer',
+                      style: AppText.pageTitle,
+                    ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
                       '30 giorni di prova gratuita. Nessuna carta richiesta ora.',
@@ -108,7 +112,8 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                         labelText: 'Nome dello studio / palestra',
                         hintText: 'Es. Studio Fitness Rossi',
                       ),
-                      validator: (v) => ref
+                      validator: (v) =>
+                          ref
                                   .read(authRepositoryProvider)
                                   .studioSlug(v ?? '')
                                   .length <
@@ -121,17 +126,19 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                       Text(
                         'Codice studio (i clienti lo useranno per iscriversi): $_slug',
                         style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600),
+                          color: Theme.of(context).colorScheme.primary,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _trainerName,
                       textCapitalization: TextCapitalization.words,
-                      decoration:
-                          const InputDecoration(labelText: 'Il tuo nome'),
+                      decoration: const InputDecoration(
+                        labelText: 'Il tuo nome',
+                      ),
                       validator: (v) => (v == null || v.trim().length < 2)
                           ? 'Inserisci il tuo nome.'
                           : null,
@@ -153,9 +160,11 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                         labelText: 'Password',
                         helperText: 'Almeno 8 caratteri.',
                         suffixIcon: IconButton(
-                          icon: Icon(_obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
@@ -165,19 +174,25 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: AppSpacing.md),
-                      Text(_error!,
-                          style: const TextStyle(
-                              color: AppColors.dangerDark,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600)),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: AppColors.dangerDark,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                     if (_info != null) ...[
                       const SizedBox(height: AppSpacing.md),
-                      Text(_info!,
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600)),
+                      Text(
+                        _info!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton(
@@ -187,7 +202,9 @@ class _SignupTrainerScreenState extends ConsumerState<SignupTrainerScreen> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Text('Crea studio e inizia la prova'),
                     ),

@@ -34,7 +34,17 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="palestria" android:host="app"/>
+                <data android:scheme="palestria"
+                      android:host="app"
+                      android:pathPrefix="/join"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="palestria"
+                      android:host="app"
+                      android:pathPrefix="/recovery"/>
             </intent-filter>
             <!-- App Link https UNIVERSALE (stesso link web+app). Si ATTIVA quando
                  il dominio palestria.app è live e serve

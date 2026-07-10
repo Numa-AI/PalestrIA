@@ -13,6 +13,15 @@ plugins {
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseSigning = keystorePropertiesFile.exists()
+val isReleaseBuild = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (isReleaseBuild && !hasReleaseSigning) {
+    throw GradleException(
+        "Firma release non configurata: copia key.properties.example in " +
+            "android/key.properties e indica il keystore di upload."
+    )
+}
 if (hasReleaseSigning) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
@@ -52,12 +61,12 @@ android {
 
     buildTypes {
         release {
-            // Firma di release da key.properties se presente; altrimenti debug
-            // (per far girare `flutter run --release` senza keystore locale).
-            // ⚠️ Per pubblicare sul Play Store serve key.properties + keystore.
+            // Fail-closed: una build release non deve mai essere firmata per
+            // errore con la chiave di debug.
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
+                // Raggiungibile solo configurando task non-release.
                 signingConfigs.getByName("debug")
             }
         }

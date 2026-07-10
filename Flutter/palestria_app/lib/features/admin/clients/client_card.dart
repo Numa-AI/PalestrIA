@@ -10,7 +10,8 @@ import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/theme/ui_kit.dart';
 import '../../client/booking/booking_providers.dart';
-import 'client_edit_sheet.dart';
+import 'client_financial_panel.dart';
+import 'client_manage_sheet.dart';
 
 /// Card cliente redesign viola "v2" (spec-admin §6.5-6.8).
 class ClientCard extends ConsumerStatefulWidget {
@@ -38,10 +39,9 @@ class _ClientCardState extends ConsumerState<ClientCard> {
         color: Colors.white,
         border: Border(
           left: BorderSide(
-              color: _open
-                  ? AppColors.primaryDark
-                  : AppColors.primary,
-              width: 4),
+            color: _open ? AppColors.primaryDark : AppColors.primary,
+            width: 4,
+          ),
           top: const BorderSide(color: Color(0xFFEEF0F3)),
           right: const BorderSide(color: Color(0xFFEEF0F3)),
           bottom: const BorderSide(color: Color(0xFFEEF0F3)),
@@ -51,11 +51,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
-        children: [
-          _header(),
-          _statsGrid(),
-          if (_open) _body(config),
-        ],
+        children: [_header(), _statsGrid(), if (_open) _body(config)],
       ),
     );
   }
@@ -66,8 +62,10 @@ class _ClientCardState extends ConsumerState<ClientCard> {
       onTap: () => setState(() => _open = !_open),
       child: Container(
         color: _open ? const Color(0xFFF5F3FF) : Colors.white,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: AppSpacing.lg),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: AppSpacing.lg,
+        ),
         child: Row(
           children: [
             Container(
@@ -75,25 +73,33 @@ class _ClientCardState extends ConsumerState<ClientCard> {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _open ? const Color(0xFFDDD6FE) : const Color(0xFFEDE9FE),
+                color: _open
+                    ? const Color(0xFFDDD6FE)
+                    : const Color(0xFFEDE9FE),
                 shape: BoxShape.circle,
               ),
-              child: Text(initials,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.secondary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15)),
+              child: Text(
+                initials,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.secondary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(c.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: Color(0xFF1A1A1A))),
+                  Text(
+                    c.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
                   const SizedBox(height: 3),
                   ..._contacts(),
                   _badgesRow(),
@@ -102,16 +108,22 @@ class _ClientCardState extends ConsumerState<ClientCard> {
             ),
             if (c.profile != null)
               IconButton(
-                icon: const Icon(Icons.edit_note, size: 22, color: AppColors.primary),
-                tooltip: 'Modifica documenti',
+                icon: const Icon(
+                  Icons.edit_note,
+                  size: 22,
+                  color: AppColors.primary,
+                ),
+                tooltip: 'Gestisci cliente',
                 onPressed: () =>
-                    showClientDocsEditSheet(context, ref, c.profile!),
+                    showClientManageSheet(context, ref, c.profile!),
               ),
             AnimatedRotation(
               turns: _open ? 0.5 : 0,
               duration: const Duration(milliseconds: 200),
-              child: const Icon(Icons.keyboard_arrow_down,
-                  color: Color(0xFFAAAAAA)),
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: Color(0xFFAAAAAA),
+              ),
             ),
           ],
         ),
@@ -123,16 +135,22 @@ class _ClientCardState extends ConsumerState<ClientCard> {
     final widgets = <Widget>[];
     if (c.whatsapp != null && c.whatsapp!.isNotEmpty) {
       final display = c.whatsapp!.replaceFirst(RegExp(r'^\+39\s*'), '');
-      widgets.add(_contactLink(Icons.phone_outlined, display, () async {
-        final digits = _waNumber(c.whatsapp!);
-        await launchUrl(Uri.parse('https://wa.me/$digits'),
-            mode: LaunchMode.externalApplication);
-      }));
+      widgets.add(
+        _contactLink(Icons.phone_outlined, display, () async {
+          final digits = _waNumber(c.whatsapp!);
+          await launchUrl(
+            Uri.parse('https://wa.me/$digits'),
+            mode: LaunchMode.externalApplication,
+          );
+        }),
+      );
     }
     if (c.email != null && c.email!.isNotEmpty) {
-      widgets.add(_contactLink(Icons.mail_outline, c.email!, () async {
-        await launchUrl(Uri.parse('mailto:${c.email}'));
-      }));
+      widgets.add(
+        _contactLink(Icons.mail_outline, c.email!, () async {
+          await launchUrl(Uri.parse('mailto:${c.email}'));
+        }),
+      );
     }
     return widgets;
   }
@@ -147,13 +165,16 @@ class _ClientCardState extends ConsumerState<ClientCard> {
               Icon(icon, size: 14, color: AppColors.subtle),
               const SizedBox(width: 5),
               Flexible(
-                child: Text(text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Color(0xFF475569),
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600)),
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -166,29 +187,36 @@ class _ClientCardState extends ConsumerState<ClientCard> {
     final badges = <Widget>[];
 
     // Certificato
-    badges.add(_certBadge(
-      expiry: p.medicalCertExpiry,
-      okText: (d) => '✅ Cert. valido fino al $d',
-      expiredText: (d) => '🏥 Cert. scaduto il $d',
-      expiringText: (d) => '⏳ Cert. scade il $d',
-      missingText: '🏥 Imposta scadenza certificato medico',
-    ));
+    badges.add(
+      _certBadge(
+        expiry: p.medicalCertExpiry,
+        okText: (d) => '✅ Cert. valido fino al $d',
+        expiredText: (d) => '🏥 Cert. scaduto il $d',
+        expiringText: (d) => '⏳ Cert. scade il $d',
+        missingText: '🏥 Imposta scadenza certificato medico',
+      ),
+    );
     // Assicurazione
-    badges.add(_certBadge(
-      expiry: p.insuranceExpiry,
-      okText: (d) => '✅ Assicurazione valida fino al $d',
-      expiredText: (d) => '📋 Assicurazione scaduta il $d',
-      expiringText: (d) => '⏳ Assicurazione scade il $d',
-      missingText: '📋 Imposta scadenza assicurazione',
-    ));
+    badges.add(
+      _certBadge(
+        expiry: p.insuranceExpiry,
+        okText: (d) => '✅ Assicurazione valida fino al $d',
+        expiredText: (d) => '📋 Assicurazione scaduta il $d',
+        expiringText: (d) => '⏳ Assicurazione scade il $d',
+        missingText: '📋 Imposta scadenza assicurazione',
+      ),
+    );
     // Anagrafica
     if (p.anagraficaIncompleta) {
       badges.add(_badge('📋 Completa anagrafica', _BadgeTone.expiring));
     }
     // Documento
-    badges.add(_badge(
+    badges.add(
+      _badge(
         p.documentoFirmato ? '✅ Documento firmato' : '📝 Documento non firmato',
-        p.documentoFirmato ? _BadgeTone.ok : _BadgeTone.expired));
+        p.documentoFirmato ? _BadgeTone.ok : _BadgeTone.expired,
+      ),
+    );
 
     if (badges.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -225,9 +253,11 @@ class _ClientCardState extends ConsumerState<ClientCard> {
   Widget _statsGrid() {
     final now = DateTime.now();
     final futureCount = c.bookings
-        .where((b) =>
-            b.status != 'cancelled' &&
-            lessonStart(b.date, b.time).isAfter(now))
+        .where(
+          (b) =>
+              b.status != 'cancelled' &&
+              lessonStart(b.date, b.time).isAfter(now),
+        )
         .length;
     // Da saldare: passate, non pagate, non annullate/pending. Prezzo allineato
     // al server e agli altri schermi (bookingPrice: custom ?? default tipo).
@@ -248,49 +278,65 @@ class _ClientCardState extends ConsumerState<ClientCard> {
         : unpaid.toStringAsFixed(2);
 
     Widget cell(String value, String label, {Color? valueColor}) => Expanded(
-          child: Column(
-            children: [
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      height: 1.15,
-                      color: valueColor ?? AppColors.navy,
-                      fontFeatures: AppText.tabularNums)),
-              const SizedBox(height: 2),
-              Text(label.toUpperCase(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                      color: unpaid > 0 && label == 'Da saldare'
-                          ? AppColors.dangerDark
-                          : AppColors.subtle)),
-            ],
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+              color: valueColor ?? AppColors.navy,
+              fontFeatures: AppText.tabularNums,
+            ),
           ),
-        );
+          const SizedBox(height: 2),
+          Text(
+            label.toUpperCase(),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: unpaid > 0 && label == 'Da saldare'
+                  ? AppColors.dangerDark
+                  : AppColors.subtle,
+            ),
+          ),
+        ],
+      ),
+    );
 
     return InkWell(
       onTap: () => setState(() => _open = !_open),
       child: Container(
         color: _open ? const Color(0xFFF5F3FF) : Colors.white,
-        padding:
-            const EdgeInsets.fromLTRB(18, AppSpacing.sm, 18, AppSpacing.md),
+        padding: const EdgeInsets.fromLTRB(
+          18,
+          AppSpacing.sm,
+          18,
+          AppSpacing.md,
+        ),
         decoration: BoxDecoration(
           border: Border(
-              top: BorderSide(
-                  color: _open
-                      ? const Color(0xFFEDE9FE)
-                      : AppColors.slateBg)),
+            top: BorderSide(
+              color: _open ? const Color(0xFFEDE9FE) : AppColors.slateBg,
+            ),
+          ),
         ),
         child: Row(
           children: [
-            cell('$futureCount', 'Prenot. Future',
-                valueColor: AppColors.primary),
+            cell(
+              '$futureCount',
+              'Prenot. Future',
+              valueColor: AppColors.primary,
+            ),
             cell('—', 'Sessioni residue'),
-            cell('€$unpaidStr', 'Da saldare',
-                valueColor: unpaid > 0 ? AppColors.dangerDark : null),
+            cell(
+              '€$unpaidStr',
+              'Da saldare',
+              valueColor: unpaid > 0 ? AppColors.dangerDark : null,
+            ),
           ],
         ),
       ),
@@ -299,14 +345,13 @@ class _ClientCardState extends ConsumerState<ClientCard> {
 
   Widget _body(OrgScheduleConfig config) {
     final bTotal = c.bookings.length;
-    final movs = c.bookings
-        .where((b) => b.status != 'cancelled' && b.paid)
-        .toList()
-      ..sort((a, b) {
-        final ka = a.paidAt?.toIso8601String() ?? '${a.date}T00:00:00';
-        final kb = b.paidAt?.toIso8601String() ?? '${b.date}T00:00:00';
-        return kb.compareTo(ka);
-      });
+    final movs =
+        c.bookings.where((b) => b.status != 'cancelled' && b.paid).toList()
+          ..sort((a, b) {
+            final ka = a.paidAt?.toIso8601String() ?? '${a.date}T00:00:00';
+            final kb = b.paidAt?.toIso8601String() ?? '${b.date}T00:00:00';
+            return kb.compareTo(ka);
+          });
 
     return Container(
       color: Colors.white,
@@ -314,6 +359,8 @@ class _ClientCardState extends ConsumerState<ClientCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ClientFinancialPanel(client: c),
+          const SizedBox(height: AppSpacing.lg),
           // Switch segmentato
           Container(
             padding: const EdgeInsets.all(4),
@@ -323,10 +370,16 @@ class _ClientCardState extends ConsumerState<ClientCard> {
             ),
             child: Row(
               children: [
-                _segButton('Prenotazioni · $bTotal', !_showStorico,
-                    () => setState(() => _showStorico = false)),
-                _segButton('Storico · ${movs.length}', _showStorico,
-                    () => setState(() => _showStorico = true)),
+                _segButton(
+                  'Prenotazioni · $bTotal',
+                  !_showStorico,
+                  () => setState(() => _showStorico = false),
+                ),
+                _segButton(
+                  'Storico · ${movs.length}',
+                  _showStorico,
+                  () => setState(() => _showStorico = true),
+                ),
               ],
             ),
           ),
@@ -341,41 +394,43 @@ class _ClientCardState extends ConsumerState<ClientCard> {
   }
 
   Widget _segButton(String label, bool active, VoidCallback onTap) => Expanded(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: BoxDecoration(
-              color: active ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: active
-                  ? [
-                      const BoxShadow(
-                          color: Color(0x1A0F172A),
-                          blurRadius: 4,
-                          offset: Offset(0, 1)),
-                    ]
-                  : null,
-            ),
-            child: Text(label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    color: active
-                        ? Theme.of(context).colorScheme.secondary
-                        : AppColors.muted)),
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: BoxDecoration(
+          color: active ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: active
+              ? [
+                  const BoxShadow(
+                    color: Color(0x1A0F172A),
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+            color: active
+                ? Theme.of(context).colorScheme.secondary
+                : AppColors.muted,
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _bookingsPanel(OrgScheduleConfig config) {
     if (c.bookings.isEmpty) {
       return _emptyPanel('Nessuna prenotazione');
     }
-    return Column(
-      children: [for (final b in c.bookings) _bookRow(config, b)],
-    );
+    return Column(children: [for (final b in c.bookings) _bookRow(config, b)]);
   }
 
   Widget _bookRow(OrgScheduleConfig config, Booking b) {
@@ -409,22 +464,24 @@ class _ClientCardState extends ConsumerState<ClientCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(config.slotName(b.slotType),
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: cancelled
-                            ? const Color(0xFFB0B6BF)
-                            : AppColors.navy,
-                        decoration: cancelled
-                            ? TextDecoration.lineThrough
-                            : null)),
+                Text(
+                  config.slotName(b.slotType),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: cancelled ? const Color(0xFFB0B6BF) : AppColors.navy,
+                    decoration: cancelled ? TextDecoration.lineThrough : null,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text('${d.day}/${d.month} · ${b.time}',
-                    style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.subtle)),
+                Text(
+                  '${d.day}/${d.month} · ${b.time}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.subtle,
+                  ),
+                ),
               ],
             ),
           ),
@@ -474,18 +531,15 @@ class _ClientCardState extends ConsumerState<ClientCard> {
 
   Widget _storicoPanel(OrgScheduleConfig config, List<Booking> movs) {
     if (movs.isEmpty) return _emptyPanel('Nessun incasso registrato');
-    return Column(
-      children: [
-        for (final b in movs) _txRow(config, b),
-      ],
-    );
+    return Column(children: [for (final b in movs) _txRow(config, b)]);
   }
 
   Widget _txRow(OrgScheduleConfig config, Booking b) {
-    final free = b.paymentMethod == 'gratuito' ||
-        b.paymentMethod == 'lezione-gratuita';
-    final price =
-        free ? 0.0 : bookingPrice(b, ref.read(orgSettingsProvider).value, config);
+    final free =
+        b.paymentMethod == 'gratuito' || b.paymentMethod == 'lezione-gratuita';
+    final price = free
+        ? 0.0
+        : bookingPrice(b, ref.read(orgSettingsProvider).value, config);
     final d = DateTime.parse(b.date);
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
@@ -506,19 +560,25 @@ class _ClientCardState extends ConsumerState<ClientCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${free ? '🎁' : '💰'} ${config.slotName(b.slotType)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                Text(
+                  '${free ? '🎁' : '💰'} ${config.slotName(b.slotType)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text('${d.day}/${d.month} · ${b.time}',
-                    style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.subtle)),
+                Text(
+                  '${d.day}/${d.month} · ${b.time}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.subtle,
+                  ),
+                ),
               ],
             ),
           ),
@@ -527,10 +587,11 @@ class _ClientCardState extends ConsumerState<ClientCard> {
                 ? '€0'
                 : '+€${price == price.roundToDouble() ? price.toStringAsFixed(0) : price.toStringAsFixed(2)}',
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: free ? const Color(0xFF9CA3AF) : AppColors.green700,
-                fontFeatures: AppText.tabularNums),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: free ? const Color(0xFF9CA3AF) : AppColors.green700,
+              fontFeatures: AppText.tabularNums,
+            ),
           ),
         ],
       ),
@@ -538,18 +599,24 @@ class _ClientCardState extends ConsumerState<ClientCard> {
   }
 
   Widget _emptyPanel(String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Text(text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: AppColors.subtle,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600)),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 20),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: AppColors.subtle,
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 
   static String _initials(String name) {
-    final parts =
-        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     final first = parts[0][0];
     final second = parts.length > 1 ? parts[1][0] : '';

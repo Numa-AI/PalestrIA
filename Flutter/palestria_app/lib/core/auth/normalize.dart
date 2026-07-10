@@ -13,16 +13,64 @@ String normalizePhone(String raw) {
 }
 
 const _comuneConnectives = {
-  'di', 'del', 'dei', 'della', 'delle', 'dello', 'degli', 'da', 'dal',
-  'dai', 'dalle', 'dagli', 'dallo', 'in', 'nel', 'nei', 'nella', 'nelle',
-  'nello', 'negli', 'a', 'ai', 'al', 'alla', 'alle', 'allo', 'agli', 'e',
-  'ed', 'con', 'su', 'sul', 'sui', 'sulla', 'sulle', 'sullo', 'sugli',
-  'per', 'tra', 'fra', 'la', 'le', 'lo', 'il', 'i', 'gli', 'l',
+  'di',
+  'del',
+  'dei',
+  'della',
+  'delle',
+  'dello',
+  'degli',
+  'da',
+  'dal',
+  'dai',
+  'dalle',
+  'dagli',
+  'dallo',
+  'in',
+  'nel',
+  'nei',
+  'nella',
+  'nelle',
+  'nello',
+  'negli',
+  'a',
+  'ai',
+  'al',
+  'alla',
+  'alle',
+  'allo',
+  'agli',
+  'e',
+  'ed',
+  'con',
+  'su',
+  'sul',
+  'sui',
+  'sulla',
+  'sulle',
+  'sullo',
+  'sugli',
+  'per',
+  'tra',
+  'fra',
+  'la',
+  'le',
+  'lo',
+  'il',
+  'i',
+  'gli',
+  'l',
 };
 
 // Prefissi con apostrofo, dal più lungo al più corto (match greedy).
 const _comuneAposPrefixes = [
-  "dell'", "nell'", "sull'", "dall'", "all'", "d'", "l'",
+  "dell'",
+  "nell'",
+  "sull'",
+  "dall'",
+  "all'",
+  "d'",
+  "l'",
 ];
 
 /// Title-case italiano per i comuni, replicata identica a normalize_comune()
@@ -45,8 +93,10 @@ String normalizeComune(String input) {
     if (i > 0) {
       final prefix = _comuneAposPrefixes
           .where((p) => w.startsWith(p) && w.length > p.length)
-          .fold<String?>(null, (best, p) =>
-              best == null || p.length > best.length ? p : best);
+          .fold<String?>(
+            null,
+            (best, p) => best == null || p.length > best.length ? p : best,
+          );
       if (prefix != null) {
         out.add(prefix + _capitalizeSegments(w.substring(prefix.length)));
         continue;

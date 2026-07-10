@@ -12,10 +12,8 @@ class QrView extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        size: Size(size, size),
-        painter: _QrPainter(data),
-      );
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size(size, size), painter: _QrPainter(data));
 }
 
 class _QrPainter extends CustomPainter {
@@ -25,13 +23,16 @@ class _QrPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
-    final qr =
-        Barcode.qrCode(errorCorrectLevel: BarcodeQRCorrectionLevel.medium);
+    final qr = Barcode.qrCode(
+      errorCorrectLevel: BarcodeQRCorrectionLevel.medium,
+    );
     final module = Paint()..color = AppColors.navy;
     for (final e in qr.make(data, width: size.width, height: size.height)) {
       if (e is BarcodeBar && e.black) {
         canvas.drawRect(
-            Rect.fromLTWH(e.left, e.top, e.width, e.height), module);
+          Rect.fromLTWH(e.left, e.top, e.width, e.height),
+          module,
+        );
       }
     }
   }

@@ -28,19 +28,23 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
         (s.get('company.address') as Map?)?.cast<String, dynamic>() ?? {};
     String a(String k) => (addr[k] as String?) ?? '';
     _c = {
-      'legal': TextEditingController(text: s.getString('company.legal_name', '')),
+      'legal': TextEditingController(
+        text: s.getString('company.legal_name', ''),
+      ),
       'vat': TextEditingController(text: s.getString('company.vat_number', '')),
       'tax': TextEditingController(text: s.getString('company.tax_code', '')),
       'pec': TextEditingController(text: s.getString('company.pec', '')),
       'sdi': TextEditingController(text: s.getString('company.sdi_code', '')),
-      'prefix':
-          TextEditingController(text: s.getString('company.invoice_prefix', '')),
+      'prefix': TextEditingController(
+        text: s.getString('company.invoice_prefix', ''),
+      ),
       'via': TextEditingController(text: a('via')),
       'cap': TextEditingController(text: a('cap')),
       'citta': TextEditingController(text: a('citta')),
       'provincia': TextEditingController(text: a('provincia')),
       'paese': TextEditingController(
-          text: a('paese').isEmpty ? 'Italia' : a('paese')),
+        text: a('paese').isEmpty ? 'Italia' : a('paese'),
+      ),
       'maps': TextEditingController(text: s.getString('company.maps_url', '')),
     };
   }
@@ -84,8 +88,10 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Ragione sociale, partita IVA e dati per la fatturazione.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+        const Text(
+          'Ragione sociale, partita IVA e dati per la fatturazione.',
+          style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+        ),
         const SizedBox(height: AppSpacing.md),
         _field('legal', 'Ragione sociale'),
         _field('vat', 'Partita IVA'),
@@ -95,11 +101,14 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
         _field('prefix', 'Prefisso fattura', hint: 'Es. 2026/'),
         const Padding(
           padding: EdgeInsets.only(top: 6, bottom: 2),
-          child: Text('Indirizzo',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.subtle)),
+          child: Text(
+            'Indirizzo',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.subtle,
+            ),
+          ),
         ),
         _field('via', 'Via'),
         Row(
@@ -116,8 +125,12 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
             Expanded(flex: 2, child: _field('paese', 'Paese')),
           ],
         ),
-        _field('maps', 'Link Google Maps (mostrato nella home)',
-            hint: 'https://maps.app.goo.gl/...', keyboard: TextInputType.url),
+        _field(
+          'maps',
+          'Link Google Maps (mostrato nella home)',
+          hint: 'https://maps.app.goo.gl/...',
+          keyboard: TextInputType.url,
+        ),
         const SizedBox(height: AppSpacing.md),
         FilledButton(
           onPressed: _saving ? null : _save,
@@ -127,8 +140,13 @@ class _CompanySectionState extends ConsumerState<CompanySection> {
     );
   }
 
-  Widget _field(String key, String label,
-      {String? hint, int? maxLen, TextInputType? keyboard}) {
+  Widget _field(
+    String key,
+    String label, {
+    String? hint,
+    int? maxLen,
+    TextInputType? keyboard,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: TextField(

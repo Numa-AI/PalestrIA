@@ -16,8 +16,13 @@ import 'workout_providers.dart';
 /// [onChanged] è chiamato dopo ogni scrittura (oltre a invalidare
 /// `ownPlansProvider`): l'admin lo usa per invalidare `orgPlansProvider` e
 /// riusare questi flussi sulla scheda di un cliente.
-Future<void> showAddToDay(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
+Future<void> showAddToDay(
+  BuildContext context,
+  WidgetRef ref,
+  WorkoutPlan plan,
+  String dayLabel, {
+  VoidCallback? onChanged,
+}) async {
   final choice = await showModalBottomSheet<String>(
     context: context,
     builder: (ctx) => SafeArea(
@@ -26,27 +31,39 @@ Future<void> showAddToDay(BuildContext context, WidgetRef ref,
         children: [
           Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
-            child: Text('Aggiungi al $dayLabel'.toUpperCase(),
-                style: AppText.eyebrow),
+            child: Text(
+              'Aggiungi al $dayLabel'.toUpperCase(),
+              style: AppText.eyebrow,
+            ),
           ),
-          _option(ctx, 'single', '+', brandGradient(ctx),
-              'Esercizio singolo', 'Aggiungi un esercizio con riposo'),
           _option(
-              ctx,
-              'superset',
-              'SS',
-              const LinearGradient(
-                  colors: [Color(0xFFF59E0B), Color(0xFFF97316)]),
-              'Super Serie',
-              'Due esercizi senza pausa tra loro'),
+            ctx,
+            'single',
+            '+',
+            brandGradient(ctx),
+            'Esercizio singolo',
+            'Aggiungi un esercizio con riposo',
+          ),
           _option(
-              ctx,
-              'circuit',
-              'C',
-              const LinearGradient(
-                  colors: [Color(0xFF06B6D4), Color(0xFF0891B2)]),
-              'Circuito',
-              'Più esercizi in serie, ripetuti a giri'),
+            ctx,
+            'superset',
+            'SS',
+            const LinearGradient(
+              colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+            ),
+            'Super Serie',
+            'Due esercizi senza pausa tra loro',
+          ),
+          _option(
+            ctx,
+            'circuit',
+            'C',
+            const LinearGradient(
+              colors: [Color(0xFF06B6D4), Color(0xFF0891B2)],
+            ),
+            'Circuito',
+            'Più esercizi in serie, ripetuti a giri',
+          ),
           const SizedBox(height: AppSpacing.md),
         ],
       ),
@@ -56,7 +73,13 @@ Future<void> showAddToDay(BuildContext context, WidgetRef ref,
 
   switch (choice) {
     case 'single':
-      await addSingleExercise(context, ref, plan, dayLabel, onChanged: onChanged);
+      await addSingleExercise(
+        context,
+        ref,
+        plan,
+        dayLabel,
+        onChanged: onChanged,
+      );
     case 'superset':
       await _addSuperset(context, ref, plan, dayLabel, onChanged: onChanged);
     case 'circuit':
@@ -64,8 +87,14 @@ Future<void> showAddToDay(BuildContext context, WidgetRef ref,
   }
 }
 
-Widget _option(BuildContext ctx, String value, String badge,
-    Gradient gradient, String title, String subtitle) {
+Widget _option(
+  BuildContext ctx,
+  String value,
+  String badge,
+  Gradient gradient,
+  String title,
+  String subtitle,
+) {
   return ListTile(
     leading: Container(
       width: 40,
@@ -75,14 +104,19 @@ Widget _option(BuildContext ctx, String value, String badge,
         gradient: gradient,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(badge,
-          style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 15)),
+      child: Text(
+        badge,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 15,
+        ),
+      ),
     ),
-    title: Text(title,
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+    title: Text(
+      title,
+      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+    ),
     subtitle: Text(subtitle, style: const TextStyle(fontSize: 12.5)),
     onTap: () => Navigator.pop(ctx, value),
   );
@@ -94,15 +128,19 @@ int _nextSortOrder(WorkoutPlan plan) => plan.exercises.isEmpty
 
 String _uuidV4() {
   final rnd = Random.secure();
-  String hex(int n) => List.generate(
-      n, (_) => rnd.nextInt(16).toRadixString(16)).join();
+  String hex(int n) =>
+      List.generate(n, (_) => rnd.nextInt(16).toRadixString(16)).join();
   return '${hex(8)}-${hex(4)}-4${hex(3)}-'
       '${(8 + rnd.nextInt(4)).toRadixString(16)}${hex(3)}-${hex(12)}';
 }
 
 /// Prompt numerico (come i dialoghi §16.2 del web).
-Future<int?> _numericPrompt(BuildContext context, String title,
-    {required int defaultValue, String confirmLabel = 'Avanti'}) {
+Future<int?> _numericPrompt(
+  BuildContext context,
+  String title, {
+  required int defaultValue,
+  String confirmLabel = 'Avanti',
+}) {
   final controller = TextEditingController(text: '$defaultValue');
   return showDialog<int>(
     context: context,
@@ -116,8 +154,9 @@ Future<int?> _numericPrompt(BuildContext context, String title,
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annulla')),
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Annulla'),
+        ),
         FilledButton(
           onPressed: () =>
               Navigator.pop(ctx, int.tryParse(controller.text.trim())),
@@ -138,25 +177,41 @@ void _toast(BuildContext context, String message, {bool isError = false}) {
 
 /// Esercizio singolo: serie (3) → ripetizioni (10) → riposo (90).
 /// Cardio: nessun prompt (sets 1, reps '20', rest 0).
-Future<void> addSingleExercise(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
+Future<void> addSingleExercise(
+  BuildContext context,
+  WidgetRef ref,
+  WorkoutPlan plan,
+  String dayLabel, {
+  VoidCallback? onChanged,
+}) async {
   final picked = await showExercisePicker(
-      context, 'Aggiungi esercizio — $dayLabel');
+    context,
+    'Aggiungi esercizio — $dayLabel',
+  );
   if (picked == null || !context.mounted) return;
 
   int sets = 1;
   String reps = '20';
   int rest = 0;
   if (!picked.isCardio) {
-    final s = await _numericPrompt(context, 'Numero di serie:',
-        defaultValue: 3);
+    final s = await _numericPrompt(
+      context,
+      'Numero di serie:',
+      defaultValue: 3,
+    );
     if (s == null || !context.mounted) return;
-    final r = await _numericPrompt(context, 'Numero di ripetizioni:',
-        defaultValue: 10);
+    final r = await _numericPrompt(
+      context,
+      'Numero di ripetizioni:',
+      defaultValue: 10,
+    );
     if (r == null || !context.mounted) return;
     final rr = await _numericPrompt(
-        context, 'Riposo tra le serie (secondi):',
-        defaultValue: 90, confirmLabel: 'Aggiungi');
+      context,
+      'Riposo tra le serie (secondi):',
+      defaultValue: 90,
+      confirmLabel: 'Aggiungi',
+    );
     if (rr == null || !context.mounted) return;
     sets = s;
     reps = '$r';
@@ -186,27 +241,42 @@ Future<void> addSingleExercise(BuildContext context, WidgetRef ref,
 }
 
 /// Super Serie: 2 esercizi → reps ciascuno → serie comuni → riposo finale.
-Future<void> _addSuperset(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
+Future<void> _addSuperset(
+  BuildContext context,
+  WidgetRef ref,
+  WorkoutPlan plan,
+  String dayLabel, {
+  VoidCallback? onChanged,
+}) async {
   final picks = <PickedExercise>[];
   final reps = <int>[];
   for (var i = 1; i <= 2; i++) {
     final picked = await showExercisePicker(
-        context, 'Super Serie — Esercizio $i di 2');
+      context,
+      'Super Serie — Esercizio $i di 2',
+    );
     if (picked == null || !context.mounted) return;
-    final r = await _numericPrompt(context, 'Numero di ripetizioni:',
-        defaultValue: 10);
+    final r = await _numericPrompt(
+      context,
+      'Numero di ripetizioni:',
+      defaultValue: 10,
+    );
     if (r == null || !context.mounted) return;
     picks.add(picked);
     reps.add(r);
   }
   final sets = await _numericPrompt(
-      context, 'Numero di serie (per entrambi):',
-      defaultValue: 3);
+    context,
+    'Numero di serie (per entrambi):',
+    defaultValue: 3,
+  );
   if (sets == null || !context.mounted) return;
   final rest = await _numericPrompt(
-      context, 'Riposo dopo la super serie (secondi):',
-      defaultValue: 90, confirmLabel: 'Aggiungi');
+    context,
+    'Riposo dopo la super serie (secondi):',
+    defaultValue: 90,
+    confirmLabel: 'Aggiungi',
+  );
   if (rest == null || !context.mounted) return;
 
   final group = _uuidV4();
@@ -225,7 +295,7 @@ Future<void> _addSuperset(BuildContext context, WidgetRef ref,
           'reps': '${reps[i]}',
           'rest_seconds': i == 0 ? 0 : rest,
           'superset_group': group,
-        }
+        },
     ]);
     if (context.mounted) _toast(context, 'Super Serie aggiunta!');
   } catch (_) {
@@ -238,14 +308,21 @@ Future<void> _addSuperset(BuildContext context, WidgetRef ref,
 }
 
 /// Circuito: N≥2 esercizi con reps → giri → riposo tra giri (solo ultimo).
-Future<void> _addCircuit(BuildContext context, WidgetRef ref,
-    WorkoutPlan plan, String dayLabel, {VoidCallback? onChanged}) async {
+Future<void> _addCircuit(
+  BuildContext context,
+  WidgetRef ref,
+  WorkoutPlan plan,
+  String dayLabel, {
+  VoidCallback? onChanged,
+}) async {
   final picks = <PickedExercise>[];
   final reps = <String>[];
 
   while (true) {
     final picked = await showExercisePicker(
-        context, 'Circuito — Esercizio ${picks.length + 1}');
+      context,
+      'Circuito — Esercizio ${picks.length + 1}',
+    );
     if (picked == null) break;
     if (!context.mounted) return;
     final r = await _numericPrompt(
@@ -264,17 +341,21 @@ Future<void> _addCircuit(BuildContext context, WidgetRef ref,
       final more = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          content: Text([
-            for (var i = 0; i < picks.length; i++)
-              '${i + 1}. ${picks[i].name} × ${reps[i]}'
-          ].join('\n')),
+          content: Text(
+            [
+              for (var i = 0; i < picks.length; i++)
+                '${i + 1}. ${picks[i].name} × ${reps[i]}',
+            ].join('\n'),
+          ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('+ Aggiungi esercizio')),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('+ Aggiungi esercizio'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Concludi circuito')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Concludi circuito'),
+            ),
           ],
         ),
       );
@@ -284,18 +365,22 @@ Future<void> _addCircuit(BuildContext context, WidgetRef ref,
   }
   if (!context.mounted) return;
   if (picks.length < 2) {
-    _toast(context, 'Un circuito deve avere almeno 2 esercizi',
-        isError: true);
+    _toast(context, 'Un circuito deve avere almeno 2 esercizi', isError: true);
     return;
   }
 
   final rounds = await _numericPrompt(
-      context, 'Numero di giri del circuito:',
-      defaultValue: 3);
+    context,
+    'Numero di giri del circuito:',
+    defaultValue: 3,
+  );
   if (rounds == null || !context.mounted) return;
   final rest = await _numericPrompt(
-      context, 'Riposo tra un giro e l\'altro (secondi):',
-      defaultValue: 90, confirmLabel: 'Aggiungi');
+    context,
+    'Riposo tra un giro e l\'altro (secondi):',
+    defaultValue: 90,
+    confirmLabel: 'Aggiungi',
+  );
   if (rest == null || !context.mounted) return;
 
   final group = _uuidV4();
@@ -314,7 +399,7 @@ Future<void> _addCircuit(BuildContext context, WidgetRef ref,
           'reps': reps[i],
           'rest_seconds': i == picks.length - 1 ? rest : 0,
           'circuit_group': group,
-        }
+        },
     ]);
     if (context.mounted) _toast(context, 'Circuito aggiunto!');
   } catch (_) {
@@ -329,7 +414,10 @@ Future<void> _addCircuit(BuildContext context, WidgetRef ref,
 /// Nuovo giorno (§8.3): nome con default "Giorno A/B/C…" → picker del primo
 /// esercizio (il giorno nasce col primo esercizio).
 Future<void> addDayToScheda(
-    BuildContext context, WidgetRef ref, WorkoutPlan plan) async {
+  BuildContext context,
+  WidgetRef ref,
+  WorkoutPlan plan,
+) async {
   final existing = plan.dayLabels;
   String defaultName = 'Giorno A';
   for (var i = 0; i < 26; i++) {
@@ -343,16 +431,20 @@ Future<void> addDayToScheda(
   final name = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Nome del nuovo giorno:',
-          style: TextStyle(fontSize: 17)),
+      title: const Text(
+        'Nome del nuovo giorno:',
+        style: TextStyle(fontSize: 17),
+      ),
       content: TextField(controller: controller, autofocus: true),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annulla')),
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Annulla'),
+        ),
         FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Avanti')),
+          onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+          child: const Text('Avanti'),
+        ),
       ],
     ),
   );

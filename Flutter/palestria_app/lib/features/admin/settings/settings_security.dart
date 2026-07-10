@@ -30,7 +30,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
     super.initState();
     _maintMode = widget.service.getBool('maintenance.mode', false);
     _maintMsg = TextEditingController(
-        text: widget.service.getString('maintenance.message', ''));
+      text: widget.service.getString('maintenance.message', ''),
+    );
   }
 
   @override
@@ -44,8 +45,10 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
     try {
       await widget.service.set('maintenance.mode', v);
       if (mounted) {
-        AppSnack.success(context,
-            v ? 'Manutenzione attivata.' : 'Manutenzione disattivata.');
+        AppSnack.success(
+          context,
+          v ? 'Manutenzione attivata.' : 'Manutenzione disattivata.',
+        );
       }
     } catch (e) {
       setState(() => _maintMode = !v);
@@ -71,18 +74,22 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
       builder: (ctx) => AlertDialog(
         title: const Text('Cancella tutti i dati'),
         content: const Text(
-            'Verranno eliminati: prenotazioni, schede, pagamenti, override '
-            'calendario, notifiche e report. Account, membri e abbonamento NON '
-            'saranno toccati.\n\nL\'operazione è IRREVERSIBILE.'),
+          'Verranno eliminati: prenotazioni, schede, pagamenti, override '
+          'calendario, notifiche e report. Account, membri e abbonamento NON '
+          'saranno toccati.\n\nL\'operazione è IRREVERSIBILE.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style:
-                  FilledButton.styleFrom(backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Continua')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Continua'),
+          ),
         ],
       ),
     );
@@ -108,14 +115,17 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style:
-                  FilledButton.styleFrom(backgroundColor: AppColors.dangerDark),
-              onPressed: () =>
-                  Navigator.pop(ctx, controller.text.trim() == 'ELIMINA'),
-              child: const Text('Cancella')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () =>
+                Navigator.pop(ctx, controller.text.trim() == 'ELIMINA'),
+            child: const Text('Cancella'),
+          ),
         ],
       ),
     );
@@ -125,8 +135,7 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
       return;
     }
     try {
-      final res =
-          await ref.read(supabaseProvider).rpc('admin_clear_all_data');
+      final res = await ref.read(supabaseProvider).rpc('admin_clear_all_data');
       if (res is Map && res['success'] == false) {
         throw Exception(res['error'] ?? 'Errore');
       }
@@ -145,12 +154,15 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
           contentPadding: EdgeInsets.zero,
           value: _maintMode,
           onChanged: _setMaintMode,
-          title: const Text('Modalità manutenzione',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          title: const Text(
+            'Modalità manutenzione',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
           subtitle: const Text(
-              'Quando attiva, i clienti vedono "sistema non disponibile". '
-              'L\'admin continua ad accedere.',
-              style: AppText.meta),
+            'Quando attiva, i clienti vedono "sistema non disponibile". '
+            'L\'admin continua ad accedere.',
+            style: AppText.meta,
+          ),
         ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -159,7 +171,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
               child: TextField(
                 controller: _maintMsg,
                 decoration: const InputDecoration(
-                    labelText: 'Messaggio manutenzione (opzionale)'),
+                  labelText: 'Messaggio manutenzione (opzionale)',
+                ),
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
@@ -178,10 +191,11 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
             border: Border.all(color: AppColors.border),
           ),
           child: const Text(
-              '💾 Backup/ripristino completo, verifica integrità dati e report '
-              'XLSX restano sul pannello web. Il report fiscale PDF è nella tab '
-              'Statistiche → "Scarica report fiscale".',
-              style: AppText.meta),
+            '💾 Backup/ripristino completo, verifica integrità dati e report '
+            'XLSX restano sul pannello web. Il report fiscale PDF è nella tab '
+            'Statistiche → "Scarica report fiscale".',
+            style: AppText.meta,
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         Container(
@@ -189,27 +203,34 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
           decoration: BoxDecoration(
             color: AppColors.dangerSurface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: AppColors.dangerDark.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: AppColors.dangerDark.withValues(alpha: 0.2),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('🗑️ Cancella tutti i dati',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.dangerDark)),
+              const Text(
+                '🗑️ Cancella tutti i dati',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.dangerDark,
+                ),
+              ),
               const SizedBox(height: 4),
               const Text(
-                  'Elimina prenotazioni, schede, pagamenti e configurazioni '
-                  'della org. Account e abbonamento restano. Irreversibile.',
-                  style: AppText.meta),
+                'Elimina prenotazioni, schede, pagamenti e configurazioni '
+                'della org. Account e abbonamento restano. Irreversibile.',
+                style: AppText.meta,
+              ),
               const SizedBox(height: AppSpacing.sm),
               OutlinedButton(
                 onPressed: _clearAllData,
                 style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.dangerDark,
-                    side: const BorderSide(color: AppColors.dangerDark)),
+                  foregroundColor: AppColors.dangerDark,
+                  side: const BorderSide(color: AppColors.dangerDark),
+                ),
                 child: const Text('Cancella dati org'),
               ),
             ],

@@ -23,12 +23,12 @@ final orgPlansProvider = FutureProvider<List<WorkoutPlan>>((ref) async {
 /// esercizi delle schede di quel `userId` nella org. RLS org-admin.
 final adminClientLogsProvider = FutureProvider.autoDispose
     .family<List<WorkoutLog>, String>((ref, userId) async {
-  final plans = await ref.watch(orgPlansProvider.future);
-  final ids = [
-    for (final p in plans)
-      if (p.userId == userId)
-        for (final e in p.exercises) e.id
-  ];
-  if (ids.isEmpty) return const [];
-  return ref.read(workoutRepositoryProvider).fetchLogsForExercises(ids);
-});
+      final plans = await ref.watch(orgPlansProvider.future);
+      final ids = [
+        for (final p in plans)
+          if (p.userId == userId)
+            for (final e in p.exercises) e.id,
+      ];
+      if (ids.isEmpty) return const [];
+      return ref.read(workoutRepositoryProvider).fetchLogsForExercises(ids);
+    });

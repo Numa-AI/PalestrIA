@@ -27,28 +27,29 @@ class SlotType {
   final int sortOrder;
 
   static SlotType fromRow(Map<String, dynamic> row) => SlotType(
-        id: row['id'] as String,
-        key: row['key'] as String,
-        label: (row['label'] as String?) ?? (row['key'] as String),
-        color: OrgBranding.parseHex(row['color'] as String?) ??
-            const Color(0xFF8B5CF6),
-        defaultCapacity: (row['default_capacity'] as num?)?.toInt() ?? 1,
-        defaultPrice: (row['default_price'] as num?)?.toDouble() ?? 0,
-        bookable: (row['bookable'] as bool?) ?? true,
-        isActive: (row['is_active'] as bool?) ?? true,
-        sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
-      );
+    id: row['id'] as String,
+    key: row['key'] as String,
+    label: (row['label'] as String?) ?? (row['key'] as String),
+    color:
+        OrgBranding.parseHex(row['color'] as String?) ??
+        const Color(0xFF8B5CF6),
+    defaultCapacity: (row['default_capacity'] as num?)?.toInt() ?? 1,
+    defaultPrice: (row['default_price'] as num?)?.toDouble() ?? 0,
+    bookable: (row['bookable'] as bool?) ?? true,
+    isActive: (row['is_active'] as bool?) ?? true,
+    sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'key': key,
-        'label': label,
-        'color':
-            '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
-        'default_capacity': defaultCapacity,
-        'default_price': defaultPrice,
-        'bookable': bookable,
-        'is_active': isActive,
-        'sort_order': sortOrder,
-      };
+    'id': id,
+    'key': key,
+    'label': label,
+    'color':
+        '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+    'default_capacity': defaultCapacity,
+    'default_price': defaultPrice,
+    'bookable': bookable,
+    'is_active': isActive,
+    'sort_order': sortOrder,
+  };
 }

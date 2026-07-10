@@ -54,11 +54,13 @@ class SettingsTab extends ConsumerWidget {
         }
         return ListView(
           padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            100,
+          ),
           children: [
-            _section('🎨 Branding', [
-              _BrandingSection(service: service),
-            ]),
+            _section('🎨 Branding', [_BrandingSection(service: service)]),
             _section('🌍 Localizzazione', [
               _DropdownSetting(
                 service: service,
@@ -84,24 +86,14 @@ class SettingsTab extends ConsumerWidget {
             _section('🛡️ Policy prenotazione', [
               PolicySection(service: service),
             ]),
-            _section('🔔 Notifiche', [
-              NotifSection(service: service),
-            ]),
-            _section('📜 GDPR & Privacy', [
-              GdprSection(service: service),
-            ]),
-            _section('🧩 Funzionalità', [
-              FeaturesSection(service: service),
-            ]),
-            _section('👥 Staff / Membri', [
-              StaffSection(service: service),
-            ]),
+            _section('🔔 Notifiche', [NotifSection(service: service)]),
+            _section('📜 GDPR & Privacy', [GdprSection(service: service)]),
+            _section('🧩 Funzionalità', [FeaturesSection(service: service)]),
+            _section('👥 Staff / Membri', [StaffSection(service: service)]),
             _section('⚠️ Sicurezza / Manutenzione', [
               SecuritySection(service: service),
             ]),
-            _section('⭐ Abbonamento PalestrIA', [
-              const _BillingSaasSection(),
-            ]),
+            _section('⭐ Abbonamento PalestrIA', [const _BillingSaasSection()]),
           ],
         );
       },
@@ -109,21 +101,24 @@ class SettingsTab extends ConsumerWidget {
   }
 
   Widget _section(String title, List<Widget> children) => AppCard(
-        margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-        radius: AppRadius.cardLg,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.navy)),
-            const SizedBox(height: AppSpacing.md),
-            ...children,
-          ],
+    margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+    radius: AppRadius.cardLg,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: AppColors.navy,
+          ),
         ),
-      );
+        const SizedBox(height: AppSpacing.md),
+        ...children,
+      ],
+    ),
+  );
 }
 
 class _BrandingSection extends ConsumerStatefulWidget {
@@ -143,9 +138,11 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
   void initState() {
     super.initState();
     _studioName = TextEditingController(
-        text: widget.service.getString('branding.studio_name', ''));
+      text: widget.service.getString('branding.studio_name', ''),
+    );
     _primaryColor = TextEditingController(
-        text: widget.service.getString('branding.primary_color', '#8B5CF6'));
+      text: widget.service.getString('branding.primary_color', '#8B5CF6'),
+    );
   }
 
   @override
@@ -158,10 +155,11 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await widget.service
-          .set('branding.studio_name', _studioName.text.trim());
-      await widget.service
-          .set('branding.primary_color', _primaryColor.text.trim());
+      await widget.service.set('branding.studio_name', _studioName.text.trim());
+      await widget.service.set(
+        'branding.primary_color',
+        _primaryColor.text.trim(),
+      );
       final parsed = OrgBranding.parseHex(_primaryColor.text.trim());
       if (parsed != null) {
         await ref
@@ -230,8 +228,10 @@ class _DropdownSettingState extends ConsumerState<_DropdownSetting> {
   @override
   void initState() {
     super.initState();
-    final current =
-        widget.service.getString(widget.settingKey, widget.defaultValue);
+    final current = widget.service.getString(
+      widget.settingKey,
+      widget.defaultValue,
+    );
     _value = widget.options.contains(current) ? current : widget.defaultValue;
   }
 
@@ -268,11 +268,37 @@ class _DropdownSettingState extends ConsumerState<_DropdownSetting> {
 }
 
 /// Sezione Billing SaaS: entitlements + apertura Stripe su browser esterno.
-class _BillingSaasSection extends ConsumerWidget {
+class _BillingSaasSection extends ConsumerStatefulWidget {
   const _BillingSaasSection();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BillingSaasSection> createState() =>
+      _BillingSaasSectionState();
+}
+
+class _BillingSaasSectionState extends ConsumerState<_BillingSaasSection>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(entitlementsProvider);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final entAsync = ref.watch(entitlementsProvider);
     final billing = ref.read(billingSaasServiceProvider);
 
@@ -329,46 +355,48 @@ class _BillingSaasSection extends ConsumerWidget {
   Widget _statusBanner(Entitlements ent) {
     final (bg, fg, text) = switch (ent.status) {
       'trialing' => (
-          AppColors.purpleGlow,
-          AppColors.primaryDark,
-          ent.trialEnd == null
-              ? 'Periodo di prova attivo'
-              : 'Prova fino al ${_fmt(ent.trialEnd!)}'
-        ),
+        AppColors.purpleGlow,
+        AppColors.primaryDark,
+        ent.trialEnd == null
+            ? 'Periodo di prova attivo'
+            : 'Prova fino al ${_fmt(ent.trialEnd!)}',
+      ),
       'active' => (
-          const Color(0x1F06D6A0),
-          AppColors.successEmeraldDark,
-          'Abbonamento attivo (${ent.plan})'
-        ),
+        const Color(0x1F06D6A0),
+        AppColors.successEmeraldDark,
+        'Abbonamento attivo (${ent.plan})',
+      ),
       'past_due' => (
-          const Color(0x1FF59E0B),
-          const Color(0xFFB45309),
-          'Pagamento in sospeso'
-        ),
+        const Color(0x1FF59E0B),
+        const Color(0xFFB45309),
+        'Pagamento in sospeso',
+      ),
       'canceled' => (
-          AppColors.dangerSurface,
-          AppColors.dangerDark,
-          'Abbonamento annullato'
-        ),
+        AppColors.dangerSurface,
+        AppColors.dangerDark,
+        'Abbonamento annullato',
+      ),
       'unpaid' => (
-          AppColors.dangerSurface,
-          AppColors.dangerDark,
-          'Pagamento non riuscito'
-        ),
+        AppColors.dangerSurface,
+        AppColors.dangerDark,
+        'Pagamento non riuscito',
+      ),
       'incomplete' => (
-          AppColors.warnSurface,
-          AppColors.warning,
-          'Configurazione di pagamento incompleta'
-        ),
+        AppColors.warnSurface,
+        AppColors.warning,
+        'Configurazione di pagamento incompleta',
+      ),
       _ => (
-          AppColors.cancelledBg,
-          AppColors.cancelledText,
-          'Abbonamento: ${ent.status}'
-        ),
+        AppColors.cancelledBg,
+        AppColors.cancelledText,
+        'Abbonamento: ${ent.status}',
+      ),
     };
     final planName = SaasPlan.all
-        .firstWhere((p) => p.code == ent.plan,
-            orElse: () => SaasPlan(ent.plan, ent.plan, '', ''))
+        .firstWhere(
+          (p) => p.code == ent.plan,
+          orElse: () => SaasPlan(ent.plan, ent.plan, '', ''),
+        )
         .name;
     final maxLabel = ent.maxClients == null ? '∞' : '${ent.maxClients}';
     return Container(
@@ -380,18 +408,26 @@ class _BillingSaasSection extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(text,
-              style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+          Text(
+            text,
+            style: TextStyle(fontWeight: FontWeight.w700, color: fg),
+          ),
           const SizedBox(height: 2),
-          Text('Piano $planName · ${ent.clientsCount}/$maxLabel clienti',
-              style: const TextStyle(fontSize: 12.5, color: AppColors.muted)),
+          Text(
+            'Piano $planName · ${ent.clientsCount}/$maxLabel clienti',
+            style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+          ),
         ],
       ),
     );
   }
 
-  Widget _planCard(BuildContext context, SaasPlan plan, Entitlements? ent,
-      VoidCallback onSelect) {
+  Widget _planCard(
+    BuildContext context,
+    SaasPlan plan,
+    Entitlements? ent,
+    VoidCallback onSelect,
+  ) {
     final isCurrent = ent?.plan == plan.code && ent?.status == 'active';
     final primary = Theme.of(context).colorScheme.primary;
     return Container(
@@ -399,8 +435,9 @@ class _BillingSaasSection extends ConsumerWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(
-            color: isCurrent ? primary : AppColors.border,
-            width: isCurrent ? 2 : 1),
+          color: isCurrent ? primary : AppColors.border,
+          width: isCurrent ? 2 : 1,
+        ),
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
@@ -409,22 +446,27 @@ class _BillingSaasSection extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(plan.name,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w800)),
-                Text('${plan.price} · ${plan.maxClientsLabel}',
-                    style: const TextStyle(
-                        fontSize: 12.5, color: AppColors.muted)),
+                Text(
+                  plan.name,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  '${plan.price} · ${plan.maxClientsLabel}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.muted,
+                  ),
+                ),
               ],
             ),
           ),
           if (isCurrent)
             const Chip(label: Text('Attuale'))
           else
-            FilledButton(
-              onPressed: onSelect,
-              child: const Text('Scegli'),
-            ),
+            FilledButton(onPressed: onSelect, child: const Text('Scegli')),
         ],
       ),
     );

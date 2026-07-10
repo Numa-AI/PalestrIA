@@ -9,8 +9,18 @@ import '../../../core/theme/ui_kit.dart';
 import 'stats_charts.dart';
 
 const _monthsShort = [
-  'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-  'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+  'Gen',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mag',
+  'Giu',
+  'Lug',
+  'Ago',
+  'Set',
+  'Ott',
+  'Nov',
+  'Dic',
 ];
 const _dayLabels = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
@@ -99,8 +109,10 @@ class OccupancyDetail extends StatelessWidget {
     final trendLabels = <String>[];
     for (var i = 11; i >= -1; i--) {
       final d = DateTime(now.year, now.month - i, 1);
-      trendLabels.add(_monthsShort[d.month - 1] +
-          (d.year != now.year ? " '${d.year % 100}" : ''));
+      trendLabels.add(
+        _monthsShort[d.month - 1] +
+            (d.year != now.year ? " '${d.year % 100}" : ''),
+      );
     }
 
     // ── Occupazione per giorno della settimana (Lun..Dom) ───────────────────
@@ -136,15 +148,19 @@ class OccupancyDetail extends StatelessWidget {
           Row(
             children: [
               const Expanded(
-                child: Text('📈 Occupazione — Dettaglio',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                child: Text(
+                  '📈 Occupazione — Dettaglio',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
               ),
-              Text(filterLabel,
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.subtle)),
+              Text(
+                filterLabel,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.subtle),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -162,15 +178,19 @@ class OccupancyDetail extends StatelessWidget {
               children: [
                 _kpi(context, '$totRate%', 'Totale'),
                 for (final k in kpiTypes)
-                  _kpi(context, '${rate(bkByType[k] ?? 0, capByType[k]!)}%',
-                      config?.slotName(k) ?? k),
+                  _kpi(
+                    context,
+                    '${rate(bkByType[k] ?? 0, capByType[k]!)}%',
+                    config?.slotName(k) ?? k,
+                  ),
                 _kpi(context, '${period.length}', 'Prenotazioni'),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
             for (final k in typeKeys.take(3)) ...[
               _blockTitle(
-                  '${config?.slotName(k) ?? k} — occupazione ultimi 12 mesi + succ.'),
+                '${config?.slotName(k) ?? k} — occupazione ultimi 12 mesi + succ.',
+              ),
               MonthlyBarChart(
                 labels: trendLabels,
                 solid: trendFor(k),
@@ -194,17 +214,25 @@ class OccupancyDetail extends StatelessWidget {
   }
 
   Widget _blockTitle(String s) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(s,
-            style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.muted)),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      s,
+      style: const TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        color: AppColors.muted,
+      ),
+    ),
+  );
 
   Widget _kpi(BuildContext context, String value, String label) {
     return Container(
-      width: (MediaQuery.of(context).size.width - 2 * AppSpacing.lg - AppSpacing.sm - 2) / 2,
+      width:
+          (MediaQuery.of(context).size.width -
+              2 * AppSpacing.lg -
+              AppSpacing.sm -
+              2) /
+          2,
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       decoration: BoxDecoration(
         color: const Color(0xFFFAFAFA),
@@ -214,19 +242,24 @@ class OccupancyDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111111),
-                  fontFeatures: AppText.tabularNums)),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111111),
+              fontFeatures: AppText.tabularNums,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: AppColors.subtle)),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppColors.subtle),
+          ),
         ],
       ),
     );

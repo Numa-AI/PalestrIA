@@ -34,7 +34,11 @@ class SchedeTab extends ConsumerWidget {
           onRefresh: () async => ref.invalidate(orgPlansProvider),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              100,
+            ),
             children: [
               const Text('Schede', style: AppText.pageTitle),
               const SizedBox(height: AppSpacing.md),
@@ -61,21 +65,27 @@ class SchedeTab extends ConsumerWidget {
         shape: const Border(),
         collapsedShape: const Border(),
         leading: Icon(Icons.fitness_center, color: primary),
-        title: Text(plan.name,
-            style:
-                const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+        title: Text(
+          plan.name,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+        ),
         subtitle: Text(
-            '${plan.dayLabels.length} giorn${plan.dayLabels.length == 1 ? 'o' : 'i'} · ${plan.exercises.length} esercizi',
-            style: const TextStyle(fontSize: 12.5)),
+          '${plan.dayLabels.length} giorn${plan.dayLabels.length == 1 ? 'o' : 'i'} · ${plan.exercises.length} esercizi',
+          style: const TextStyle(fontSize: 12.5),
+        ),
         trailing: PopupMenuButton<String>(
           onSelected: (v) {
             if (v == 'rename') {
               _renamePlan(context, ref, plan);
             } else if (v == 'progress') {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => AdminClientProgressScreen(
-                    userId: plan.userId, title: plan.name),
-              ));
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdminClientProgressScreen(
+                    userId: plan.userId,
+                    title: plan.name,
+                  ),
+                ),
+              );
             }
           },
           itemBuilder: (_) => const [
@@ -87,15 +97,19 @@ class SchedeTab extends ConsumerWidget {
           for (final day in plan.dayLabels)
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.sm,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Expanded(
-                          child:
-                              Text(day.toUpperCase(), style: AppText.eyebrow)),
+                        child: Text(day.toUpperCase(), style: AppText.eyebrow),
+                      ),
                       _addMenu(context, ref, plan, day),
                     ],
                   ),
@@ -110,33 +124,50 @@ class SchedeTab extends ConsumerWidget {
   }
 
   Widget _addMenu(
-      BuildContext context, WidgetRef ref, WorkoutPlan plan, String day) {
+    BuildContext context,
+    WidgetRef ref,
+    WorkoutPlan plan,
+    String day,
+  ) {
     return PopupMenuButton<String>(
       tooltip: 'Aggiungi',
       icon: const Icon(Icons.add_circle_outline, size: 20),
       onSelected: (v) {
         switch (v) {
           case 'manual':
-            showExerciseEditSheet(context, ref,
-                planId: plan.id,
-                dayLabel: day,
-                sortOrder: plan.exercises.length);
+            showExerciseEditSheet(
+              context,
+              ref,
+              planId: plan.id,
+              dayLabel: day,
+              sortOrder: plan.exercises.length,
+            );
           case 'catalog':
-            showAddToDay(context, ref, plan, day,
-                onChanged: () => ref.invalidate(orgPlansProvider));
+            showAddToDay(
+              context,
+              ref,
+              plan,
+              day,
+              onChanged: () => ref.invalidate(orgPlansProvider),
+            );
         }
       },
       itemBuilder: (_) => const [
         PopupMenuItem(value: 'manual', child: Text('Esercizio (manuale)')),
         PopupMenuItem(
-            value: 'catalog',
-            child: Text('Dal catalogo / Super Serie / Circuito…')),
+          value: 'catalog',
+          child: Text('Dal catalogo / Super Serie / Circuito…'),
+        ),
       ],
     );
   }
 
   Widget _dayBlocks(
-      BuildContext context, WidgetRef ref, WorkoutPlan plan, String day) {
+    BuildContext context,
+    WidgetRef ref,
+    WorkoutPlan plan,
+    String day,
+  ) {
     final groups = groupExercises(plan.exercisesOf(day));
     return Column(
       children: [
@@ -146,16 +177,27 @@ class SchedeTab extends ConsumerWidget {
     );
   }
 
-  Widget _block(BuildContext context, WidgetRef ref, WorkoutPlan plan,
-      List<ExerciseGroup> groups, int index) {
+  Widget _block(
+    BuildContext context,
+    WidgetRef ref,
+    WorkoutPlan plan,
+    List<ExerciseGroup> groups,
+    int index,
+  ) {
     final g = groups[index];
     final reorder = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _arrow(Icons.keyboard_arrow_up, index > 0,
-            () => _reorderBlock(ref, plan, groups, index, -1)),
-        _arrow(Icons.keyboard_arrow_down, index < groups.length - 1,
-            () => _reorderBlock(ref, plan, groups, index, 1)),
+        _arrow(
+          Icons.keyboard_arrow_up,
+          index > 0,
+          () => _reorderBlock(ref, plan, groups, index, -1),
+        ),
+        _arrow(
+          Icons.keyboard_arrow_down,
+          index < groups.length - 1,
+          () => _reorderBlock(ref, plan, groups, index, 1),
+        ),
       ],
     );
 
@@ -172,17 +214,27 @@ class SchedeTab extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(e.exerciseName, style: const TextStyle(fontSize: 13)),
-                  Text(e.targetLabel,
-                      style: const TextStyle(
-                          fontSize: 11.5, color: AppColors.muted)),
+                  Text(
+                    e.targetLabel,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.muted,
+                    ),
+                  ),
                 ],
               ),
             ),
-            _iconBtn(Icons.edit, 'Modifica',
-                () => showExerciseEditSheet(context, ref, existing: e)),
-            _iconBtn(Icons.delete_outline, 'Elimina',
-                () => _deleteExercise(context, ref, e),
-                danger: true),
+            _iconBtn(
+              Icons.edit,
+              'Modifica',
+              () => showExerciseEditSheet(context, ref, existing: e),
+            ),
+            _iconBtn(
+              Icons.delete_outline,
+              'Elimina',
+              () => _deleteExercise(context, ref, e),
+              danger: true,
+            ),
           ],
         ),
       );
@@ -206,24 +258,29 @@ class SchedeTab extends ConsumerWidget {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: accent,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(label,
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
-                        color: Colors.white)),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                    color: Colors.white,
+                  ),
+                ),
               ),
               const Spacer(),
               reorder,
-              _iconBtn(Icons.delete_outline, 'Elimina blocco',
-                  () => _deleteBlock(context, ref, g),
-                  danger: true),
+              _iconBtn(
+                Icons.delete_outline,
+                'Elimina blocco',
+                () => _deleteBlock(context, ref, g),
+                danger: true,
+              ),
             ],
           ),
           for (final e in g.exercises)
@@ -235,16 +292,25 @@ class SchedeTab extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(e.exerciseName,
-                            style: const TextStyle(fontSize: 13)),
-                        Text(e.targetLabel,
-                            style: const TextStyle(
-                                fontSize: 11.5, color: AppColors.muted)),
+                        Text(
+                          e.exerciseName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        Text(
+                          e.targetLabel,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  _iconBtn(Icons.edit, 'Modifica',
-                      () => showExerciseEditSheet(context, ref, existing: e)),
+                  _iconBtn(
+                    Icons.edit,
+                    'Modifica',
+                    () => showExerciseEditSheet(context, ref, existing: e),
+                  ),
                 ],
               ),
             ),
@@ -254,29 +320,38 @@ class SchedeTab extends ConsumerWidget {
   }
 
   Widget _arrow(IconData icon, bool enabled, VoidCallback onTap) => InkResponse(
-        onTap: enabled ? onTap : null,
-        radius: 16,
-        child: Icon(icon,
-            size: 20,
-            color: enabled
-                ? AppColors.muted
-                : AppColors.subtle.withValues(alpha: 0.4)),
-      );
+    onTap: enabled ? onTap : null,
+    radius: 16,
+    child: Icon(
+      icon,
+      size: 20,
+      color: enabled
+          ? AppColors.muted
+          : AppColors.subtle.withValues(alpha: 0.4),
+    ),
+  );
 
-  Widget _iconBtn(IconData icon, String tooltip, VoidCallback onTap,
-          {bool danger = false}) =>
-      IconButton(
-        visualDensity: VisualDensity.compact,
-        icon: Icon(icon,
-            size: 17, color: danger ? AppColors.dangerDark : null),
-        tooltip: tooltip,
-        onPressed: onTap,
-      );
+  Widget _iconBtn(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap, {
+    bool danger = false,
+  }) => IconButton(
+    visualDensity: VisualDensity.compact,
+    icon: Icon(icon, size: 17, color: danger ? AppColors.dangerDark : null),
+    tooltip: tooltip,
+    onPressed: onTap,
+  );
 
   /// Sposta il blocco su/giù nel giorno e rinumera i sort_order via
   /// reorderExercises (base-min, come il web).
-  Future<void> _reorderBlock(WidgetRef ref, WorkoutPlan plan,
-      List<ExerciseGroup> groups, int index, int direction) async {
+  Future<void> _reorderBlock(
+    WidgetRef ref,
+    WorkoutPlan plan,
+    List<ExerciseGroup> groups,
+    int index,
+    int direction,
+  ) async {
     final target = index + direction;
     if (target < 0 || target >= groups.length) return;
     final reordered = [...groups];
@@ -286,13 +361,19 @@ class SchedeTab extends ConsumerWidget {
     try {
       await ref.read(workoutRepositoryProvider).reorderExercises(flat);
       ref.invalidate(orgPlansProvider);
-    } catch (_) {/* la lista resta invariata */}
+    } catch (_) {
+      /* la lista resta invariata */
+    }
   }
 
   Future<void> _deleteBlock(
-      BuildContext context, WidgetRef ref, ExerciseGroup g) async {
-    final kind =
-        g.kind == ExerciseGroupKind.superset ? 'la super serie' : 'il circuito';
+    BuildContext context,
+    WidgetRef ref,
+    ExerciseGroup g,
+  ) async {
+    final kind = g.kind == ExerciseGroupKind.superset
+        ? 'la super serie'
+        : 'il circuito';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -300,21 +381,24 @@ class SchedeTab extends ConsumerWidget {
         content: Text('Eliminare $kind (${g.exercises.length} esercizi)?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Elimina')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
         ],
       ),
     );
     if (ok != true || !context.mounted) return;
     try {
-      await ref
-          .read(workoutRepositoryProvider)
-          .deleteExercises([for (final e in g.exercises) e.id]);
+      await ref.read(workoutRepositoryProvider).deleteExercises([
+        for (final e in g.exercises) e.id,
+      ]);
       ref.invalidate(orgPlansProvider);
       if (context.mounted) AppSnack.success(context, 'Blocco eliminato.');
     } catch (err) {
@@ -323,7 +407,10 @@ class SchedeTab extends ConsumerWidget {
   }
 
   Future<void> _renamePlan(
-      BuildContext context, WidgetRef ref, WorkoutPlan plan) async {
+    BuildContext context,
+    WidgetRef ref,
+    WorkoutPlan plan,
+  ) async {
     final controller = TextEditingController(text: plan.name);
     final name = await showDialog<String>(
       context: context,
@@ -332,11 +419,13 @@ class SchedeTab extends ConsumerWidget {
         content: TextField(controller: controller, autofocus: true),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: const Text('Salva')),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Salva'),
+          ),
         ],
       ),
     );
@@ -345,7 +434,9 @@ class SchedeTab extends ConsumerWidget {
       return;
     }
     try {
-      await ref.read(workoutRepositoryProvider).updatePlan(plan.id, {'name': name});
+      await ref.read(workoutRepositoryProvider).updatePlan(plan.id, {
+        'name': name,
+      });
       ref.invalidate(orgPlansProvider);
       if (context.mounted) AppSnack.success(context, 'Scheda rinominata.');
     } catch (e) {
@@ -354,7 +445,10 @@ class SchedeTab extends ConsumerWidget {
   }
 
   Future<void> _deleteExercise(
-      BuildContext context, WidgetRef ref, WorkoutExercise e) async {
+    BuildContext context,
+    WidgetRef ref,
+    WorkoutExercise e,
+  ) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -362,13 +456,16 @@ class SchedeTab extends ConsumerWidget {
         content: Text('Eliminare "${e.exerciseName}" dalla scheda?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style:
-                  FilledButton.styleFrom(backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Elimina')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
         ],
       ),
     );

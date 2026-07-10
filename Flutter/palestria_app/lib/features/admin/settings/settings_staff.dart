@@ -18,8 +18,15 @@ class StaffSection extends ConsumerStatefulWidget {
 }
 
 class _Member {
-  _Member(this.id, this.userId, this.role, this.status, this.invitedEmail,
-      this.name, this.email);
+  _Member(
+    this.id,
+    this.userId,
+    this.role,
+    this.status,
+    this.invitedEmail,
+    this.name,
+    this.email,
+  );
   final String id;
   final String? userId;
   final String role;
@@ -57,8 +64,10 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
         .eq('org_id', _orgId)
         .order('role');
     final members = [for (final r in rows) (r as Map).cast<String, dynamic>()];
-    final userIds =
-        members.map((m) => m['user_id'] as String?).whereType<String>().toList();
+    final userIds = members
+        .map((m) => m['user_id'] as String?)
+        .whereType<String>()
+        .toList();
     final profMap = <String, Map<String, dynamic>>{};
     if (userIds.isNotEmpty) {
       final profs = await client
@@ -80,7 +89,7 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
           m['invited_email'] as String?,
           profMap[m['user_id']]?['name'] as String?,
           profMap[m['user_id']]?['email'] as String?,
-        )
+        ),
     ];
   }
 
@@ -94,17 +103,35 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
     }
     setState(() => _inviting = true);
     try {
-      await ref.read(supabaseProvider).rpc('invite_org_member',
-          params: {'p_email': email, 'p_role': _inviteRole});
+      final response = await ref
+          .read(supabaseProvider)
+          .functions
+          .invoke(
+            'invite-org-member',
+            body: {'email': email, 'role': _inviteRole},
+          );
+      final data = (response.data as Map?)?.cast<String, dynamic>() ?? {};
+      if (response.status < 200 ||
+          response.status >= 300 ||
+          data['ok'] != true) {
+        throw Exception(data['error'] ?? 'Invito non riuscito');
+      }
       _inviteEmail.clear();
-      if (mounted) AppSnack.success(context, 'Invito inviato.');
+      if (mounted) {
+        AppSnack.success(
+          context,
+          data['invited'] == true
+              ? 'Email di invito inviata.'
+              : 'Membro già registrato: accesso aggiornato.',
+        );
+      }
       _reload();
     } catch (e) {
       final msg = e.toString().contains('invalid_role')
           ? 'Ruolo non valido'
           : e.toString().contains('unauthorized')
-              ? 'Permesso negato'
-              : 'L\'utente deve essere registrato per essere invitato.';
+          ? 'Permesso negato'
+          : 'L\'utente deve essere registrato per essere invitato.';
       if (mounted) AppSnack.error(context, msg);
     } finally {
       if (mounted) setState(() => _inviting = false);
@@ -136,13 +163,16 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
         content: const Text('Revocare l\'accesso a questo membro?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style:
-                  FilledButton.styleFrom(backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Revoca')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Revoca'),
+          ),
         ],
       ),
     );
@@ -165,7 +195,7 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
   static const _roleLabels = {
     'owner': 'Proprietario',
     'admin': 'Admin',
-    'staff': 'Staff'
+    'staff': 'Staff',
   };
 
   @override
@@ -174,15 +204,18 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-            'Invita un utente registrato e assegna un ruolo, poi gestisci i '
-            'membri della tua organizzazione.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+          'Invita un utente registrato e assegna un ruolo, poi gestisci i '
+          'membri della tua organizzazione.',
+          style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+        ),
         const SizedBox(height: AppSpacing.md),
         TextField(
           controller: _inviteEmail,
           keyboardType: TextInputType.emailAddress,
           decoration: const InputDecoration(
-              labelText: 'Email', hintText: 'nome@esempio.it'),
+            labelText: 'Email',
+            hintText: 'nome@esempio.it',
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
         Row(
@@ -206,11 +239,14 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
           ],
         ),
         const Divider(height: AppSpacing.lg),
-        const Text('Membri dello staff',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.subtle)),
+        const Text(
+          'Membri dello staff',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppColors.subtle,
+          ),
+        ),
         const SizedBox(height: AppSpacing.sm),
         FutureBuilder<List<_Member>>(
           future: _future,
@@ -258,11 +294,15 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w600)),
+                      child: Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 6),
                     StatusPill(
@@ -301,8 +341,11 @@ class _StaffSectionState extends ConsumerState<StaffSection> {
               },
             ),
             IconButton(
-              icon: const Icon(Icons.person_remove,
-                  size: 20, color: AppColors.dangerDark),
+              icon: const Icon(
+                Icons.person_remove,
+                size: 20,
+                color: AppColors.dangerDark,
+              ),
               tooltip: 'Revoca',
               onPressed: () => _revoke(m),
             ),

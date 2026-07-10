@@ -33,7 +33,13 @@ class SplashGate extends ConsumerWidget {
       data: (ctx) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!context.mounted) return;
-          context.go(ctx.isOrgAdmin ? '/admin' : '/client/prenotazioni');
+          context.go(
+            ctx.isOrgAdmin
+                ? '/admin'
+                : ctx.orgRole == 'staff'
+                ? '/staff'
+                : '/client/prenotazioni',
+          );
         });
         return const _Loading();
       },

@@ -18,7 +18,8 @@ Future<void> showClientDocsEditSheet(
     isScrollControlled: true,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
     builder: (_) => _ClientDocsEditSheet(profile: profile),
   );
 }
@@ -69,14 +70,19 @@ class _ClientDocsEditSheetState extends ConsumerState<_ClientDocsEditSheet> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      await ref.read(supabaseProvider).from('profiles').update({
-        'medical_cert_expiry': _ymd(_cert),
-        'insurance_expiry': _ymd(_ins),
-        'documento_firmato': _docSigned,
-      }).eq('id', widget.profile.id);
+      await ref
+          .read(supabaseProvider)
+          .from('profiles')
+          .update({
+            'medical_cert_expiry': _ymd(_cert),
+            'insurance_expiry': _ymd(_ins),
+            'documento_firmato': _docSigned,
+          })
+          .eq('id', widget.profile.id);
       ref.invalidate(adminProfilesProvider);
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Documenti aggiornati.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Documenti aggiornati.')),
+      );
       navigator.pop();
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Errore: $e')));
@@ -95,22 +101,33 @@ class _ClientDocsEditSheetState extends ConsumerState<_ClientDocsEditSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Documenti · ${widget.profile.name}',
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            Text(
+              'Documenti · ${widget.profile.name}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: AppSpacing.md),
-            _dateRow('🏥 Scadenza certificato medico', _cert, () => _pick(true),
-                () => setState(() => _cert = null)),
+            _dateRow(
+              '🏥 Scadenza certificato medico',
+              _cert,
+              () => _pick(true),
+              () => setState(() => _cert = null),
+            ),
             const SizedBox(height: AppSpacing.sm),
-            _dateRow('📋 Scadenza assicurazione', _ins, () => _pick(false),
-                () => setState(() => _ins = null)),
+            _dateRow(
+              '📋 Scadenza assicurazione',
+              _ins,
+              () => _pick(false),
+              () => setState(() => _ins = null),
+            ),
             const SizedBox(height: AppSpacing.sm),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _docSigned,
               onChanged: (v) => setState(() => _docSigned = v),
-              title: const Text('Documento firmato',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              title: const Text(
+                'Documento firmato',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
             Row(
@@ -137,7 +154,11 @@ class _ClientDocsEditSheetState extends ConsumerState<_ClientDocsEditSheet> {
   }
 
   Widget _dateRow(
-      String label, DateTime? value, VoidCallback onPick, VoidCallback onClear) {
+    String label,
+    DateTime? value,
+    VoidCallback onPick,
+    VoidCallback onClear,
+  ) {
     final text = value == null
         ? 'Non impostata'
         : '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
@@ -147,11 +168,17 @@ class _ClientDocsEditSheetState extends ConsumerState<_ClientDocsEditSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: const TextStyle(fontSize: 12.5, color: AppColors.muted)),
-              Text(text,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+              ),
+              Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),

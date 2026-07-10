@@ -31,12 +31,32 @@ class AnalyticsTab extends ConsumerStatefulWidget {
 typedef _Range = ({DateTime from, DateTime to});
 
 const _months = [
-  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+  'Gennaio',
+  'Febbraio',
+  'Marzo',
+  'Aprile',
+  'Maggio',
+  'Giugno',
+  'Luglio',
+  'Agosto',
+  'Settembre',
+  'Ottobre',
+  'Novembre',
+  'Dicembre',
 ];
 const _monthsShort = [
-  'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-  'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+  'Gen',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mag',
+  'Giu',
+  'Lug',
+  'Ago',
+  'Set',
+  'Ott',
+  'Nov',
+  'Dic',
 ];
 
 class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
@@ -62,25 +82,25 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
     DateTime endOfMonth(int y, int m) => DateTime(y, m + 1, 0, 23, 59, 59, 999);
     return switch (f) {
       'next-month' => (
-          from: DateTime(now.year, now.month + 1),
-          to: endOfMonth(now.year, now.month + 1)
-        ),
+        from: DateTime(now.year, now.month + 1),
+        to: endOfMonth(now.year, now.month + 1),
+      ),
       'last-month' => (
-          from: DateTime(now.year, now.month - 1),
-          to: endOfMonth(now.year, now.month - 1)
-        ),
+        from: DateTime(now.year, now.month - 1),
+        to: endOfMonth(now.year, now.month - 1),
+      ),
       'this-year' => (
-          from: DateTime(now.year),
-          to: DateTime(now.year, 12, 31, 23, 59, 59, 999)
-        ),
+        from: DateTime(now.year),
+        to: DateTime(now.year, 12, 31, 23, 59, 59, 999),
+      ),
       'last-year' => (
-          from: DateTime(now.year - 1),
-          to: DateTime(now.year - 1, 12, 31, 23, 59, 59, 999)
-        ),
+        from: DateTime(now.year - 1),
+        to: DateTime(now.year - 1, 12, 31, 23, 59, 59, 999),
+      ),
       _ => (
-          from: DateTime(now.year, now.month),
-          to: endOfMonth(now.year, now.month)
-        ),
+        from: DateTime(now.year, now.month),
+        to: endOfMonth(now.year, now.month),
+      ),
     };
   }
 
@@ -90,25 +110,25 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
     DateTime endOfMonth(int y, int m) => DateTime(y, m + 1, 0, 23, 59, 59, 999);
     return switch (f) {
       'this-month' => (
-          from: DateTime(now.year, now.month - 1),
-          to: endOfMonth(now.year, now.month - 1)
-        ),
+        from: DateTime(now.year, now.month - 1),
+        to: endOfMonth(now.year, now.month - 1),
+      ),
       'next-month' => (
-          from: DateTime(now.year, now.month),
-          to: endOfMonth(now.year, now.month)
-        ),
+        from: DateTime(now.year, now.month),
+        to: endOfMonth(now.year, now.month),
+      ),
       'last-month' => (
-          from: DateTime(now.year, now.month - 2),
-          to: endOfMonth(now.year, now.month - 2)
-        ),
+        from: DateTime(now.year, now.month - 2),
+        to: endOfMonth(now.year, now.month - 2),
+      ),
       'this-year' => (
-          from: DateTime(now.year - 1),
-          to: DateTime(now.year - 1, 12, 31, 23, 59, 59, 999)
-        ),
+        from: DateTime(now.year - 1),
+        to: DateTime(now.year - 1, 12, 31, 23, 59, 59, 999),
+      ),
       'last-year' => (
-          from: DateTime(now.year - 2),
-          to: DateTime(now.year - 2, 12, 31, 23, 59, 59, 999)
-        ),
+        from: DateTime(now.year - 2),
+        to: DateTime(now.year - 2, 12, 31, 23, 59, 59, 999),
+      ),
       _ => null,
     };
   }
@@ -116,10 +136,12 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
   String _filterLabel(String f) {
     final now = DateTime.now();
     return switch (f) {
-      'next-month' => '${_months[(now.month) % 12]} '
-          '${now.month == 12 ? now.year + 1 : now.year}',
-      'last-month' => '${_months[(now.month - 2 + 12) % 12]} '
-          '${now.month == 1 ? now.year - 1 : now.year}',
+      'next-month' =>
+        '${_months[(now.month) % 12]} '
+            '${now.month == 12 ? now.year + 1 : now.year}',
+      'last-month' =>
+        '${_months[(now.month - 2 + 12) % 12]} '
+            '${now.month == 1 ? now.year - 1 : now.year}',
       'this-year' => '${now.year}',
       'last-year' => '${now.year - 1}',
       _ => '${_months[now.month - 1]} ${now.year}',
@@ -155,17 +177,20 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('Scarica report fiscale'),
         content: const Text(
-            'Verrà generato un PDF con l\'intero archivio dei pagamenti '
-            'tracciati fiscalmente (carta, bonifico, Stripe, contanti con '
-            'report). L\'operazione può richiedere tempo e traffico dati. '
-            'Procedere?'),
+          'Verrà generato un PDF con l\'intero archivio dei pagamenti '
+          'tracciati fiscalmente (carta, bonifico, Stripe, contanti con '
+          'report). L\'operazione può richiedere tempo e traffico dati. '
+          'Procedere?',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Scarica')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Scarica'),
+          ),
         ],
       ),
     );
@@ -186,50 +211,56 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         studioName: studio,
       );
       messenger.showSnackBar(
-          SnackBar(content: Text('Report generato: $n pagamenti fiscali.')));
+        SnackBar(content: Text('Report generato: $n pagamenti fiscali.')),
+      );
     } catch (e) {
       messenger.showSnackBar(
-          SnackBar(content: Text('Errore durante la generazione: $e')));
+        SnackBar(content: Text('Errore durante la generazione: $e')),
+      );
     } finally {
       if (mounted) setState(() => _generating = false);
     }
   }
 
   /// Pannello drill-down aperto (tap su una stat card). null → niente.
-  Widget _detailPanel(_Range range, List<Booking> all,
-      OrgSettingsService? settings, OrgScheduleConfig? config) {
+  Widget _detailPanel(
+    _Range range,
+    List<Booking> all,
+    OrgSettingsService? settings,
+    OrgScheduleConfig? config,
+  ) {
     final label = _filterLabel(_filter);
     return switch (_detail) {
       'fatturato' => FatturatoDetail(
-          from: range.from,
-          to: range.to,
-          filterLabel: label,
-          bookings: all,
-          settings: settings,
-          config: config,
-        ),
+        from: range.from,
+        to: range.to,
+        filterLabel: label,
+        bookings: all,
+        settings: settings,
+        config: config,
+      ),
       'prenotazioni' => PrenotazioniDetail(
-          from: range.from,
-          to: range.to,
-          filterLabel: label,
-          bookings: all,
-          config: config,
-        ),
+        from: range.from,
+        to: range.to,
+        filterLabel: label,
+        bookings: all,
+        config: config,
+      ),
       'clienti' => ClientiDetail(
-          from: range.from,
-          to: range.to,
-          prevFrom: _prevRangeFor(_filter)?.from,
-          prevTo: _prevRangeFor(_filter)?.to,
-          filterLabel: label,
-          bookings: all,
-        ),
+        from: range.from,
+        to: range.to,
+        prevFrom: _prevRangeFor(_filter)?.from,
+        prevTo: _prevRangeFor(_filter)?.to,
+        filterLabel: label,
+        bookings: all,
+      ),
       'occupancy' => OccupancyDetail(
-          from: range.from,
-          to: range.to,
-          filterLabel: label,
-          bookings: all,
-          config: config,
-        ),
+        from: range.from,
+        to: range.to,
+        filterLabel: label,
+        bookings: all,
+        config: config,
+      ),
       _ => const SizedBox.shrink(),
     };
   }
@@ -251,9 +282,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
       ),
       data: (allRaw) {
         // Escludi cancellate e admin (come _excludeAdminBookings web).
-        final all = allRaw
-            .where((b) => !isAdminStatsEmail(b.email))
-            .toList();
+        final all = allRaw.where((b) => !isAdminStatsEmail(b.email)).toList();
         final range = _rangeFor(_filter);
         final prevRange = _prevRangeFor(_filter);
         final filtered = all
@@ -276,15 +305,16 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         double? revChange, bookChange;
         if (prevRange != null) {
           final prevFiltered = all
-              .where((b) =>
-                  b.status != 'cancelled' && _inRange(b.date, prevRange))
+              .where(
+                (b) => b.status != 'cancelled' && _inRange(b.date, prevRange),
+              )
               .toList();
           final prevRev = revenue(prevFiltered);
           if (prevRev > 0) revChange = ((rev - prevRev) / prevRev) * 100;
           if (prevFiltered.isNotEmpty) {
             bookChange =
                 ((bookingsCount - prevFiltered.length) / prevFiltered.length) *
-                    100;
+                100;
           }
         }
 
@@ -297,7 +327,11 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              100,
+            ),
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -305,11 +339,14 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                 children: const [
                   Text('Statistiche', style: AppText.pageTitle),
                   SizedBox(width: 6),
-                  Text('& Fatturato',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.subtle)),
+                  Text(
+                    '& Fatturato',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.subtle,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
@@ -317,36 +354,52 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
               const SizedBox(height: AppSpacing.lg),
               Row(
                 children: [
-                  _statCard('💰', 'Fatturato previsto', '€${_fmt(rev)}',
-                      AppColors.amber, revChange,
-                      active: _detail == 'fatturato',
-                      onTap: () => _toggle('fatturato')),
+                  _statCard(
+                    '💰',
+                    'Fatturato previsto',
+                    '€${_fmt(rev)}',
+                    AppColors.amber,
+                    revChange,
+                    active: _detail == 'fatturato',
+                    onTap: () => _toggle('fatturato'),
+                  ),
                   const SizedBox(width: AppSpacing.md),
-                  _statCard('📅', 'Prenotazioni', '$bookingsCount',
-                      AppColors.blue500, bookChange,
-                      active: _detail == 'prenotazioni',
-                      onTap: () => _toggle('prenotazioni')),
+                  _statCard(
+                    '📅',
+                    'Prenotazioni',
+                    '$bookingsCount',
+                    AppColors.blue500,
+                    bookChange,
+                    active: _detail == 'prenotazioni',
+                    onTap: () => _toggle('prenotazioni'),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
-                  _statCard('👥', 'Clienti attivi', '$activeClients',
-                      Theme.of(context).colorScheme.primary, null,
-                      subtitle: _filterLabel(_filter),
-                      active: _detail == 'clienti',
-                      onTap: () => _toggle('clienti')),
+                  _statCard(
+                    '👥',
+                    'Clienti attivi',
+                    '$activeClients',
+                    Theme.of(context).colorScheme.primary,
+                    null,
+                    subtitle: _filterLabel(_filter),
+                    active: _detail == 'clienti',
+                    onTap: () => _toggle('clienti'),
+                  ),
                   const SizedBox(width: AppSpacing.md),
                   _statCard(
-                      '📈',
-                      'Occupazione',
-                      occupancy == null ? '—' : '$occupancy%',
-                      AppColors.successEmerald,
-                      null,
-                      subtitle: _filterLabel(_filter),
-                      positive: occupancy != null && occupancy > 50,
-                      active: _detail == 'occupancy',
-                      onTap: () => _toggle('occupancy')),
+                    '📈',
+                    'Occupazione',
+                    occupancy == null ? '—' : '$occupancy%',
+                    AppColors.successEmerald,
+                    null,
+                    subtitle: _filterLabel(_filter),
+                    positive: occupancy != null && occupancy > 50,
+                    active: _detail == 'occupancy',
+                    onTap: () => _toggle('occupancy'),
+                  ),
                 ],
               ),
               _detailPanel(range, all, settings, config),
@@ -381,11 +434,14 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.description_outlined, size: 18),
-                label: Text(_generating
-                    ? 'Generazione...'
-                    : 'Scarica report fiscale (PDF)'),
+                label: Text(
+                  _generating
+                      ? 'Generazione...'
+                      : 'Scarica report fiscale (PDF)',
+                ),
               ),
             ],
           ),
@@ -422,7 +478,10 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
       while (y < r.to.year || (y == r.to.year && m <= r.to.month)) {
         out.add(_monthsShort[m - 1]);
         m++;
-        if (m > 12) { m = 1; y++; }
+        if (m > 12) {
+          m = 1;
+          y++;
+        }
       }
       return out;
     }
@@ -442,12 +501,17 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
       var y = r.from.year, m = r.from.month;
       while (y < r.to.year || (y == r.to.year && m <= r.to.month)) {
         final yy = y, mm = m;
-        out.add(bs.where((b) {
-          final d = DateTime.tryParse(b.date);
-          return d != null && d.year == yy && d.month == mm;
-        }).length);
+        out.add(
+          bs.where((b) {
+            final d = DateTime.tryParse(b.date);
+            return d != null && d.year == yy && d.month == mm;
+          }).length,
+        );
         m++;
-        if (m > 12) { m = 1; y++; }
+        if (m > 12) {
+          m = 1;
+          y++;
+        }
       }
       return out;
     }
@@ -459,7 +523,8 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
     var d = DateTime(r.from.year, r.from.month, r.from.day);
     final end = DateTime(r.to.year, r.to.month, r.to.day);
     while (!d.isAfter(end)) {
-      final ymd = '${d.year.toString().padLeft(4, '0')}-'
+      final ymd =
+          '${d.year.toString().padLeft(4, '0')}-'
           '${d.month.toString().padLeft(2, '0')}-'
           '${d.day.toString().padLeft(2, '0')}';
       out.add(counts[ymd] ?? 0);
@@ -508,11 +573,16 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                     ),
                   ),
                 ),
-                child: Text(entry.value,
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: _filter == entry.key ? cs.secondary : AppColors.muted)),
+                child: Text(
+                  entry.value,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: _filter == entry.key
+                        ? cs.secondary
+                        : AppColors.muted,
+                  ),
+                ),
               ),
             ),
         ],
@@ -520,12 +590,17 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
     );
   }
 
-  Widget _statCard(String emoji, String label, String value, Color color,
-      double? changePct,
-      {String? subtitle,
-      bool positive = false,
-      VoidCallback? onTap,
-      bool active = false}) {
+  Widget _statCard(
+    String emoji,
+    String label,
+    String value,
+    Color color,
+    double? changePct, {
+    String? subtitle,
+    bool positive = false,
+    VoidCallback? onTap,
+    bool active = false,
+  }) {
     Widget change;
     if (changePct != null) {
       final pos = changePct >= 0;
@@ -534,9 +609,10 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: pos ? AppColors.successEmeraldDark : AppColors.dangerDark),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: pos ? AppColors.successEmeraldDark : AppColors.dangerDark,
+        ),
       );
     } else {
       change = Text(
@@ -544,9 +620,10 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: positive ? AppColors.successEmeraldDark : AppColors.subtle),
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: positive ? AppColors.successEmeraldDark : AppColors.subtle,
+        ),
       );
     }
     // Barra colore in alto (flush, segue il raggio della card) + bordo/ombra
@@ -577,30 +654,42 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                           color: color.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                        child: Text(
+                          emoji,
+                          style: const TextStyle(fontSize: 20),
+                        ),
                       ),
                       const Spacer(),
                       if (onTap != null)
-                        Icon(active ? Icons.expand_less : Icons.expand_more,
-                            size: 18, color: AppColors.subtle),
+                        Icon(
+                          active ? Icons.expand_less : Icons.expand_more,
+                          size: 18,
+                          color: AppColors.subtle,
+                        ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  Text(label.toUpperCase(),
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
-                          color: Color(0xFF9CA3AF))),
+                  Text(
+                    label.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF111111),
-                          fontFeatures: AppText.tabularNums)),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111111),
+                      fontFeatures: AppText.tabularNums,
+                    ),
+                  ),
                   const SizedBox(height: 3),
                   change,
                 ],
@@ -618,11 +707,14 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.navy)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppColors.navy,
+            ),
+          ),
           const SizedBox(height: AppSpacing.md),
           child,
         ],
@@ -638,8 +730,10 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
     final sorted = counts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     if (sorted.isEmpty) {
-      return _chartCard('Orari più richiesti',
-          const Text('Nessun dato nel periodo', style: AppText.meta));
+      return _chartCard(
+        'Orari più richiesti',
+        const Text('Nessun dato nel periodo', style: AppText.meta),
+      );
     }
     final top = sorted.take(5).toList();
     final maxV = top.first.value;
@@ -654,11 +748,15 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                 children: [
                   SizedBox(
                     width: 92,
-                    child: Text(e.key,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
+                    child: Text(
+                      e.key,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                   Expanded(
                     child: ClipRRect(
@@ -668,14 +766,19 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
                         minHeight: 16,
                         backgroundColor: const Color(0xFFF1F5F9),
                         valueColor: const AlwaysStoppedAnimation(
-                            AppColors.primary),
+                          AppColors.primary,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text('${e.value}',
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w700)),
+                  Text(
+                    '${e.value}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -685,7 +788,8 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
   }
 
   Widget _recentBookingsCard(List<Booking> bs, OrgScheduleConfig? config) {
-    final sorted = [...bs]..sort((a, b) {
+    final sorted = [...bs]
+      ..sort((a, b) {
         if (a.date != b.date) return b.date.compareTo(a.date);
         return b.time.compareTo(a.time);
       });
@@ -694,11 +798,7 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
       'Ultime prenotazioni',
       rows.isEmpty
           ? const Text('Nessuna prenotazione nel periodo', style: AppText.meta)
-          : Column(
-              children: [
-                for (final b in rows) _bookingRow(b, config),
-              ],
-            ),
+          : Column(children: [for (final b in rows) _bookingRow(b, config)]),
     );
   }
 
@@ -709,16 +809,20 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         : b.date;
     final (badgeBg, badgeFg, badgeText) = switch (b.status) {
       'cancellation_requested' => (
-          const Color(0xFFFEF3C7),
-          const Color(0xFFB45309),
-          'Rich. annullo'
-        ),
+        const Color(0xFFFEF3C7),
+        const Color(0xFFB45309),
+        'Rich. annullo',
+      ),
       'cancelled' => (
-          const Color(0xFFFEE2E2),
-          AppColors.dangerDark,
-          'Annullata'
-        ),
-      _ => (const Color(0xFFDCFCE7), AppColors.successEmeraldDark, 'Confermata'),
+        const Color(0xFFFEE2E2),
+        AppColors.dangerDark,
+        'Annullata',
+      ),
+      _ => (
+        const Color(0xFFDCFCE7),
+        AppColors.successEmeraldDark,
+        'Confermata',
+      ),
     };
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -726,31 +830,44 @@ class _AnalyticsTabState extends ConsumerState<AnalyticsTab> {
         children: [
           SizedBox(
             width: 68,
-            child: Text('$dateStr · ${b.time.split(' - ').first}',
-                style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.muted)),
+            child: Text(
+              '$dateStr · ${b.time.split(' - ').first}',
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.muted,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(b.name ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
-                Text(config?.slotName(b.slotType) ?? b.slotType,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.subtle)),
+                Text(
+                  b.name ?? '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  config?.slotName(b.slotType) ?? b.slotType,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: AppColors.subtle),
+                ),
               ],
             ),
           ),
-          StatusPill(label: badgeText, background: badgeBg, foreground: badgeFg, dense: true),
+          StatusPill(
+            label: badgeText,
+            background: badgeBg,
+            foreground: badgeFg,
+            dense: true,
+          ),
         ],
       ),
     );

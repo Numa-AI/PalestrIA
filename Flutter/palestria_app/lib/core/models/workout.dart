@@ -36,10 +36,11 @@ class WorkoutPlan {
       exercises.where((e) => e.dayLabel == day).toList();
 
   static WorkoutPlan fromRow(Map<String, dynamic> row) {
-    final exercises = ((row['workout_exercises'] as List?) ?? const [])
-        .map((e) => WorkoutExercise.fromRow(e as Map<String, dynamic>))
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final exercises =
+        ((row['workout_exercises'] as List?) ?? const [])
+            .map((e) => WorkoutExercise.fromRow(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return WorkoutPlan(
       id: row['id'] as String,
       userId: row['user_id'] as String,
@@ -103,27 +104,29 @@ class WorkoutExercise {
       parts.add('$w kg');
     }
     if (restSeconds > 0) {
-      parts.add(restSeconds <= 3 ? '$restSeconds min' : '${restSeconds}s pausa');
+      parts.add(
+        restSeconds <= 3 ? '$restSeconds min' : '${restSeconds}s pausa',
+      );
     }
     return parts.join(' · ');
   }
 
   static WorkoutExercise fromRow(Map<String, dynamic> row) => WorkoutExercise(
-        id: row['id'] as String,
-        planId: row['plan_id'] as String,
-        dayLabel: (row['day_label'] as String?) ?? 'Giorno A',
-        exerciseName: (row['exercise_name'] as String?) ?? '',
-        exerciseSlug: row['exercise_slug'] as String?,
-        muscleGroup: row['muscle_group'] as String?,
-        sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
-        sets: (row['sets'] as num?)?.toInt() ?? 3,
-        reps: (row['reps'] as String?) ?? '10',
-        weightKg: (row['weight_kg'] as num?)?.toDouble(),
-        restSeconds: (row['rest_seconds'] as num?)?.toInt() ?? 90,
-        supersetGroup: row['superset_group'] as String?,
-        circuitGroup: row['circuit_group'] as String?,
-        notes: row['notes'] as String?,
-      );
+    id: row['id'] as String,
+    planId: row['plan_id'] as String,
+    dayLabel: (row['day_label'] as String?) ?? 'Giorno A',
+    exerciseName: (row['exercise_name'] as String?) ?? '',
+    exerciseSlug: row['exercise_slug'] as String?,
+    muscleGroup: row['muscle_group'] as String?,
+    sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
+    sets: (row['sets'] as num?)?.toInt() ?? 3,
+    reps: (row['reps'] as String?) ?? '10',
+    weightKg: (row['weight_kg'] as num?)?.toDouble(),
+    restSeconds: (row['rest_seconds'] as num?)?.toInt() ?? 90,
+    supersetGroup: row['superset_group'] as String?,
+    circuitGroup: row['circuit_group'] as String?,
+    notes: row['notes'] as String?,
+  );
 }
 
 class WorkoutLog {
@@ -154,15 +157,15 @@ class WorkoutLog {
   final String? notes;
 
   static WorkoutLog fromRow(Map<String, dynamic> row) => WorkoutLog(
-        id: row['id'] as String,
-        exerciseId: row['exercise_id'] as String,
-        userId: row['user_id'] as String,
-        logDate: (row['log_date'] as String?) ?? '',
-        setNumber: (row['set_number'] as num?)?.toInt() ?? 1,
-        repsDone: (row['reps_done'] as num?)?.toInt(),
-        weightDone: (row['weight_done'] as num?)?.toDouble(),
-        restDone: (row['rest_done'] as num?)?.toInt(),
-        rpe: (row['rpe'] as num?)?.toInt(),
-        notes: row['notes'] as String?,
-      );
+    id: row['id'] as String,
+    exerciseId: row['exercise_id'] as String,
+    userId: row['user_id'] as String,
+    logDate: (row['log_date'] as String?) ?? '',
+    setNumber: (row['set_number'] as num?)?.toInt() ?? 1,
+    repsDone: (row['reps_done'] as num?)?.toInt(),
+    weightDone: (row['weight_done'] as num?)?.toDouble(),
+    restDone: (row['rest_done'] as num?)?.toInt(),
+    rpe: (row['rpe'] as num?)?.toInt(),
+    notes: row['notes'] as String?,
+  );
 }

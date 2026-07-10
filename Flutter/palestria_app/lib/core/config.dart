@@ -4,7 +4,8 @@ class AppConfig {
   AppConfig._();
 
   static const supabaseUrl = 'https://rwaiekhllujximrqftmp.supabase.co';
-  static const supabaseAnonKey = 'sb_publishable_SDlyqyh2C78ZlQ42hQJClA_e1LIp2x5';
+  static const supabaseAnonKey =
+      'sb_publishable_SDlyqyh2C78ZlQ42hQJClA_e1LIp2x5';
 
   /// Pagina web per i pagamenti Stripe e il tablet QR (restano fuori dall'app
   /// per evitare i vincoli di in-app purchase del Play Store).

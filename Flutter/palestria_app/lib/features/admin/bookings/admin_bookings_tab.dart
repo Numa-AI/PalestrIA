@@ -23,17 +23,36 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
   DateTime? _selectedDay;
 
   static const _dayNames = [
-    'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'
+    'Lunedì',
+    'Martedì',
+    'Mercoledì',
+    'Giovedì',
+    'Venerdì',
+    'Sabato',
+    'Domenica',
   ];
   static const _monthShort = [
-    'gen', 'feb', 'mar', 'apr', 'mag', 'giu',
-    'lug', 'ago', 'set', 'ott', 'nov', 'dic'
+    'gen',
+    'feb',
+    'mar',
+    'apr',
+    'mag',
+    'giu',
+    'lug',
+    'ago',
+    'set',
+    'ott',
+    'nov',
+    'dic',
   ];
 
   DateTime _weekMonday(int offset) {
     final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
     return monday.add(Duration(days: 7 * offset));
   }
 
@@ -70,7 +89,10 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
         !days.any((d) => d.day == selected!.day && d.month == selected.month)) {
       final today = DateTime.now();
       selected = days.firstWhere(
-        (d) => d.year == today.year && d.month == today.month && d.day == today.day,
+        (d) =>
+            d.year == today.year &&
+            d.month == today.month &&
+            d.day == today.day,
         orElse: () => days.first,
       );
     }
@@ -91,19 +113,26 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
       },
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          100,
+        ),
         children: [
           _weekHero(days, selectedDay, bookings),
           const SizedBox(height: AppSpacing.lg),
           if (daySlots.isEmpty)
             const Padding(
               padding: EdgeInsets.all(AppSpacing.xxl),
-              child: Text('Nessuna lezione programmata per questo giorno',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: AppColors.subtle,
-                      fontStyle: FontStyle.italic,
-                      fontSize: 14)),
+              child: Text(
+                'Nessuna lezione programmata per questo giorno',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.subtle,
+                  fontStyle: FontStyle.italic,
+                  fontSize: 14,
+                ),
+              ),
             )
           else
             for (final slot in daySlots)
@@ -116,7 +145,10 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
   /// Hero scuro→viola (replica dell'hero admin del web): nav settimana + i giorni
   /// come chip "glass" sul gradiente. `DarkHero` porta gradiente+glow org-aware.
   Widget _weekHero(
-      List<DateTime> days, DateTime selectedDay, List<Booking> bookings) {
+    List<DateTime> days,
+    DateTime selectedDay,
+    List<Booking> bookings,
+  ) {
     final range =
         '${days.first.day} ${_monthShort[days.first.month - 1]} — ${days.last.day} ${_monthShort[days.last.month - 1]}';
     final monthLabel = '${selectedDay.year}';
@@ -136,17 +168,23 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
               Expanded(
                 child: Column(
                   children: [
-                    Text(range,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white)),
-                    Text(monthLabel,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                            color: Colors.white.withValues(alpha: 0.72))),
+                    Text(
+                      range,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      monthLabel,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -166,15 +204,19 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
   }
 
   Widget _navBtn(IconData icon, String tip, VoidCallback onTap) => IconButton(
-        onPressed: onTap,
-        icon: Icon(icon, color: Colors.white),
-        tooltip: tip,
-        style: IconButton.styleFrom(
-            backgroundColor: Colors.white.withValues(alpha: 0.12)),
-      );
+    onPressed: onTap,
+    icon: Icon(icon, color: Colors.white),
+    tooltip: tip,
+    style: IconButton.styleFrom(
+      backgroundColor: Colors.white.withValues(alpha: 0.12),
+    ),
+  );
 
   Widget _daySelector(
-      List<DateTime> days, DateTime selected, List<Booking> bookings) {
+    List<DateTime> days,
+    DateTime selected,
+    List<Booking> bookings,
+  ) {
     final today = DateTime.now();
     return Row(
       children: [
@@ -185,13 +227,16 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
               child: _dayCard(
                 d,
                 isActive: d.day == selected.day && d.month == selected.month,
-                isToday: d.year == today.year &&
+                isToday:
+                    d.year == today.year &&
                     d.month == today.month &&
                     d.day == today.day,
                 count: bookings
-                    .where((b) =>
-                        b.date == OrgScheduleConfig.localDateStr(d) &&
-                        b.status != 'cancelled')
+                    .where(
+                      (b) =>
+                          b.date == OrgScheduleConfig.localDateStr(d) &&
+                          b.status != 'cancelled',
+                    )
                     .length,
               ),
             ),
@@ -200,16 +245,21 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
     );
   }
 
-  Widget _dayCard(DateTime d,
-      {required bool isActive, required bool isToday, required int count}) {
+  Widget _dayCard(
+    DateTime d, {
+    required bool isActive,
+    required bool isToday,
+    required int count,
+  }) {
     Gradient? gradient;
     // Chip "glass" sull'hero scuro: default translucido, attivo = gradiente pieno.
     Color bg = Colors.white.withValues(alpha: 0.08);
     Color fg = Colors.white.withValues(alpha: 0.72);
 
     if (isActive && isToday) {
-      gradient =
-          const LinearGradient(colors: [AppColors.danger, AppColors.dangerDark]);
+      gradient = const LinearGradient(
+        colors: [AppColors.danger, AppColors.dangerDark],
+      );
       fg = Colors.white;
       bg = Colors.transparent;
     } else if (isActive) {
@@ -232,30 +282,46 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
         ),
         child: Column(
           children: [
-            Text(_dayNames[d.weekday - 1].substring(0, 3),
-                style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: fg)),
-            Text('${d.day}',
-                style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w800, color: fg)),
-            Text('$count pr.',
-                style: TextStyle(
-                    fontSize: 9,
-                    color: fg.withValues(alpha: 0.85))),
+            Text(
+              _dayNames[d.weekday - 1].substring(0, 3),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: fg,
+              ),
+            ),
+            Text(
+              '${d.day}',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: fg,
+              ),
+            ),
+            Text(
+              '$count pr.',
+              style: TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.85)),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _slotCard(OrgScheduleConfig config, DaySlot slot,
-      List<Booking> allBookings, DateTime day) {
+  Widget _slotCard(
+    OrgScheduleConfig config,
+    DaySlot slot,
+    List<Booking> allBookings,
+    DateTime day,
+  ) {
     final dateStr = OrgScheduleConfig.localDateStr(day);
     final slotBookings = allBookings
-        .where((b) =>
-            b.date == dateStr &&
-            b.time == slot.time &&
-            b.status != 'cancelled')
+        .where(
+          (b) =>
+              b.date == dateStr &&
+              b.time == slot.time &&
+              b.status != 'cancelled',
+        )
         .toList();
     final confirmed = slotBookings.length;
     final color = config.slotColor(slot.slotType);
@@ -280,21 +346,31 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('🕐 ${slot.time}',
-                          style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              fontFeatures: AppText.tabularNums)),
+                      Text(
+                        '🕐 ${slot.time}',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          fontFeatures: AppText.tabularNums,
+                        ),
+                      ),
                       if (!isCleaning)
                         Text(
-                            '$confirmed/${slot.capacity} ${slot.capacity == 1 ? 'posto' : 'posti'}',
-                            style: const TextStyle(
-                                fontSize: 12.5, color: AppColors.muted))
+                          '$confirmed/${slot.capacity} ${slot.capacity == 1 ? 'posto' : 'posti'}',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.muted,
+                          ),
+                        )
                       else
-                        const Text('🧹 Pulizia',
-                            style: TextStyle(
-                                fontSize: 12.5, color: Color(0xFF8B5CF6))),
+                        const Text(
+                          '🧹 Pulizia',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFF8B5CF6),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -313,16 +389,16 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
             if (slotBookings.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(AppSpacing.lg),
-                child: Text('Nessuna prenotazione',
-                    style: TextStyle(color: AppColors.subtle, fontSize: 13.5)),
+                child: Text(
+                  'Nessuna prenotazione',
+                  style: TextStyle(color: AppColors.subtle, fontSize: 13.5),
+                ),
               )
             else
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.sm),
                 child: Column(
-                  children: [
-                    for (final b in slotBookings) _participantCard(b),
-                  ],
+                  children: [for (final b in slotBookings) _participantCard(b)],
                 ),
               ),
           ],
@@ -346,7 +422,8 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
         color: pending ? const Color(0xFFFFFBEB) : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: pending ? const Color(0xFFFCD34D) : const Color(0xFFEEF0F3)),
+          color: pending ? const Color(0xFFFCD34D) : const Color(0xFFEEF0F3),
+        ),
       ),
       child: Row(
         children: [
@@ -355,22 +432,30 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(color: avBg, shape: BoxShape.circle),
-            child: Text(_initials(name),
-                style: TextStyle(
-                    color: avFg, fontWeight: FontWeight.w800, fontSize: 13)),
+            child: Text(
+              _initials(name),
+              style: TextStyle(
+                color: avFg,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
+            ),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: Color(0xFF0F172A))),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
                 if (pending)
                   const Padding(
                     padding: EdgeInsets.only(top: 2),
@@ -382,17 +467,23 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
                     ),
                   )
                 else if (b.paid)
-                  const Text('Pagato',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.paidText))
+                  const Text(
+                    'Pagato',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.paidText,
+                    ),
+                  )
                 else if (passed)
-                  const Text('Da pagare',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFB45309))),
+                  const Text(
+                    'Da pagare',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFB45309),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -411,7 +502,10 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
   }
 
   Future<void> _addParticipant(
-      OrgScheduleConfig config, DaySlot slot, DateTime day) async {
+    OrgScheduleConfig config,
+    DaySlot slot,
+    DateTime day,
+  ) async {
     final added = await showAddParticipantSheet(context, ref, slot, day);
     if (added == true) ref.invalidate(adminBookingsProvider);
   }
@@ -421,14 +515,17 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         content: Text(
-            'Confermare l\'annullamento della prenotazione di ${b.name ?? 'questo cliente'}?'),
+          'Confermare l\'annullamento della prenotazione di ${b.name ?? 'questo cliente'}?',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Indietro')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Indietro'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Conferma')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Conferma'),
+          ),
         ],
       ),
     );
@@ -438,21 +535,28 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
     try {
       await repo.cancelBooking(b.sbId!);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('✅ Prenotazione annullata con successo.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Prenotazione annullata con successo.'),
+          ),
+        );
       }
       ref.invalidate(adminBookingsProvider);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('⚠️ Errore: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('⚠️ Errore: $e')));
       }
     }
   }
 
   static String _initials(String name) {
-    final parts =
-        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     if (parts.length == 1) {
       return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();

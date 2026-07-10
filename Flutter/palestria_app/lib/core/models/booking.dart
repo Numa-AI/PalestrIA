@@ -62,28 +62,28 @@ class Booking {
       status == 'confirmed' || status == 'cancellation_requested';
 
   static Booking fromRow(Map<String, dynamic> row) => Booking(
-        id: (row['local_id'] as String?) ?? (row['id'] as String),
-        sbId: row['id'] as String?,
-        userId: row['user_id'] as String?,
-        date: row['date'] as String,
-        time: row['time'] as String,
-        slotType: (row['slot_type'] as String?) ?? '',
-        dateDisplay: row['date_display'] as String?,
-        name: row['name'] as String?,
-        email: row['email'] as String?,
-        whatsapp: row['whatsapp'] as String?,
-        notes: row['notes'] as String?,
-        status: (row['status'] as String?) ?? 'confirmed',
-        paid: (row['paid'] as bool?) ?? false,
-        paymentMethod: row['payment_method'] as String?,
-        paidAt: _ts(row['paid_at']),
-        customPrice: (row['custom_price'] as num?)?.toDouble(),
-        createdAt: _ts(row['created_at']),
-        cancellationRequestedAt: _ts(row['cancellation_requested_at']),
-        cancelledAt: _ts(row['cancelled_at']),
-        updatedAt: _ts(row['updated_at']),
-        arrivedAt: _ts(row['arrived_at']),
-      );
+    id: (row['local_id'] as String?) ?? (row['id'] as String),
+    sbId: row['id'] as String?,
+    userId: row['user_id'] as String?,
+    date: row['date'] as String,
+    time: row['time'] as String,
+    slotType: (row['slot_type'] as String?) ?? '',
+    dateDisplay: row['date_display'] as String?,
+    name: row['name'] as String?,
+    email: row['email'] as String?,
+    whatsapp: row['whatsapp'] as String?,
+    notes: row['notes'] as String?,
+    status: (row['status'] as String?) ?? 'confirmed',
+    paid: (row['paid'] as bool?) ?? false,
+    paymentMethod: row['payment_method'] as String?,
+    paidAt: _ts(row['paid_at']),
+    customPrice: (row['custom_price'] as num?)?.toDouble(),
+    createdAt: _ts(row['created_at']),
+    cancellationRequestedAt: _ts(row['cancellation_requested_at']),
+    cancelledAt: _ts(row['cancelled_at']),
+    updatedAt: _ts(row['updated_at']),
+    arrivedAt: _ts(row['arrived_at']),
+  );
 
   static DateTime? _ts(Object? v) =>
       v == null ? null : DateTime.tryParse(v.toString());
@@ -120,8 +120,7 @@ class SlotAvailability {
 
   String get key => '$date|$time|$slotType';
 
-  static SlotAvailability fromJson(Map<String, dynamic> json,
-          {String? date}) =>
+  static SlotAvailability fromJson(Map<String, dynamic> json, {String? date}) =>
       SlotAvailability(
         date: date ?? (json['date'] as String? ?? ''),
         time: json['time'] as String,

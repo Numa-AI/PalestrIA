@@ -33,14 +33,15 @@ class ClientiDetail extends ConsumerWidget {
   static DateTime? _pd(String ymd) => DateTime.tryParse(ymd);
   static String _key(Booking b) =>
       (b.email?.toLowerCase().trim().isNotEmpty ?? false)
-          ? b.email!.toLowerCase().trim()
-          : (b.whatsapp?.trim().isNotEmpty ?? false)
-              ? b.whatsapp!.trim()
-              : (b.name ?? '').trim();
+      ? b.email!.toLowerCase().trim()
+      : (b.whatsapp?.trim().isNotEmpty ?? false)
+      ? b.whatsapp!.trim()
+      : (b.name ?? '').trim();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final payments = ref.watch(statsPaymentsProvider).value ?? const <PaymentRow>[];
+    final payments =
+        ref.watch(statsPaymentsProvider).value ?? const <PaymentRow>[];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -69,11 +70,13 @@ class ClientiDetail extends ConsumerWidget {
     final active = clients.where((c) => c.total > 0).toList();
     final totalUnique = clients.length;
     final totalBookings = active.fold<int>(0, (s, c) => s + c.total);
-    final avgBookings =
-        active.isNotEmpty ? (totalBookings / active.length) : 0.0;
+    final avgBookings = active.isNotEmpty
+        ? (totalBookings / active.length)
+        : 0.0;
     final withCancel = clients.where((c) => c.cancelled > 0).length;
-    final cancelRate =
-        totalUnique > 0 ? (withCancel / totalUnique * 100).round() : 0;
+    final cancelRate = totalUnique > 0
+        ? (withCancel / totalUnique * 100).round()
+        : 0;
 
     // Nuovi clienti: prima prenotazione (non cancellata) cade nel periodo.
     final firstByKey = <String, ({DateTime date, String name})>{};
@@ -87,9 +90,7 @@ class ClientiDetail extends ConsumerWidget {
         firstByKey[k] = (date: d, name: b.name ?? k);
       }
     }
-    final newClients = firstByKey.values
-        .where((c) => inPeriod(c.date))
-        .toList()
+    final newClients = firstByKey.values.where((c) => inPeriod(c.date)).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
 
     final topActive = [...active]..sort((a, b) => b.total.compareTo(a.total));
@@ -116,7 +117,7 @@ class ClientiDetail extends ConsumerWidget {
         mora[k] = (
           name: name,
           count: (m?.count ?? 0) + 1,
-          total: (m?.total ?? 0) + p.amount
+          total: (m?.total ?? 0) + p.amount,
         );
       }
     }
@@ -150,22 +151,28 @@ class ClientiDetail extends ConsumerWidget {
     return AppCard(
       margin: const EdgeInsets.only(top: AppSpacing.md),
       radius: AppRadius.cardLg,
-      borderColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0x22 / 255),
+      borderColor: Theme.of(
+        context,
+      ).colorScheme.primary.withValues(alpha: 0x22 / 255),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               const Expanded(
-                child: Text('👥 Clienti — Dettaglio',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                child: Text(
+                  '👥 Clienti — Dettaglio',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
               ),
-              Text(filterLabel,
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.subtle)),
+              Text(
+                filterLabel,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.subtle),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -175,77 +182,121 @@ class ClientiDetail extends ConsumerWidget {
             children: [
               _kpi(context, '$totalUnique', 'Clienti unici'),
               _kpi(context, '${newClients.length}', 'Nuovi clienti'),
-              _kpi(context, avgBookings.toStringAsFixed(1), 'Media lez./cliente'),
-              _kpi(context, '$cancelRate%', 'Con cancellazioni',
-                  warn: cancelRate > 20),
+              _kpi(
+                context,
+                avgBookings.toStringAsFixed(1),
+                'Media lez./cliente',
+              ),
+              _kpi(
+                context,
+                '$cancelRate%',
+                'Con cancellazioni',
+                warn: cancelRate > 20,
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          _list('💰 Maggior fatturato (versato)',
-              [for (final c in topCash.take(5)) (c.name, '€${_money(c.cash)}')]),
-          _list('🏆 Più attivi nel periodo',
-              [for (final c in topActive.take(5)) (c.name, '${c.total} lezioni')]),
-          _list('💤 Meno attivi nel periodo',
-              [for (final c in leastActive.take(5)) (c.name, '${c.total} lezioni')]),
-          _list('❌ Top annullatori', [
-            for (final c in topCancellers.take(5)) (c.name, '${c.cancelled} cancellaz.')
+          _list('💰 Maggior fatturato (versato)', [
+            for (final c in topCash.take(5)) (c.name, '€${_money(c.cash)}'),
           ]),
-          _list('⭐ Più fedeli (0 cancellazioni)',
-              [for (final c in mostLoyal.take(5)) (c.name, '${c.total} lezioni')]),
-          _list('💸 Pagamento more (${moraList.length}) — €${_money(moraTotal)}', [
-            for (final c in moraList) (c.name, '${c.count} more — €${_money(c.total)}')
-          ], emptyText: 'Nessuna mora nel periodo'),
-          _list('🆕 Nuovi clienti (${newClients.length})', [
-            for (final c in newClients)
-              (c.name, '${c.date.day}/${c.date.month}/${c.date.year}')
-          ], emptyText: 'Nessun nuovo cliente nel periodo'),
-          _list('📉 Clienti persi (${lost.length})',
-              [for (final n in lost) (n, '')],
-              emptyText: 'Nessun cliente perso'),
+          _list('🏆 Più attivi nel periodo', [
+            for (final c in topActive.take(5)) (c.name, '${c.total} lezioni'),
+          ]),
+          _list('💤 Meno attivi nel periodo', [
+            for (final c in leastActive.take(5)) (c.name, '${c.total} lezioni'),
+          ]),
+          _list('❌ Top annullatori', [
+            for (final c in topCancellers.take(5))
+              (c.name, '${c.cancelled} cancellaz.'),
+          ]),
+          _list('⭐ Più fedeli (0 cancellazioni)', [
+            for (final c in mostLoyal.take(5)) (c.name, '${c.total} lezioni'),
+          ]),
+          _list(
+            '💸 Pagamento more (${moraList.length}) — €${_money(moraTotal)}',
+            [
+              for (final c in moraList)
+                (c.name, '${c.count} more — €${_money(c.total)}'),
+            ],
+            emptyText: 'Nessuna mora nel periodo',
+          ),
+          _list(
+            '🆕 Nuovi clienti (${newClients.length})',
+            [
+              for (final c in newClients)
+                (c.name, '${c.date.day}/${c.date.month}/${c.date.year}'),
+            ],
+            emptyText: 'Nessun nuovo cliente nel periodo',
+          ),
+          _list('📉 Clienti persi (${lost.length})', [
+            for (final n in lost) (n, ''),
+          ], emptyText: 'Nessun cliente perso'),
         ],
       ),
     );
   }
 
-  Widget _kpi(BuildContext context, String value, String label,
-      {bool warn = false}) {
+  Widget _kpi(
+    BuildContext context,
+    String value,
+    String label, {
+    bool warn = false,
+  }) {
     return Container(
-      width: (MediaQuery.of(context).size.width - 2 * AppSpacing.lg - AppSpacing.sm - 2) / 2,
+      width:
+          (MediaQuery.of(context).size.width -
+              2 * AppSpacing.lg -
+              AppSpacing.sm -
+              2) /
+          2,
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       decoration: BoxDecoration(
         color: warn ? const Color(0xFFFEF2F2) : const Color(0xFFFAFAFA),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: warn ? const Color(0x33EF4444) : AppColors.border),
+          color: warn ? const Color(0x33EF4444) : AppColors.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value,
-              style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: warn ? AppColors.dangerDark : const Color(0xFF111111),
-                  fontFeatures: AppText.tabularNums)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: warn ? AppColors.dangerDark : const Color(0xFF111111),
+              fontFeatures: AppText.tabularNums,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.subtle)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: AppColors.subtle),
+          ),
         ],
       ),
     );
   }
 
-  Widget _list(String title, List<(String, String)> rows,
-      {String emptyText = 'Nessun dato'}) {
+  Widget _list(
+    String title,
+    List<(String, String)> rows, {
+    String emptyText = 'Nessun dato',
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.navy)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: AppColors.navy,
+            ),
+          ),
           const SizedBox(height: 4),
           if (rows.isEmpty)
             Text(emptyText, style: AppText.meta)
@@ -256,17 +307,22 @@ class ClientiDetail extends ConsumerWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('${i + 1}. ${rows[i].$1}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12.5)),
+                      child: Text(
+                        '${i + 1}. ${rows[i].$1}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
                     ),
                     if (rows[i].$2.isNotEmpty)
-                      Text(rows[i].$2,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.muted)),
+                      Text(
+                        rows[i].$2,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.muted,
+                        ),
+                      ),
                   ],
                 ),
               ),

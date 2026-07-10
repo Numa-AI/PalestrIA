@@ -40,9 +40,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
         final q = _query.trim().toLowerCase();
         final filtered = q.isEmpty
             ? groups
-            : groups
-                .where((g) => g.name.toLowerCase().contains(q))
-                .toList();
+            : groups.where((g) => g.name.toLowerCase().contains(q)).toList();
 
         return ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -69,10 +67,14 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
             const SizedBox(height: AppSpacing.md),
             if (plans.isEmpty)
               const AppEmptyState(
-                  compact: true, title: 'Nessun esercizio nelle tue schede.')
+                compact: true,
+                title: 'Nessun esercizio nelle tue schede.',
+              )
             else if (groups.isEmpty)
               const AppEmptyState(
-                  compact: true, title: 'Nessun log registrato ancora.')
+                compact: true,
+                title: 'Nessun log registrato ancora.',
+              )
             else if (filtered.isEmpty)
               const AppEmptyState(compact: true, title: 'Nessun risultato.')
             else
@@ -91,10 +93,8 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     final dates = groupLogs.map((l) => l.logDate).toSet().toList()
       ..sort((a, b) => b.compareTo(a));
 
-    final media = ref
-            .watch(catalogMediaProvider(
-                g.exercises.first.planId))
-            .value ??
+    final media =
+        ref.watch(catalogMediaProvider(g.exercises.first.planId)).value ??
         const <String, CatalogMedia>{};
     final thumbUrl = g.exercises.first.exerciseSlug == null
         ? null
@@ -114,23 +114,34 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                       width: 44,
                       height: 44,
                       color: AppColors.slateBg,
-                      child: const Icon(Icons.fitness_center,
-                          size: 20, color: AppColors.subtle))
+                      child: const Icon(
+                        Icons.fitness_center,
+                        size: 20,
+                        color: AppColors.subtle,
+                      ),
+                    )
                   : CachedNetworkImage(
                       imageUrl: thumbUrl,
                       width: 44,
                       height: 44,
-                      fit: BoxFit.cover),
+                      fit: BoxFit.cover,
+                    ),
             ),
-            title: Text(g.name,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, fontSize: 14.5)),
+            title: Text(
+              g.name,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 14.5,
+              ),
+            ),
             subtitle: Text(
-                '${groupLogs.length} log · ${dates.length} session${dates.length == 1 ? 'e' : 'i'}',
-                style: const TextStyle(fontSize: 12.5)),
+              '${groupLogs.length} log · ${dates.length} session${dates.length == 1 ? 'e' : 'i'}',
+              style: const TextStyle(fontSize: 12.5),
+            ),
             trailing: Icon(
-                expanded ? Icons.expand_more : Icons.chevron_right,
-                color: AppColors.subtle),
+              expanded ? Icons.expand_more : Icons.chevron_right,
+              color: AppColors.subtle,
+            ),
             onTap: () => setState(() {
               expanded ? _expanded.remove(g.key) : _expanded.add(g.key);
             }),
@@ -142,34 +153,58 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     );
   }
 
-  Widget _sessionBlock(ProgressGroup g, List<WorkoutLog> groupLogs, String date) {
+  Widget _sessionBlock(
+    ProgressGroup g,
+    List<WorkoutLog> groupLogs,
+    String date,
+  ) {
     final sessionLogs = groupLogs.where((l) => l.logDate == date).toList()
       ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
     final d = DateTime.parse(date);
     const months = [
-      'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-      'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+      'Gen',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mag',
+      'Giu',
+      'Lug',
+      'Ago',
+      'Set',
+      'Ott',
+      'Nov',
+      'Dic',
     ];
     final label = '${d.day} ${months[d.month - 1]}';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      color: AppColors.navy)),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  color: AppColors.navy,
+                ),
+              ),
               IconButton(
                 onPressed: () => _deleteDay(g, sessionLogs, label),
-                icon: const Icon(Icons.delete_outline,
-                    size: 18, color: AppColors.dangerDark),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: AppColors.dangerDark,
+                ),
                 tooltip: 'Elimina giornata',
               ),
             ],
@@ -183,49 +218,52 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
   Widget _logRow(ProgressGroup g, WorkoutLog l) {
     final reps = TextEditingController(text: l.repsDone?.toString() ?? '');
     final weight = TextEditingController(
-        text: l.weightDone == null
-            ? ''
-            : (l.weightDone! % 1 == 0
+      text: l.weightDone == null
+          ? ''
+          : (l.weightDone! % 1 == 0
                 ? l.weightDone!.toStringAsFixed(0)
-                : l.weightDone!.toStringAsFixed(1)));
+                : l.weightDone!.toStringAsFixed(1)),
+    );
     final rest = TextEditingController(text: l.restDone?.toString() ?? '');
 
     Widget input(TextEditingController c) => Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: TextField(
-              controller: c,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 13.5, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: AppColors.slateBg,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+          decoration: InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: AppColors.slateBg,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide.none,
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
           SizedBox(
-              width: 22,
-              child: Text('${l.setNumber}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                      color: AppColors.muted))),
+            width: 22,
+            child: Text(
+              '${l.setNumber}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12.5,
+                color: AppColors.muted,
+              ),
+            ),
+          ),
           if (g.isCardio)
             input(reps)
           else ...[
@@ -235,14 +273,20 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
           ],
           IconButton(
             onPressed: () => _saveRow(l, reps, weight, rest, g.isCardio),
-            icon: const Icon(Icons.check,
-                size: 18, color: AppColors.successEmeraldDark),
+            icon: const Icon(
+              Icons.check,
+              size: 18,
+              color: AppColors.successEmeraldDark,
+            ),
             visualDensity: VisualDensity.compact,
           ),
           IconButton(
             onPressed: () => _deleteSet(l),
-            icon: const Icon(Icons.close,
-                size: 18, color: AppColors.dangerDark),
+            icon: const Icon(
+              Icons.close,
+              size: 18,
+              color: AppColors.dangerDark,
+            ),
             visualDensity: VisualDensity.compact,
           ),
         ],
@@ -250,15 +294,20 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     );
   }
 
-  Future<void> _saveRow(WorkoutLog l, TextEditingController reps,
-      TextEditingController weight, TextEditingController rest,
-      bool isCardio) async {
+  Future<void> _saveRow(
+    WorkoutLog l,
+    TextEditingController reps,
+    TextEditingController weight,
+    TextEditingController rest,
+    bool isCardio,
+  ) async {
     try {
       await ref.read(workoutRepositoryProvider).updateLog(l.id, {
         'reps_done': int.tryParse(reps.text.trim()),
         if (!isCardio)
-          'weight_done':
-              double.tryParse(weight.text.trim().replaceAll(',', '.')),
+          'weight_done': double.tryParse(
+            weight.text.trim().replaceAll(',', '.'),
+          ),
         if (!isCardio) 'rest_done': int.tryParse(rest.text.trim()),
       });
       _toast('Modifica salvata');
@@ -281,16 +330,20 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
   }
 
   Future<void> _deleteDay(
-      ProgressGroup g, List<WorkoutLog> sessionLogs, String label) async {
+    ProgressGroup g,
+    List<WorkoutLog> sessionLogs,
+    String label,
+  ) async {
     final ok = await _confirm('Eliminare tutti i set del $label?');
     if (ok != true) return;
     if (sessionLogs.isEmpty) return;
     try {
       // Una sola DELETE batch invece di N round-trip: più veloce e senza
       // rischio di cancellazione a metà se la rete cade nel mezzo.
-      await ref.read(workoutRepositoryProvider).deleteLogsOfDay(
-            exerciseIds:
-                sessionLogs.map((l) => l.exerciseId).toSet().toList(),
+      await ref
+          .read(workoutRepositoryProvider)
+          .deleteLogsOfDay(
+            exerciseIds: sessionLogs.map((l) => l.exerciseId).toSet().toList(),
             logDate: sessionLogs.first.logDate,
           );
       _toast('Giornata eliminata');
@@ -301,19 +354,21 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
   }
 
   Future<bool?> _confirm(String message) => showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          content: Text(message),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Annulla')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Elimina')),
-          ],
+    context: context,
+    builder: (ctx) => AlertDialog(
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Annulla'),
         ),
-      );
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Elimina'),
+        ),
+      ],
+    ),
+  );
 
   void _toast(String message, {bool isError = false}) {
     if (!mounted) return;

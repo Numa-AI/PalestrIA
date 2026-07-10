@@ -1,11 +1,51 @@
 # TODO — PalestrIA SaaS
 
-Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-06-18.
+Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-07-10.
 
 > Stato: la piattaforma multi-tenant funziona (signup self-serve, orari flessibili, clienti, prenotazioni, billing-cliente, impostazioni 11 sotto-tab, branding). Deployata su Supabase `rwaiekhllujximrqftmp` + GitHub Pages (`renumaa.github.io/PalestrIA`). Mancano soprattutto: incassi reali (Stripe), dominio/landing, e alcune rifiniture + chiusure di sicurezza.
 
 ---
 
+## Client operations SaaS, billing e override - completati (2026-07-10)
+
+- [x] Flutter + PWA: vendita idempotente di pacchetti/carnet e mensili, rinnovo operativo, rettifiche contabili, annullamento entitlement e ledger auditabile.
+- [x] Flutter + PWA: modello per-cliente (pay_per_session, package, monthly, free), prezzo personalizzato per lezione, note interne e semaforo salute economica/documentale.
+- [x] Flutter + PWA: dettaglio cliente completo, modifica dati e email Auth, archiviazione/riattivazione e reset dei soli dati operativi con ledger preservato.
+- [x] Flutter + PWA: editor override per data/tipo/capienza, vincolo capienza >= occupati, ripristino sicuro della settimana tipo e visualizzazione occupazione.
+- [x] Backend: book_slot idempotente e server-authoritative; guard identita/email verificata, cliente archiviato, debiti, pacchetti, mensili, quota e data lezione; snapshot del prezzo personalizzato.
+- [x] Stripe pagamenti-cliente: creazione entitlement + ledger atomica e deduplicata per PaymentIntent (record_stripe_client_payment).
+- [x] QA automatica: dart analyze lib test pulito; flutter test --no-pub 7/7; node --check sugli asset modificati; audit statico migration 30-38 e git diff --check puliti.
+- [ ] **DEPLOY**: applicare migration 00000000000031-00000000000038; deployare admin-manage-client e la nuova stripe-webhook; pubblicare gli asset PWA (CACHE_NAME palestria-v591).
+- [ ] **QA INTEGRAZIONE/PRODUZIONE**: con DB Supabase reale verificare concorrenza capienza, retry idempotenti, consumo/refund pacchetto e quota mensile, grace period, rettifiche, cambio email e webhook Stripe. Aggiungere scenari cross-tenant/RLS dedicati alle nuove RPC.
+- [ ] **QA VISIVA**: verificare su Android e PWA desktop/mobile i bottom sheet vendita/gestione cliente, card salute, controlli prezzo/note e override. Il browser integrato non era disponibile in questa sessione.
+
+---
+
+## ✅ Flutter — fix funzionali post-review (2026-07-10)
+
+- [x] Cambio email sincronizzato server-side dopo conferma Auth (`00000000000030`): aggiorna `profiles` e prenotazioni collegate.
+- [x] Inviti staff reali via Edge `invite-org-member`; blocco cross-tenant; ruolo staff con agenda odierna read-only e RLS dedicata.
+- [x] Enforcement piano + toggle per Schede, Messaggi, Report AI e Stripe Connect sia nella UI sia nelle Edge sensibili.
+- [x] Notifiche Flutter dopo prenotazione/annullamento + avviso slot disponibile (best-effort, non altera l'esito della transazione).
+- [x] Password recovery nativa (`palestria://app/recovery`) con nuova schermata e route protetta.
+- [x] Membership: selezione della membership realmente attiva; storico prenotazioni esteso a 190 giorni per i grafici mensili.
+- [x] Billing SaaS ricaricato automaticamente al rientro dal browser Stripe.
+- [x] Verifiche: `dart analyze lib test` pulito; `flutter test --no-pub` 4/4 passati; manifest XML valido; `git diff --check` pulito.
+- [ ] **DEPLOY OBBLIGATORIO**: `supabase db push`; deploy `invite-org-member`, `send-admin-message`, `generate-monthly-report`, `stripe-connect`; aggiungere `palestria://app/recovery` agli URL redirect consentiti in Supabase Auth remoto.
+- [ ] **BUILD/QA DEVICE**: la build locale si ferma per un path Nextcloud corrotto/troncato (`C:\Users\andre\Nextcloud\...`), non per errori Dart. Buildare da un clone/cartella locale non virtualizzata e verificare recovery, invito staff, agenda staff, feature gating e push.
+
+---
+## 🔐 Flutter — hardening code/security review (2026-07-10)
+
+- [x] Build release fail-closed se manca `android/key.properties`; nessun APK/AAB release può usare accidentalmente la firma debug.
+- [x] Gate client-side su `/admin` basato su `orgContext.isOrgAdmin` (RLS/RPC restano autoritativi).
+- [x] `pending_studio` associato a email, con scadenza 48 ore e pulizia al logout/cambio account.
+- [x] URL Checkout/Portal/Stripe Connect validati: solo HTTPS e host Stripe/applicativi ammessi.
+- [x] Deep link custom ristretto a `palestria://app/join/*`; inviti ordinari già HTTPS.
+- [x] Rimosso il test Counter obsoleto; aggiunti test della allowlist URL.
+- [x] QA locale rieseguita con accesso toolchain: analyze pulito e test 4/4 passati.
+
+---
 ## 🔁 Port gemello Thomas 2026-07-05→07-09 — PWA + Flutter (parità piena) — FIX APPLICATI, DEPLOY DA FARE
 Portate le **7 voci nuove** del changelog Thomas dal 2026-07-05 (l'ultimo port era 2026-07-04). Scelta utente: **parità piena su PWA e Flutter** + entrambi i port opzionali. Le 2 voci crediti 2026-07-04 restano **N/A §11**. Web: `node --check` OK, `sw.js` `CACHE_NAME` → **palestria-v586**. Flutter: `flutter analyze lib` **PULITO**, **NON buildato/committato** (lo fa l'utente).
 
@@ -63,15 +103,15 @@ Il port PWA→Flutter aveva grafica divergente (ogni schermata reinventava card/
 
 **🧩 DEFERITE — pagine/funzioni grosse ancora mancanti vs web (NON grafiche, da prioritizzare)**
 Raccolte dagli audit 1:1. Le più impattanti in alto:
-- **⚠️ ALTA — Admin Prenotazioni/Orari**: **aumento capienza slot / "posto extra" + editor "Override per data"** (`schedule_overrides`). Oggi NON esiste alcun modo in-app di aumentare la capienza; il messaggio d'errore "aggiungi un posto extra" rimanda a una UI inesistente → **dead-end da chiudere per primo**. (+ vista split tipi misti, chip debito/badge doc sul partecipante, auto-gestione richieste cancellazione, barra occupazione.)
-- **ALTA — Admin Pagamenti**: **flusso "Registra incasso"** (vendi pacchetto / registra abbonamento, RPC `admin_sell_package`/`admin_record_membership_payment`) — il trainer non può vendere pacchetti/abbonamenti dall'app.
-- **Admin Clienti**: editor "Modifica contatto" (nome/tel/email/CF/indirizzo) + `admin_rename_client`; elimina cliente; azioni per-prenotazione; "Situazione economica" (sessioni residue, oggi "—"); "Schede assegnate".
+- [x] **ALTA - Admin Prenotazioni/Orari**: override per data e aumento capienza completati in Flutter e PWA; restano come rifiniture split tipi misti, badge partecipante e barra occupazione avanzata.
+- [x] **ALTA - Admin Pagamenti**: flusso vendita pacchetto/mensile e rettifiche completato in Flutter e PWA con RPC idempotenti.
+- **Admin Clienti**: modifica contatto, email Auth, situazione economica, modello tariffario, archiviazione e reset operativo completati; restano azioni per-prenotazione e una vista piu ricca delle schede assegnate.
 - **Admin Schede**: picker catalogo 7200 esercizi + tab Importa; superset/circuiti; riordino; creazione/eliminazione scheda+template dall'admin; vista "Live"; sezione Clienti+progressi.
 - **Admin Impostazioni**: Backup&Ripristino; Verifica integrità dati (health check); Policy prenotazione (5 card: blocco cert/assicurazione + badge); Branding (URL logo/favicon, nome PWA, durata, color-picker); report XLSX settimanale/fiscale.
 - **Admin Registro**: filtri estesi (tipo-evento/lezione/metodo/stato/custom/reset), tabella/paginazione desktop, colonne Metodo/Stato/Nota, finestra dati oltre 60gg, ricerca telefono/email.
 - **Admin Statistiche**: filtro "Personalizzato" (range date); banner + export XLSX settimanale.
 - **Admin Messaggi**: popup risultato invio nominale (recapitati/falliti); selezione orario dagli slot reali; gating feature `messaging`.
-- **Auth/Shell**: login Google/OAuth; reset-password via deep link; gating piano SaaS (entitlements) sui tab; toggle "nascondi dati sensibili" 👁; campi anagrafici completi (CF/indirizzo/CAP) nel signup cliente; role-guard `/admin`; risoluzione ruolo staff.
+- **Auth/Shell**: login Google/OAuth; reset-password via deep link; gating piano SaaS (entitlements) sui tab; toggle "nascondi dati sensibili" 👁; campi anagrafici completi (CF/indirizzo/CAP) nel signup cliente; risoluzione ruolo staff.
 - **Cliente Prenotazioni**: gating certificato/anagrafica al submit; notifiche push admin su prenotazione/annullamento dall'app.
 - **Cliente Allenamento**: anteprima PDF a pagine + lightbox; modifica esercizio/circuito esistente; **riordino esercizi drag&drop** (backend `reorderExercises` già pronto); immagine+zoom card Progressi; anteprima video nel picker; coda offline/retry; selezione "giorno intelligente"; download PNG QR tablet.
 - **Cliente Profilo**: grafico "Allenamenti mensili" con storico completo (oggi sottoconta i mesi vecchi); selezione membership attiva allineata al web.
@@ -84,7 +124,7 @@ Nota: alcune sono intrinsecamente web/desktop (backup file, catalogo 7200, XLSX)
 Review completa di `Flutter/palestria_app` (focus sicurezza per pubblicazione). **2 batch di fix applicati** (⚠️ `flutter analyze` sempre pulito, ma NON buildato APK né committato — lo fa l'utente). Restano poche voci: 1 azione utente (keystore), 2 migration DB da deployare, 1 parità web, alcune rifiniture non bloccanti.
 
 **Blocker di pubblicazione**
-- [x] **Firma release da `key.properties`** ([build.gradle.kts](Flutter/palestria_app/android/app/build.gradle.kts)): `signingConfigs.release` legge `android/key.properties` (gitignorato), fallback a debug se assente. Creato `android/key.properties.example` (istruzioni keytool). **✅ FATTO (2026-07-08)**: keystore di upload generato (`C:\Users\andrea\keystores\palestria-upload.jks`, alias `upload`, RSA2048/10000gg) + `android/key.properties` reale creato (gitignore verificato). AAB firmato buildato (`flutter build appbundle --release`).
+- [x] **Firma release da `key.properties`** ([build.gradle.kts](Flutter/palestria_app/android/app/build.gradle.kts)): `signingConfigs.release` legge `android/key.properties` (gitignorato); i task release falliscono se il file è assente. Creato `android/key.properties.example` (istruzioni keytool). **✅ FATTO (2026-07-08)**: keystore di upload generato (`C:\Users\andrea\keystores\palestria-upload.jks`, alias `upload`, RSA2048/10000gg) + `android/key.properties` reale creato (gitignore verificato). AAB firmato buildato (`flutter build appbundle --release`).
 - [x] **`allowBackup="false"`** ([AndroidManifest.xml](Flutter/palestria_app/android/app/src/main/AndroidManifest.xml)): il refresh token Supabase non esce più dal device via backup/transfer.
 
 **Pubblicazione Play Store — 2026-07-08**
@@ -528,7 +568,7 @@ Sintomi: PWA va spesso chiusa/riaperta o refreshata; freeze "alla 2ª prenotazio
 
 ## 🧩 Funzionalità da completare / rifinire
 - [ ] **Pagina pubblica per anonimi**: la griglia slot per il cliente NON loggato deve venire dalla RPC pubblica `get_availability_range`/config — oggi gli orari si caricano "pieni" solo da loggato (la RLS non espone slot_types/template agli anonimi). Necessario per i link pubblici `?org=<slug>`.
-- [ ] **UI cambio modello billing per-cliente**: oggi il modello si imposta solo *vendendo* un abbonamento/pacchetto (auto-override). Aggiungere un selettore nel dettaglio cliente per impostarlo a mano (incl. tornare a "a entrata").
+- [x] **UI cambio modello billing per-cliente**: selettore e modifica prezzo/note disponibili nel dettaglio cliente Flutter e PWA.
 - [ ] **Calendario**: refresh automatico dopo modifica della settimana tipo (oggi serve ricaricare la pagina).
 - [ ] **Notifiche**: `supabase secrets set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY` + deploy `notify-admin-*`, `notify-slot-available`, `send-reminders`; verificare che leggano le chiavi `notif.*` per-org.
 - [x] **Fix console (2026-06-14)**: (1) 404 `app_settings` — lettore `data_cleared_at` migrato a `org_settings` in `data.js` (lo scrittore lo era già); (2) 400 in loop `monthly_reports.year_month` — forward migration `00000000000015` allinea le colonne di lettura della tabella (la baseline aveva uno stub `month`/`tone`/`content`) + circuit-breaker su errore hard in `admin-schede.js` (prima reschedule infinito). Cache-bust: `data.js?v=88` (9 pagine), `admin-schede.js?v=45`, `sw.js` v555. ⚠️ **DA DEPLOYARE** (`supabase db push` + Pages).

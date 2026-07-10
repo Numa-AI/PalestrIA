@@ -151,7 +151,7 @@ enabled = true
 # in emails.
 site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["https://127.0.0.1:3000", "palestria://app/recovery"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -431,6 +431,9 @@ verify_jwt = true
 [functions.send-admin-message]
 verify_jwt = true
 
+[functions.invite-org-member]
+verify_jwt = true
+
 # Promemoria prenotazioni (cron/scheduler): valida il Bearer internamente.
 [functions.send-reminders]
 verify_jwt = true
@@ -453,3 +456,6 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+[functions.admin-manage-client]
+verify_jwt = true

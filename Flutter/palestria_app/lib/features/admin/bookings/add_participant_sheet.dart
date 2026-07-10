@@ -9,7 +9,11 @@ import '../../client/booking/booking_providers.dart';
 
 /// Picker cliente per aggiungere una prenotazione allo slot (spec-admin §3.5).
 Future<bool?> showAddParticipantSheet(
-    BuildContext context, WidgetRef ref, DaySlot slot, DateTime day) {
+  BuildContext context,
+  WidgetRef ref,
+  DaySlot slot,
+  DateTime day,
+) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -46,8 +50,9 @@ class _AddParticipantSheetState extends ConsumerState<_AddParticipantSheet> {
 
     return SafeArea(
       child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: _selected == null
@@ -63,11 +68,13 @@ class _AddParticipantSheetState extends ConsumerState<_AddParticipantSheet> {
     final results = q.isEmpty
         ? const <AdminClient>[]
         : clients
-            .where((c) =>
-                c.name.toLowerCase().contains(q) ||
-                (c.email ?? '').toLowerCase().contains(q))
-            .take(10)
-            .toList();
+              .where(
+                (c) =>
+                    c.name.toLowerCase().contains(q) ||
+                    (c.email ?? '').toLowerCase().contains(q),
+              )
+              .take(10)
+              .toList();
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -90,23 +97,30 @@ class _AddParticipantSheetState extends ConsumerState<_AddParticipantSheet> {
           child: q.isEmpty
               ? const SizedBox.shrink()
               : results.isEmpty
-                  ? const Center(
-                      child: Text('Nessun cliente trovato',
-                          style: TextStyle(color: AppColors.subtle)))
-                  : ListView(
-                      children: [
-                        for (final c in results)
-                          ListTile(
-                            title: Text(c.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            subtitle: Text(c.email ?? c.whatsapp ?? '',
-                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => setState(() => _selected = c),
-                          ),
-                      ],
-                    ),
+              ? const Center(
+                  child: Text(
+                    'Nessun cliente trovato',
+                    style: TextStyle(color: AppColors.subtle),
+                  ),
+                )
+              : ListView(
+                  children: [
+                    for (final c in results)
+                      ListTile(
+                        title: Text(
+                          c.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          c.email ?? c.whatsapp ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => setState(() => _selected = c),
+                      ),
+                  ],
+                ),
         ),
       ],
     );
@@ -128,14 +142,16 @@ class _AddParticipantSheetState extends ConsumerState<_AddParticipantSheet> {
             ),
           ],
         ),
-        Text(client.name,
-            style: const TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w800)),
+        Text(
+          client.name,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
         Text(client.email ?? client.whatsapp ?? '', style: AppText.meta),
         const SizedBox(height: AppSpacing.lg),
         Text(
-            'Slot: ${config.slotName(widget.slot.slotType)} · ${widget.slot.time}',
-            style: AppText.meta),
+          'Slot: ${config.slotName(widget.slot.slotType)} · ${widget.slot.time}',
+          style: AppText.meta,
+        ),
         const SizedBox(height: AppSpacing.md),
         FilledButton(
           onPressed: _booking ? null : () => _book(client),
@@ -168,14 +184,14 @@ class _AddParticipantSheetState extends ConsumerState<_AddParticipantSheet> {
     if (error == null) {
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Prenotazione aggiunta per ${client.name}')));
+        SnackBar(content: Text('Prenotazione aggiunta per ${client.name}')),
+      );
     } else {
       setState(() => _booking = false);
       final msg = error == 'slot_full'
           ? 'Slot pieno: aggiungi un posto extra, poi riprova.'
           : '⚠️ Errore: prenotazione non riuscita. Riprova.';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 }

@@ -467,7 +467,20 @@ async function handleBookingSubmit(e) {
         } else if (result.error === 'server_error' && !navigator.onLine) {
             showToast('Sei offline. Connettiti a internet per prenotare.', 'error');
         } else {
-            showToast('Errore durante la prenotazione. Riprova tra qualche secondo.', 'error');
+            const messages = {
+                not_bookable: 'Questa lezione non è prenotabile.',
+                no_package: 'Non hai un pacchetto attivo con lezioni disponibili. Contatta il tuo PT.',
+                membership_expired: 'Il tuo abbonamento non copre questa data. Contatta il tuo PT.',
+                quota_exceeded: 'Hai esaurito le lezioni incluse nel tuo abbonamento.',
+                outstanding_balance: 'Prenotazione bloccata per pagamenti da regolarizzare. Contatta il tuo PT.',
+                login_required: 'Questo indirizzo è già registrato: accedi prima di prenotare.',
+                identity_mismatch: 'L’email inserita appartiene a un altro account.',
+                client_archived: 'Il profilo è archiviato. Contatta il tuo PT.',
+                client_not_found: 'Il cliente selezionato non è disponibile.',
+                invalid_email: 'Inserisci un indirizzo email valido.',
+                slot_busy: 'Lo slot è in aggiornamento. Riprova tra pochi secondi.'
+            };
+            showToast(messages[result.error] || 'Errore durante la prenotazione. Riprova tra qualche secondo.', 'error');
         }
         return;
     }

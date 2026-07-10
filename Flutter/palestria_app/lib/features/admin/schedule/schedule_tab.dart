@@ -10,10 +10,9 @@ import 'activation_editor.dart';
 import 'slot_type_editor.dart';
 import 'template_editor.dart';
 import 'time_slot_editor.dart';
+import 'override_editor.dart';
 
-/// Tab Gestione Orari (spec-admin §4): **editor tipi di lezione** (CRUD) +
-/// vista fasce orarie e settimane attivate. L'editing di template/attivazione
-/// settimane/override è in arrivo (per ora resta sul web).
+/// Gestione completa di tipi lezione, fasce, template, settimane e override.
 class ScheduleTab extends ConsumerWidget {
   const ScheduleTab({super.key});
 
@@ -30,7 +29,11 @@ class ScheduleTab extends ConsumerWidget {
       },
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          100,
+        ),
         children: [
           const Text('Gestione Orari', style: AppText.pageTitle),
           const SizedBox(height: AppSpacing.lg),
@@ -38,29 +41,34 @@ class ScheduleTab extends ConsumerWidget {
           _fasceSection(context, ref, slotsAsync),
           const TemplateEditorSection(),
           const ActivationEditorSection(),
-          const SizedBox(height: AppSpacing.md),
-          const Text(
-            'Gli override di capienza per singola data si gestiscono (per ora) '
-            'dal pannello web.',
-            style: TextStyle(fontSize: 12, color: AppColors.subtle),
-          ),
+          const OverrideEditorSection(),
         ],
       ),
     );
   }
 
   // ── Tipi di lezione (editabili) ─────────────────────────────────────────────
-  Widget _typesSection(BuildContext context, WidgetRef ref,
-      AsyncValue<List<Map<String, dynamic>>> typesAsync) {
+  Widget _typesSection(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<Map<String, dynamic>>> typesAsync,
+  ) {
     final types = typesAsync.value ?? const [];
     final keys = [for (final t in types) (t['key'] as String?) ?? ''];
     return _section(
       '🏷️ Tipi di lezione',
       trailing: IconButton(
-        icon: Icon(Icons.add_circle, color: Theme.of(context).colorScheme.primary),
+        icon: Icon(
+          Icons.add_circle,
+          color: Theme.of(context).colorScheme.primary,
+        ),
         tooltip: 'Nuovo tipo',
-        onPressed: () => showSlotTypeEditor(context, ref,
-            existingKeys: keys, defaultSort: types.length),
+        onPressed: () => showSlotTypeEditor(
+          context,
+          ref,
+          existingKeys: keys,
+          defaultSort: types.length,
+        ),
       ),
       children: [
         if (typesAsync.isLoading && types.isEmpty)
@@ -69,16 +77,22 @@ class ScheduleTab extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (types.isEmpty)
-          const Text('Nessun tipo configurato. Creane uno per iniziare.',
-              style: AppText.meta)
+          const Text(
+            'Nessun tipo configurato. Creane uno per iniziare.',
+            style: AppText.meta,
+          )
         else
           for (final st in types) _typeRow(context, ref, st, keys),
       ],
     );
   }
 
-  Widget _typeRow(BuildContext context, WidgetRef ref,
-      Map<String, dynamic> st, List<String> keys) {
+  Widget _typeRow(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> st,
+    List<String> keys,
+  ) {
     final active = (st['is_active'] as bool?) ?? true;
     final bookable = (st['bookable'] as bool?) ?? true;
     final price = (st['default_price'] as num?)?.toDouble() ?? 0;
@@ -92,9 +106,11 @@ class ScheduleTab extends ConsumerWidget {
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                  color: OrgBranding.parseHex(st['color'] as String?) ??
-                      AppColors.primary,
-                  shape: BoxShape.circle),
+                color:
+                    OrgBranding.parseHex(st['color'] as String?) ??
+                    AppColors.primary,
+                shape: BoxShape.circle,
+              ),
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
@@ -104,32 +120,47 @@ class ScheduleTab extends ConsumerWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: Text((st['label'] as String?) ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 14)),
+                        child: Text(
+                          (st['label'] as String?) ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                       if (!bookable) _tag('non prenotabile'),
                       if (!active) _tag('disattivo'),
                     ],
                   ),
                   Text(
-                      'capienza ${(st['default_capacity'] as num?)?.toInt() ?? 0} · €${price.toStringAsFixed(2)}',
-                      style:
-                          const TextStyle(fontSize: 12.5, color: AppColors.muted)),
+                    'capienza ${(st['default_capacity'] as num?)?.toInt() ?? 0} · €${price.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.muted,
+                    ),
+                  ),
                 ],
               ),
             ),
             IconButton(
               icon: const Icon(Icons.edit, size: 18),
               tooltip: 'Modifica',
-              onPressed: () => showSlotTypeEditor(context, ref,
-                  existing: st, existingKeys: keys, defaultSort: 0),
+              onPressed: () => showSlotTypeEditor(
+                context,
+                ref,
+                existing: st,
+                existingKeys: keys,
+                defaultSort: 0,
+              ),
             ),
             IconButton(
-              icon: const Icon(Icons.delete_outline,
-                  size: 18, color: AppColors.dangerDark),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: AppColors.dangerDark,
+              ),
               tooltip: 'Elimina',
               onPressed: () => _deleteType(context, ref, st),
             ),
@@ -140,24 +171,31 @@ class ScheduleTab extends ConsumerWidget {
   }
 
   Future<void> _deleteType(
-      BuildContext context, WidgetRef ref, Map<String, dynamic> st) async {
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> st,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Elimina tipo'),
         content: Text(
-            'Eliminare il tipo "${st['label']}"? Verrà rimosso anche dalle '
-            'settimane tipo.'),
+          'Eliminare il tipo "${st['label']}"? Verrà rimosso anche dalle '
+          'settimane tipo.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Elimina')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
         ],
       ),
     );
@@ -170,32 +208,47 @@ class ScheduleTab extends ConsumerWidget {
       ref.invalidate(scheduleConfigProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Tipo eliminato.')));
     } catch (e) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showSnackBar(
+        const SnackBar(
           content: Text(
-              'Impossibile eliminare (potrebbe essere usato in prenotazioni).')));
+            'Impossibile eliminare (potrebbe essere usato in prenotazioni).',
+          ),
+        ),
+      );
     }
   }
 
   Widget _tag(String text) => Container(
-        margin: const EdgeInsets.only(left: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-        decoration: BoxDecoration(
-          color: AppColors.slateBg,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.muted)),
-      );
+    margin: const EdgeInsets.only(left: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    decoration: BoxDecoration(
+      color: AppColors.slateBg,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 9,
+        fontWeight: FontWeight.w700,
+        color: AppColors.muted,
+      ),
+    ),
+  );
 
   // ── Fasce orarie (editabili) ────────────────────────────────────────────────
-  Widget _fasceSection(BuildContext context, WidgetRef ref,
-      AsyncValue<List<Map<String, dynamic>>> slotsAsync) {
+  Widget _fasceSection(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<Map<String, dynamic>>> slotsAsync,
+  ) {
     final slots = slotsAsync.value ?? const [];
     return _section(
       '🕐 Fasce orarie',
       trailing: IconButton(
-        icon: Icon(Icons.add_circle, color: Theme.of(context).colorScheme.primary),
+        icon: Icon(
+          Icons.add_circle,
+          color: Theme.of(context).colorScheme.primary,
+        ),
         tooltip: 'Nuova fascia',
         onPressed: () =>
             showTimeSlotEditor(context, ref, defaultSort: slots.length),
@@ -207,8 +260,10 @@ class ScheduleTab extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (slots.isEmpty)
-          const Text('Nessuna fascia configurata. Aggiungine una.',
-              style: AppText.meta)
+          const Text(
+            'Nessuna fascia configurata. Aggiungine una.',
+            style: AppText.meta,
+          )
         else
           for (final ts in slots) _slotRow(context, ref, ts),
       ],
@@ -216,7 +271,10 @@ class ScheduleTab extends ConsumerWidget {
   }
 
   Widget _slotRow(
-      BuildContext context, WidgetRef ref, Map<String, dynamic> ts) {
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> ts,
+  ) {
     final active = (ts['is_active'] as bool?) ?? true;
     final range = _slotLabel(ts);
     final label = (ts['label'] as String?) ?? '';
@@ -232,28 +290,40 @@ class ScheduleTab extends ConsumerWidget {
                 color: AppColors.slateBg,
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: Text('🕐 $range',
-                  style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: AppText.tabularNums)),
+              child: Text(
+                '🕐 $range',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: AppText.tabularNums,
+                ),
+              ),
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-              child: Text(label.isEmpty ? '' : label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: AppColors.muted)),
+              child: Text(
+                label.isEmpty ? '' : label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, color: AppColors.muted),
+              ),
             ),
             IconButton(
               icon: const Icon(Icons.edit, size: 18),
               tooltip: 'Modifica',
-              onPressed: () =>
-                  showTimeSlotEditor(context, ref, existing: ts, defaultSort: 0),
+              onPressed: () => showTimeSlotEditor(
+                context,
+                ref,
+                existing: ts,
+                defaultSort: 0,
+              ),
             ),
             IconButton(
-              icon: const Icon(Icons.delete_outline,
-                  size: 18, color: AppColors.dangerDark),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: AppColors.dangerDark,
+              ),
               tooltip: 'Elimina',
               onPressed: () => _deleteSlot(context, ref, ts),
             ),
@@ -270,24 +340,31 @@ class ScheduleTab extends ConsumerWidget {
   }
 
   Future<void> _deleteSlot(
-      BuildContext context, WidgetRef ref, Map<String, dynamic> ts) async {
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> ts,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Elimina fascia'),
         content: Text(
-            'Eliminare la fascia "${_slotLabel(ts)}"? Verrà rimossa dalle '
-            'settimane tipo.'),
+          'Eliminare la fascia "${_slotLabel(ts)}"? Verrà rimossa dalle '
+          'settimane tipo.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.dangerDark),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Elimina')),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.dangerDark,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Elimina'),
+          ),
         ],
       ),
     );
@@ -298,30 +375,35 @@ class ScheduleTab extends ConsumerWidget {
       await repo.deleteTimeSlot(ts['id'] as String);
       ref.invalidate(allTimeSlotsProvider);
       ref.invalidate(scheduleConfigProvider);
-      messenger.showSnackBar(const SnackBar(content: Text('Fascia eliminata.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Fascia eliminata.')),
+      );
     } catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Errore eliminazione: $e')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Errore eliminazione: $e')),
+      );
     }
   }
 
-  Widget _section(String title,
-          {required List<Widget> children, Widget? trailing}) =>
-      AppCard(
-        margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-        radius: AppRadius.cardLg,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _section(
+    String title, {
+    required List<Widget> children,
+    Widget? trailing,
+  }) => AppCard(
+    margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+    radius: AppRadius.cardLg,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Expanded(child: Text(title, style: AppText.cardTitle)),
-                ?trailing,
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            ...children,
+            Expanded(child: Text(title, style: AppText.cardTitle)),
+            ?trailing,
           ],
         ),
-      );
+        const SizedBox(height: AppSpacing.sm),
+        ...children,
+      ],
+    ),
+  );
 }

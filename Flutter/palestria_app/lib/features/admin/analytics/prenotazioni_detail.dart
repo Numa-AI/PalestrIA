@@ -9,8 +9,18 @@ import '../../../core/theme/ui_kit.dart';
 import 'stats_charts.dart';
 
 const _monthsShort = [
-  'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-  'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+  'Gen',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mag',
+  'Giu',
+  'Lug',
+  'Ago',
+  'Set',
+  'Ott',
+  'Nov',
+  'Dic',
 ];
 const _dayLabels = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
@@ -86,15 +96,15 @@ class PrenotazioniDetail extends StatelessWidget {
         : 0;
     final scheduleEstimate = (scheduledDays > 0 && futureUnscheduledDays > 0)
         ? period.length +
-            (period.length / scheduledDays * futureUnscheduledDays).round()
+              (period.length / scheduledDays * futureUnscheduledDays).round()
         : period.length;
 
     // ── Trend mensile 12+1 ──────────────────────────────────────────────────
     int countIn(DateTime a, DateTime b) => bookings.where((x) {
-          if (x.status == 'cancelled') return false;
-          final d = _pd(x.date);
-          return d != null && !d.isBefore(a) && d.isBefore(b);
-        }).length;
+      if (x.status == 'cancelled') return false;
+      final d = _pd(x.date);
+      return d != null && !d.isBefore(a) && d.isBefore(b);
+    }).length;
 
     final cmFrom = DateTime(now.year, now.month, 1);
     final cmTo = DateTime(now.year, now.month + 1, 1);
@@ -103,15 +113,18 @@ class PrenotazioniDetail extends StatelessWidget {
     final cmDaysElapsed = math.max(today.day - 1, 1);
     final cmDaysTotal = DateTime(now.year, now.month + 1, 0).day;
     final cmLinear = (cmActual * cmDaysTotal / cmDaysElapsed).round();
-    final cmEstimate = cmActual + math.max(cmFuture, math.max(cmLinear - cmActual, 0));
+    final cmEstimate =
+        cmActual + math.max(cmFuture, math.max(cmLinear - cmActual, 0));
 
     final trendLabels = <String>[], solid = <num>[], projected = <num>[];
     for (var i = -11; i <= 1; i++) {
       final d = DateTime(now.year, now.month + i, 1);
       final mFrom = DateTime(d.year, d.month, 1);
       final mTo = DateTime(d.year, d.month + 1, 1);
-      trendLabels.add(_monthsShort[d.month - 1] +
-          (d.year != now.year ? " '${d.year % 100}" : ''));
+      trendLabels.add(
+        _monthsShort[d.month - 1] +
+            (d.year != now.year ? " '${d.year % 100}" : ''),
+      );
       if (i == 0) {
         solid.add(cmActual);
         projected.add(math.max(0, cmEstimate - cmActual));
@@ -130,10 +143,14 @@ class PrenotazioniDetail extends StatelessWidget {
       byType[b.slotType] = (byType[b.slotType] ?? 0) + 1;
     }
     final typeSlices = [
-      for (final e in (byType.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value))))
-        DonutSlice(config?.slotName(e.key) ?? e.key, e.value,
-            config?.slotColor(e.key) ?? AppColors.primary),
+      for (final e
+          in (byType.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value))))
+        DonutSlice(
+          config?.slotName(e.key) ?? e.key,
+          e.value,
+          config?.slotColor(e.key) ?? AppColors.primary,
+        ),
     ];
 
     // ── Per giorno della settimana (Lun..Dom) ───────────────────────────────
@@ -178,15 +195,19 @@ class PrenotazioniDetail extends StatelessWidget {
           Row(
             children: [
               const Expanded(
-                child: Text('📅 Prenotazioni — Dettaglio',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                child: Text(
+                  '📅 Prenotazioni — Dettaglio',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
               ),
-              Text(filterLabel,
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.subtle)),
+              Text(
+                filterLabel,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.subtle),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -198,8 +219,12 @@ class PrenotazioniDetail extends StatelessWidget {
               _kpi(context, '${future.length}', 'Future'),
               _kpi(context, '$scheduleEstimate', 'Stima futura'),
               _kpi(context, weeklyAvg.toStringAsFixed(1), 'Media sett.'),
-              _kpi(context, '$cancelRate%', 'Cancellazioni',
-                  warn: cancelRate > 5),
+              _kpi(
+                context,
+                '$cancelRate%',
+                'Cancellazioni',
+                warn: cancelRate > 5,
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -224,61 +249,80 @@ class PrenotazioniDetail extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           _blockTitle('Per fascia oraria'),
-          _hBars(
-              [for (final e in timeSorted) (e.key, e.value)],
-              const Color(0xFFF97316)),
+          _hBars([
+            for (final e in timeSorted) (e.key, e.value),
+          ], const Color(0xFFF97316)),
           const SizedBox(height: AppSpacing.lg),
           _blockTitle('Top 5 slot più comuni'),
-          _hBars(
-              [for (final e in topSlots.take(5)) (e.key, e.value)],
-              AppColors.primary),
+          _hBars([
+            for (final e in topSlots.take(5)) (e.key, e.value),
+          ], AppColors.primary),
           const SizedBox(height: AppSpacing.md),
           _breakdownRow('Fascia oraria più popolare', peakTime),
           _breakdownRow('Giorno più popolare', _dayLabels[peakDayIdx]),
           _breakdownRow(
-              'Stima futura (+$futureUnscheduledDays gg futuri senza slot)',
-              '$scheduleEstimate'),
+            'Stima futura (+$futureUnscheduledDays gg futuri senza slot)',
+            '$scheduleEstimate',
+          ),
         ],
       ),
     );
   }
 
   Widget _blockTitle(String s) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(s,
-            style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.muted)),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      s,
+      style: const TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        color: AppColors.muted,
+      ),
+    ),
+  );
 
-  Widget _kpi(BuildContext context, String value, String label,
-      {bool warn = false}) {
+  Widget _kpi(
+    BuildContext context,
+    String value,
+    String label, {
+    bool warn = false,
+  }) {
     return Container(
-      width: (MediaQuery.of(context).size.width - 2 * AppSpacing.lg - 2 * AppSpacing.sm - 4) / 3,
+      width:
+          (MediaQuery.of(context).size.width -
+              2 * AppSpacing.lg -
+              2 * AppSpacing.sm -
+              4) /
+          3,
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(
         color: warn ? const Color(0xFFFEF2F2) : const Color(0xFFFAFAFA),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: warn ? const Color(0x33EF4444) : AppColors.border),
+          color: warn ? const Color(0x33EF4444) : AppColors.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: warn ? AppColors.dangerDark : const Color(0xFF111111),
-                  fontFeatures: AppText.tabularNums)),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: warn ? AppColors.dangerDark : const Color(0xFF111111),
+              fontFeatures: AppText.tabularNums,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: AppColors.subtle)),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10.5, color: AppColors.subtle),
+          ),
         ],
       ),
     );
@@ -298,11 +342,15 @@ class PrenotazioniDetail extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 78,
-                  child: Text(r.$1,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11.5, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    r.$1,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
                 Expanded(
                   child: ClipRRect(
@@ -316,9 +364,13 @@ class PrenotazioniDetail extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${r.$2}',
-                    style: const TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w700)),
+                Text(
+                  '${r.$2}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
@@ -327,19 +379,21 @@ class PrenotazioniDetail extends StatelessWidget {
   }
 
   Widget _breakdownRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontSize: 12.5, color: Color(0xFF6B7280))),
-            ),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w700)),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12.5, color: Color(0xFF6B7280)),
+          ),
         ),
-      );
+        Text(
+          value,
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
+      ],
+    ),
+  );
 }

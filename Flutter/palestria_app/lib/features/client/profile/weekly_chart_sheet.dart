@@ -7,8 +7,18 @@ import '../../admin/analytics/stats_charts.dart';
 import '../booking/booking_providers.dart';
 
 const _monthsShort = [
-  'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-  'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+  'Gen',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mag',
+  'Giu',
+  'Lug',
+  'Ago',
+  'Set',
+  'Ott',
+  'Nov',
+  'Dic',
 ];
 const _past = AppColors.blue500;
 const _future = Color(0xFFE63946);
@@ -94,22 +104,30 @@ class _WeeklyChartSheetState extends ConsumerState<WeeklyChartSheet> {
               children: [
                 Expanded(
                   child: Text(
-                      _monthly
-                          ? 'Allenamenti mensili'
-                          : 'Allenamenti settimanali',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w800)),
+                    _monthly
+                        ? 'Allenamenti mensili'
+                        : 'Allenamenti settimanali',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
                 OutlinedButton(
                   onPressed: () => setState(() => _monthly = !_monthly),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
-                  child: Text(_monthly ? 'Vista settimanale' : 'Vista mensile',
-                      style: const TextStyle(fontSize: 12)),
+                  child: Text(
+                    _monthly ? 'Vista settimanale' : 'Vista mensile',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
               ],
             ),
@@ -139,18 +157,20 @@ class _WeeklyChartSheetState extends ConsumerState<WeeklyChartSheet> {
   }
 
   Widget _legend(Color c, String label) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                  color: c, borderRadius: BorderRadius.circular(2))),
-          const SizedBox(width: 6),
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: c,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+    ],
+  );
 }
 
 /// Apre il modal grafico allenamenti (§7.6).
@@ -159,8 +179,10 @@ void showWeeklyChart(BuildContext context) {
     context: context,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.modalLg))),
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(AppRadius.modalLg),
+      ),
+    ),
     builder: (_) => const WeeklyChartSheet(),
   );
 }

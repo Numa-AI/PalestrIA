@@ -21,30 +21,30 @@ class OrgBranding {
   final String? studioName;
 
   Color get primaryDark => Color.fromARGB(
-        255,
-        ((primary.r * 255.0) * 0.9).round().clamp(0, 255),
-        ((primary.g * 255.0) * 0.9).round().clamp(0, 255),
-        ((primary.b * 255.0) * 0.9).round().clamp(0, 255),
-      );
+    255,
+    ((primary.r * 255.0) * 0.9).round().clamp(0, 255),
+    ((primary.g * 255.0) * 0.9).round().clamp(0, 255),
+    ((primary.b * 255.0) * 0.9).round().clamp(0, 255),
+  );
 
   /// Gradiente primario 135deg usato da bottoni/tab attive/dock.
   LinearGradient get primaryGradient => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [primary, primaryDark],
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [primary, primaryDark],
+  );
 
   Map<String, dynamic> toJson() => {
-        'primary': primary.toARGB32(),
-        'logoUrl': logoUrl,
-        'studioName': studioName,
-      };
+    'primary': primary.toARGB32(),
+    'logoUrl': logoUrl,
+    'studioName': studioName,
+  };
 
   static OrgBranding fromJson(Map<String, dynamic> json) => OrgBranding(
-        primary: Color(json['primary'] as int? ?? 0xFF8B5CF6),
-        logoUrl: json['logoUrl'] as String?,
-        studioName: json['studioName'] as String?,
-      );
+    primary: Color(json['primary'] as int? ?? 0xFF8B5CF6),
+    logoUrl: json['logoUrl'] as String?,
+    studioName: json['studioName'] as String?,
+  );
 
   static Color? parseHex(String? hex) {
     if (hex == null) return null;
@@ -70,8 +70,7 @@ class OrgBrandingNotifier extends Notifier<OrgBranding> {
     final raw = prefs.getString(_snapshotKey);
     if (raw == null) return;
     try {
-      _initial =
-          OrgBranding.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      _initial = OrgBranding.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
       // snapshot corrotto: si riparte dal default
     }
@@ -90,8 +89,9 @@ class OrgBrandingNotifier extends Notifier<OrgBranding> {
   }
 }
 
-final orgBrandingProvider =
-    NotifierProvider<OrgBrandingNotifier, OrgBranding>(OrgBrandingNotifier.new);
+final orgBrandingProvider = NotifierProvider<OrgBrandingNotifier, OrgBranding>(
+  OrgBrandingNotifier.new,
+);
 
 /// ThemeData dell'app costruito dai design tokens + branding org corrente.
 ThemeData buildAppTheme(OrgBranding branding) {
@@ -142,9 +142,14 @@ ThemeData buildAppTheme(OrgBranding branding) {
         backgroundColor: primary,
         foregroundColor: Colors.white,
         textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w700),
+          fontFamily: kFontFamily,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.xl, vertical: 14),
+          horizontal: AppSpacing.xl,
+          vertical: 14,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.button),
         ),
@@ -155,9 +160,14 @@ ThemeData buildAppTheme(OrgBranding branding) {
         foregroundColor: AppColors.slate800,
         side: const BorderSide(color: AppColors.border),
         textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w600),
+          fontFamily: kFontFamily,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.xl, vertical: 14),
+          horizontal: AppSpacing.xl,
+          vertical: 14,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.button),
         ),
@@ -167,14 +177,19 @@ ThemeData buildAppTheme(OrgBranding branding) {
       style: TextButton.styleFrom(
         foregroundColor: primary,
         textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 14, fontWeight: FontWeight.w600),
+          fontFamily: kFontFamily,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.surface,
       contentPadding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: 13),
+        horizontal: AppSpacing.lg,
+        vertical: 13,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.input),
         borderSide: const BorderSide(color: AppColors.border),
@@ -188,7 +203,10 @@ ThemeData buildAppTheme(OrgBranding branding) {
         borderSide: BorderSide(color: primary, width: 2),
       ),
       hintStyle: const TextStyle(
-          fontFamily: kFontFamily, color: AppColors.subtle, fontSize: 15),
+        fontFamily: kFontFamily,
+        color: AppColors.subtle,
+        fontSize: 15,
+      ),
       labelStyle: AppText.label,
     ),
     dividerTheme: const DividerThemeData(
@@ -199,8 +217,7 @@ ThemeData buildAppTheme(OrgBranding branding) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: AppColors.navy,
-      contentTextStyle:
-          const TextStyle(color: Colors.white, fontSize: 14),
+      contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.toast),
       ),
@@ -208,8 +225,9 @@ ThemeData buildAppTheme(OrgBranding branding) {
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.sheet),
+        ),
       ),
       showDragHandle: true,
     ),

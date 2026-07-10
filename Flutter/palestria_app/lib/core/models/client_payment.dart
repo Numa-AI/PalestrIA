@@ -30,16 +30,16 @@ class ClientPayment {
   final DateTime? periodEnd;
 
   static ClientPayment fromRow(Map<String, dynamic> row) => ClientPayment(
-        id: row['id'] as String,
-        amount: (row['amount'] as num?)?.toDouble() ?? 0,
-        currency: (row['currency'] as String?) ?? 'EUR',
-        method: (row['method'] as String?) ?? '',
-        kind: (row['kind'] as String?) ?? '',
-        createdAt: _date(row['created_at']),
-        note: row['note'] as String?,
-        periodStart: _date(row['period_start']),
-        periodEnd: _date(row['period_end']),
-      );
+    id: row['id'] as String,
+    amount: (row['amount'] as num?)?.toDouble() ?? 0,
+    currency: (row['currency'] as String?) ?? 'EUR',
+    method: (row['method'] as String?) ?? '',
+    kind: (row['kind'] as String?) ?? '',
+    createdAt: _date(row['created_at']),
+    note: row['note'] as String?,
+    periodStart: _date(row['period_start']),
+    periodEnd: _date(row['period_end']),
+  );
 
   static DateTime? _date(Object? v) =>
       v == null ? null : DateTime.tryParse(v.toString());

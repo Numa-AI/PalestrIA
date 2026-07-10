@@ -35,9 +35,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   int _visible = 5;
 
   void _selectTab(int i) => setState(() {
-        _tab = i;
-        _visible = 5;
-      });
+    _tab = i;
+    _visible = 5;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -117,9 +117,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Text(
               initial,
               style: const TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white),
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
           ),
           const SizedBox(width: AppSpacing.md),
@@ -127,9 +128,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Text(
               fullName.isEmpty ? '—' : fullName,
               style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white),
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
               overflow: TextOverflow.ellipsis,
               maxLines: 2,
             ),
@@ -139,7 +141,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             style: IconButton.styleFrom(
               backgroundColor: const Color(0x1FFFFFFF),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             icon: const Icon(Icons.edit, size: 16, color: Colors.white),
             tooltip: 'Modifica profilo',
@@ -159,7 +162,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
             padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg, vertical: 11),
+              horizontal: AppSpacing.lg,
+              vertical: 11,
+            ),
             decoration: BoxDecoration(
               color: expired ? AppColors.dangerSurface : AppColors.warnSurface,
               borderRadius: BorderRadius.circular(12),
@@ -189,23 +194,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       indirizzoCap: p.indirizzoCap,
     );
     if (!anagraficaOk) {
-      warnings.add(banner('📋 Completa anagrafica',
+      warnings.add(
+        banner(
+          '📋 Completa anagrafica',
           expired: false,
-          onTap: () => showEditProfileSheet(context, ref, p)));
+          onTap: () => showEditProfileSheet(context, ref, p),
+        ),
+      );
     }
 
     // Il warning "Imposta" ha senso solo se il cliente può davvero
     // impostare la scadenza (setting org 'cert_scadenza_editable').
-    final certEditable = ref
+    final certEditable =
+        ref
             .watch(orgSettingsProvider)
             .value
             ?.getBool('cert_scadenza_editable', true) ??
         true;
     if (p.medicalCertExpiry == null) {
       if (certEditable) {
-        warnings.add(banner('📋 Imposta Cert. Medico',
+        warnings.add(
+          banner(
+            '📋 Imposta Cert. Medico',
             expired: false,
-            onTap: () => showEditProfileSheet(context, ref, p)));
+            onTap: () => showEditProfileSheet(context, ref, p),
+          ),
+        );
       }
     } else {
       // Normalizza "oggi" e la scadenza a mezzanotte PRIMA del diff:
@@ -219,9 +233,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (days < 0) {
         warnings.add(banner('⚠️ Certificato medico scaduto', expired: true));
       } else if (days <= 30) {
-        warnings.add(banner(
+        warnings.add(
+          banner(
             '⏳ Cert. medico scade fra $days giorn${days == 1 ? 'o' : 'i'}',
-            expired: false));
+            expired: false,
+          ),
+        );
       }
     }
     return warnings;
@@ -254,14 +271,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(status.title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: AppColors.darkBg)),
-                Text(status.detail,
-                    style: const TextStyle(
-                        fontSize: 13.5, color: AppColors.muted)),
+                Text(
+                  status.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppColors.darkBg,
+                  ),
+                ),
+                Text(
+                  status.detail,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    color: AppColors.muted,
+                  ),
+                ),
               ],
             ),
           ),
@@ -275,35 +299,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final primary = Theme.of(context).colorScheme.primary;
 
     Widget tab(String label, int index) => Expanded(
-          child: GestureDetector(
-            onTap: () => _selectTab(index),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              decoration: BoxDecoration(
-                color: _tab == index ? primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: _tab == index
-                    ? [
-                        BoxShadow(
-                            color: primary.withValues(alpha: 0.35),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3)),
-                      ]
-                    : null,
-              ),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: _tab == index ? Colors.white : AppColors.muted,
-                ),
-              ),
+      child: GestureDetector(
+        onTap: () => _selectTab(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: _tab == index ? primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: _tab == index
+                ? [
+                    BoxShadow(
+                      color: primary.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: _tab == index ? Colors.white : AppColors.muted,
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     return Container(
       padding: const EdgeInsets.all(5),
@@ -321,8 +346,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  List<Widget> _tabContent() =>
-      _tab == 2 ? _transactionsContent() : _bookingsContent(upcoming: _tab == 0);
+  List<Widget> _tabContent() => _tab == 2
+      ? _transactionsContent()
+      : _bookingsContent(upcoming: _tab == 0);
 
   /// Contenuto Prossime/Passate: card prenotazioni con paginazione 5 → +20.
   List<Widget> _bookingsContent({required bool upcoming}) {
@@ -339,16 +365,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ],
       data: (all) {
         final now = DateTime.now();
-        final list = all
-            .where((b) => upcoming
-                ? lessonStart(b.date, b.time).isAfter(now)
-                : !lessonStart(b.date, b.time).isAfter(now))
-            .toList()
-          ..sort((a, b) => upcoming
-              ? lessonStart(a.date, a.time)
-                  .compareTo(lessonStart(b.date, b.time))
-              : lessonStart(b.date, b.time)
-                  .compareTo(lessonStart(a.date, a.time)));
+        final list =
+            all
+                .where(
+                  (b) => upcoming
+                      ? lessonStart(b.date, b.time).isAfter(now)
+                      : !lessonStart(b.date, b.time).isAfter(now),
+                )
+                .toList()
+              ..sort(
+                (a, b) => upcoming
+                    ? lessonStart(
+                        a.date,
+                        a.time,
+                      ).compareTo(lessonStart(b.date, b.time))
+                    : lessonStart(
+                        b.date,
+                        b.time,
+                      ).compareTo(lessonStart(a.date, a.time)),
+              );
 
         final visible = list.take(_visible).toList();
         final remaining = list.length - visible.length;
@@ -420,8 +455,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         style: OutlinedButton.styleFrom(
           foregroundColor: primary,
           side: const BorderSide(color: AppColors.borderGray, width: 1.5),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
         child: Text('Mostra altro ($remaining)'),
       ),
@@ -429,10 +465,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _transactionCard(ClientPayment p) {
-    final cur = ref.watch(orgSettingsProvider).value?.getString(
-              'locale.currency',
-              'EUR',
-            ) ??
+    final cur =
+        ref
+            .watch(orgSettingsProvider)
+            .value
+            ?.getString('locale.currency', 'EUR') ??
         'EUR';
     final sym = cur == 'EUR' ? '€' : '$cur ';
     final color = _kindColor(p.kind);
@@ -443,7 +480,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.lg,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -457,46 +496,58 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(_kindLabel(p.kind),
-                    style: const TextStyle(
-                        fontSize: 14.5, fontWeight: FontWeight.w700)),
+                child: Text(
+                  _kindLabel(p.kind),
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               Text(
                 '$sym${p.amount.toStringAsFixed(2)}',
                 style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.navy,
-                    fontFeatures: AppText.tabularNums),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.navy,
+                  fontFeatures: AppText.tabularNums,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 5),
           Row(
             children: [
-              const Icon(Icons.calendar_today_outlined,
-                  size: 13, color: AppColors.muted),
+              const Icon(
+                Icons.calendar_today_outlined,
+                size: 13,
+                color: AppColors.muted,
+              ),
               const SizedBox(width: 6),
-              Text(_fmtDate(p.createdAt),
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.muted)),
+              Text(
+                _fmtDate(p.createdAt),
+                style: const TextStyle(fontSize: 13, color: AppColors.muted),
+              ),
               const Spacer(),
-              Text(_methodLabel(p.method),
-                  style: const TextStyle(
-                      fontSize: 12.5, color: AppColors.subtle)),
+              Text(
+                _methodLabel(p.method),
+                style: const TextStyle(fontSize: 12.5, color: AppColors.subtle),
+              ),
             ],
           ),
           if (period != null) ...[
             const SizedBox(height: 4),
-            Text(period,
-                style:
-                    const TextStyle(fontSize: 12, color: AppColors.subtle)),
+            Text(
+              period,
+              style: const TextStyle(fontSize: 12, color: AppColors.subtle),
+            ),
           ],
           if (p.note != null && p.note!.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(p.note!,
-                style:
-                    const TextStyle(fontSize: 12, color: AppColors.subtle)),
+            Text(
+              p.note!,
+              style: const TextStyle(fontSize: 12, color: AppColors.subtle),
+            ),
           ],
         ],
       ),
@@ -504,34 +555,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   static String _kindLabel(String kind) => switch (kind) {
-        'session' => 'Lezione',
-        'membership' => 'Abbonamento',
-        'package_purchase' => 'Pacchetto',
-        'penalty_mora' => 'Mora',
-        'adjustment' => 'Rettifica',
-        _ => 'Pagamento',
-      };
+    'session' => 'Lezione',
+    'membership' => 'Abbonamento',
+    'package_purchase' => 'Pacchetto',
+    'penalty_mora' => 'Mora',
+    'adjustment' => 'Rettifica',
+    _ => 'Pagamento',
+  };
 
   static String _methodLabel(String method) => switch (method) {
-        'contanti' => '💵 Contanti',
-        'contanti-report' => '🧾 Contanti (Report)',
-        'carta' => '💳 Carta',
-        'iban' => '🏦 Bonifico',
-        'stripe' => '💳 Stripe',
-        'gratuito' => '🎁 Gratuito',
-        _ => method,
-      };
+    'contanti' => '💵 Contanti',
+    'contanti-report' => '🧾 Contanti (Report)',
+    'carta' => '💳 Carta',
+    'iban' => '🏦 Bonifico',
+    'stripe' => '💳 Stripe',
+    'gratuito' => '🎁 Gratuito',
+    _ => method,
+  };
 
   static Color _kindColor(String kind) => switch (kind) {
-        'session' => AppColors.navy,
-        'membership' => AppColors.green500,
-        'package_purchase' => AppColors.amber,
-        'penalty_mora' => AppColors.danger,
-        _ => AppColors.subtle,
-      };
+    'session' => AppColors.navy,
+    'membership' => AppColors.green500,
+    'package_purchase' => AppColors.amber,
+    'penalty_mora' => AppColors.danger,
+    _ => AppColors.subtle,
+  };
 
   static String _fmtDate(DateTime? d) => d == null
       ? ''
       : '${d.day.toString().padLeft(2, '0')}/'
-          '${d.month.toString().padLeft(2, '0')}/${d.year}';
+            '${d.month.toString().padLeft(2, '0')}/${d.year}';
 }

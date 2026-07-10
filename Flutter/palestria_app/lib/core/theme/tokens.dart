@@ -18,7 +18,9 @@ class AppColors {
   static const darkBg = Color(0xFF1A1A1A); // navbar/footer/hero
   static const darkGray = Color(0xFF2D2D2D);
   static const lightGray = Color(0xFFF8F9FA); // sfondo pagina base
-  static const slateBg = Color(0xFFF1F5F9); // sfondo pagine slate (allenamento/admin)
+  static const slateBg = Color(
+    0xFFF1F5F9,
+  ); // sfondo pagine slate (allenamento/admin)
   static const surface = Color(0xFFFFFFFF);
 
   // Testo
@@ -34,7 +36,9 @@ class AppColors {
   static const borderGray = Color(0xFFE5E7EB); // gray-200
 
   // Semantici
-  static const success = Color(0xFF06D6A0); // verde-teal (toast, badge confirmed)
+  static const success = Color(
+    0xFF06D6A0,
+  ); // verde-teal (toast, badge confirmed)
   static const successEmerald = Color(0xFF10B981);
   static const successEmeraldDark = Color(0xFF059669);
   static const warning = Color(0xFFF77F00);

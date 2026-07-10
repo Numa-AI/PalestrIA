@@ -58,7 +58,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final result = await ref.read(authRepositoryProvider).resetPassword(email);
     if (!mounted) return;
     if (result.ok) {
-      AppSnack.success(context, 'Email di recupero inviata: controlla la posta.');
+      AppSnack.success(
+        context,
+        'Email di recupero inviata: controlla la posta.',
+      );
     } else {
       AppSnack.error(context, result.error!);
     }
@@ -108,8 +111,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Center(child: _orgLogo(branding)),
-                      Text('Accedi',
-                          style: AppText.pageTitle, textAlign: TextAlign.center),
+                      Text(
+                        'Accedi',
+                        style: AppText.pageTitle,
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: AppSpacing.sm),
                       Text(
                         'Entra nel tuo studio',
@@ -134,9 +140,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         decoration: InputDecoration(
                           labelText: 'Password',
                           suffixIcon: IconButton(
-                            icon: Icon(_obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined),
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
                             onPressed: () =>
                                 setState(() => _obscure = !_obscure),
                           ),
@@ -151,9 +159,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         Text(
                           _error!,
                           style: const TextStyle(
-                              color: AppColors.dangerDark,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600),
+                            color: AppColors.dangerDark,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                       const SizedBox(height: AppSpacing.xl),
@@ -164,7 +173,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Text('Accedi'),
                       ),
@@ -174,14 +185,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: const Text('Password dimenticata?'),
                       ),
                       const Divider(height: AppSpacing.xxl),
-                      Text('Non hai ancora un account?',
-                          style: AppText.meta, textAlign: TextAlign.center),
+                      Text(
+                        'Non hai ancora un account?',
+                        style: AppText.meta,
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: AppSpacing.md),
                       OutlinedButton.icon(
                         onPressed: () => context.go('/signup'),
                         icon: const Icon(Icons.badge_outlined),
                         label: const Text(
-                            'Sono un cliente — ho un codice palestra'),
+                          'Sono un cliente — ho un codice palestra',
+                        ),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                         ),
@@ -191,7 +206,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         onPressed: () => context.go('/signup-trainer'),
                         icon: const Icon(Icons.storefront_outlined),
                         label: const Text(
-                            'Sono un personal trainer — crea studio'),
+                          'Sono un personal trainer — crea studio',
+                        ),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                         ),

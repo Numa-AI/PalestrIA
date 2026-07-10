@@ -11,7 +11,10 @@ import '../../../core/theme/ui_kit.dart';
 
 /// Modal "Modifica profilo" (§7.7 spec-client), come bottom sheet.
 Future<void> showEditProfileSheet(
-    BuildContext context, WidgetRef ref, UserProfile profile) {
+  BuildContext context,
+  WidgetRef ref,
+  UserProfile profile,
+) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -59,16 +62,25 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     _password2 = TextEditingController();
     _certExpiry = p.medicalCertExpiry;
     _certExpiryCtrl = TextEditingController(text: _formatDate(_certExpiry));
-    _insuranceExpiryCtrl =
-        TextEditingController(text: _formatDate(p.insuranceExpiry));
+    _insuranceExpiryCtrl = TextEditingController(
+      text: _formatDate(p.insuranceExpiry),
+    );
     _privacy = p.privacyPrenotazioni;
   }
 
   @override
   void dispose() {
     for (final c in [
-      _email, _whatsapp, _cf, _via, _paese, _cap, _password, _password2,
-      _certExpiryCtrl, _insuranceExpiryCtrl,
+      _email,
+      _whatsapp,
+      _cf,
+      _via,
+      _paese,
+      _cap,
+      _password,
+      _password2,
+      _certExpiryCtrl,
+      _insuranceExpiryCtrl,
     ]) {
       c.dispose();
     }
@@ -93,8 +105,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     }
     if (_password.text.isNotEmpty) {
       if (_password.text.length < 6) {
-        setState(
-            () => _error = 'La password deve avere almeno 6 caratteri.');
+        setState(() => _error = 'La password deve avere almeno 6 caratteri.');
         return;
       }
       if (_password.text != _password2.text) {
@@ -113,10 +124,10 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
           ? null
           : normalizePhone(_whatsapp.text);
       if (phone != null && phone != p.whatsapp) {
-        final taken = await client.rpc('is_whatsapp_taken', params: {
-          'phone': phone,
-          'exclude_user_id': session.user.id,
-        });
+        final taken = await client.rpc(
+          'is_whatsapp_taken',
+          params: {'phone': phone, 'exclude_user_id': session.user.id},
+        );
         if (taken == true) {
           setState(() {
             _error = 'Questo numero WhatsApp è già registrato.';
@@ -134,11 +145,13 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
         // email su profiles solo se INVARIATA (il cambio passa da auth)
         'email': emailChanged ? p.email : email,
         'whatsapp': phone,
-        'codice_fiscale':
-            _cf.text.trim().isEmpty ? null : _cf.text.trim().toUpperCase(),
+        'codice_fiscale': _cf.text.trim().isEmpty
+            ? null
+            : _cf.text.trim().toUpperCase(),
         'indirizzo_via': _via.text.trim().isEmpty ? null : _via.text.trim(),
-        'indirizzo_paese':
-            _paese.text.trim().isEmpty ? null : normalizeComune(_paese.text),
+        'indirizzo_paese': _paese.text.trim().isEmpty
+            ? null
+            : normalizeComune(_paese.text),
         'indirizzo_cap': cap.isEmpty ? null : cap,
         'privacy_prenotazioni': _privacy,
       };
@@ -153,8 +166,8 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
             .select('medical_cert_history')
             .eq('id', p.id)
             .maybeSingle();
-        final list =
-            ((history?['medical_cert_history'] as List?) ?? []).toList();
+        final list = ((history?['medical_cert_history'] as List?) ?? [])
+            .toList();
         list.add({
           'scadenza': newCert,
           'aggiornatoIl': DateTime.now().toIso8601String(),
@@ -162,8 +175,10 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
         updates['medical_cert_history'] = list;
       }
 
-      await client.from('profiles').upsert(updates).timeout(
-          const Duration(seconds: 12));
+      await client
+          .from('profiles')
+          .upsert(updates)
+          .timeout(const Duration(seconds: 12));
 
       var emailPending = false;
       if (emailChanged) {
@@ -171,8 +186,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
         emailPending = true;
       }
       if (_password.text.isNotEmpty) {
-        await client.auth
-            .updateUser(UserAttributes(password: _password.text));
+        await client.auth.updateUser(UserAttributes(password: _password.text));
       }
 
       ref.invalidate(userProfileProvider);
@@ -201,35 +215,50 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
   Widget build(BuildContext context) {
     // Il campo scadenza certificato è editabile dal cliente solo se la org
     // non l'ha riservato al trainer (setting 'cert_scadenza_editable').
-    final certEditable = ref
+    final certEditable =
+        ref
             .watch(orgSettingsProvider)
             .value
             ?.getBool('cert_scadenza_editable', true) ??
         true;
     // Niente sezione password per gli utenti OAuth (Google/Apple): non hanno
     // una password Supabase da cambiare.
-    final provider = Supabase
-        .instance.client.auth.currentSession?.user.appMetadata['provider']
-        as String?;
+    final provider =
+        Supabase
+                .instance
+                .client
+                .auth
+                .currentSession
+                ?.user
+                .appMetadata['provider']
+            as String?;
     final showPasswordSection = provider == null || provider == 'email';
 
     Widget sectionTitle(String title) => Padding(
-          padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: 6),
-          child: Text(title.toUpperCase(),
-              style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.subtle,
-                  letterSpacing: 0.6)),
-        );
+      padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: 6),
+      child: Text(
+        title.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
+          color: AppColors.subtle,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
 
     return SafeArea(
       child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xl, AppSpacing.sm, AppSpacing.xl, AppSpacing.xl),
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.xl,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,9 +271,10 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                     child: Text(
                       p.name.isEmpty ? '?' : p.name[0].toUpperCase(),
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700),
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
@@ -252,12 +282,18 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Modifica profilo',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w700)),
-                        Text(p.email,
-                            style: AppText.meta,
-                            overflow: TextOverflow.ellipsis),
+                        const Text(
+                          'Modifica profilo',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          p.email,
+                          style: AppText.meta,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
@@ -280,22 +316,21 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                 controller: _whatsapp,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
-                    labelText: 'Numero WhatsApp',
-                    hintText: '+39 348 1234567'),
+                  labelText: 'Numero WhatsApp',
+                  hintText: '+39 348 1234567',
+                ),
               ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _cf,
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 16,
-                decoration:
-                    const InputDecoration(labelText: 'Codice Fiscale'),
+                decoration: const InputDecoration(labelText: 'Codice Fiscale'),
               ),
               sectionTitle('Indirizzo'),
               TextField(
                 controller: _via,
-                decoration:
-                    const InputDecoration(labelText: 'Via / Indirizzo'),
+                decoration: const InputDecoration(labelText: 'Via / Indirizzo'),
               ),
               const SizedBox(height: AppSpacing.md),
               Row(
@@ -304,8 +339,9 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                     flex: 2,
                     child: TextField(
                       controller: _paese,
-                      decoration:
-                          const InputDecoration(labelText: 'Paese / Città'),
+                      decoration: const InputDecoration(
+                        labelText: 'Paese / Città',
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
@@ -326,9 +362,9 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                 current: _certExpiry,
                 onChanged: certEditable
                     ? (d) => setState(() {
-                          _certExpiry = d;
-                          _certExpiryCtrl.text = _formatDate(d);
-                        })
+                        _certExpiry = d;
+                        _certExpiryCtrl.text = _formatDate(d);
+                      })
                     : null,
               ),
               const SizedBox(height: AppSpacing.md),
@@ -344,27 +380,30 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                   controller: _password,
                   obscureText: true,
                   decoration: const InputDecoration(
-                      labelText:
-                          'Nuova password (lascia vuoto per non cambiare)'),
+                    labelText: 'Nuova password (lascia vuoto per non cambiare)',
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
                   controller: _password2,
                   obscureText: true,
                   decoration: const InputDecoration(
-                      labelText: 'Conferma nuova password'),
+                    labelText: 'Conferma nuova password',
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.md),
               ],
               CheckboxListTile(
                 value: _privacy,
                 onChanged: (v) => setState(() => _privacy = v ?? true),
-                title: const Text('Privacy prenotazioni',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                title: const Text(
+                  'Privacy prenotazioni',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
                 subtitle: const Text(
-                    'Se attivo, il tuo nome non sarà visibile agli altri nelle prenotazioni.',
-                    style: TextStyle(fontSize: 12.5)),
+                  'Se attivo, il tuo nome non sarà visibile agli altri nelle prenotazioni.',
+                  style: TextStyle(fontSize: 12.5),
+                ),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
               ),
@@ -377,11 +416,14 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                     border: Border.all(color: const Color(0xFFFECACA)),
                     borderRadius: BorderRadius.circular(AppRadius.input),
                   ),
-                  child: Text(_error!,
-                      style: const TextStyle(
-                          color: AppColors.dangerDark,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600)),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: AppColors.dangerDark,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               const SizedBox(height: AppSpacing.lg),
               FilledButton(

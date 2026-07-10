@@ -87,7 +87,7 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
         final when = _date == null
             ? ''
             : ' del ${_date!.day}/${_date!.month}/${_date!.year}'
-                '${_time != null && _time!.trim().isNotEmpty ? ' alle ${_time!.trim()}' : ''}';
+                  '${_time != null && _time!.trim().isNotEmpty ? ' alle ${_time!.trim()}' : ''}';
         return 'i clienti$when';
       default:
         return 'tutti i clienti';
@@ -95,23 +95,24 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
   }
 
   Future<bool?> _confirmSend() => showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Conferma invio'),
-          content: Text(
-              'Inviare la notifica "${_title.text.trim()}" a ${_recipientsLabel()}?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Invia'),
-            ),
-          ],
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Conferma invio'),
+      content: Text(
+        'Inviare la notifica "${_title.text.trim()}" a ${_recipientsLabel()}?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Annulla'),
         ),
-      );
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Invia'),
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +120,11 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.md, AppSpacing.md, 100),
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        100,
+      ),
       children: [
         const Text('Messaggi', style: AppText.pageTitle),
         const SizedBox(height: AppSpacing.md),
@@ -146,7 +151,9 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
               const SizedBox(height: 6),
               SegmentedButton<String>(
                 style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: Theme.of(context).colorScheme.primary,
+                  selectedBackgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primary,
                   selectedForegroundColor: Colors.white,
                 ),
                 segments: const [
@@ -157,8 +164,7 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
                 selected: {_mode},
                 onSelectionChanged: (s) => setState(() {
                   _mode = s.first;
-                  if ((_mode == 'giorno' || _mode == 'ora') &&
-                      _date == null) {
+                  if ((_mode == 'giorno' || _mode == 'ora') && _date == null) {
                     _date = DateTime.now();
                   }
                 }),
@@ -176,9 +182,11 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
                     if (picked != null) setState(() => _date = picked);
                   },
                   icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                  label: Text(_date == null
-                      ? 'Scegli data'
-                      : '${_date!.day}/${_date!.month}/${_date!.year}'),
+                  label: Text(
+                    _date == null
+                        ? 'Scegli data'
+                        : '${_date!.day}/${_date!.month}/${_date!.year}',
+                  ),
                 ),
               ],
               if (_mode == 'ora') ...[
@@ -213,16 +221,24 @@ class _MessaggiTabState extends ConsumerState<MessaggiTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text((m['title'] as String?) ?? '—',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 13.5)),
-                        Text((m['body'] as String?) ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 12, color: AppColors.muted)),
+                        Text(
+                          (m['title'] as String?) ?? '—',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        Text(
+                          (m['body'] as String?) ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
                       ],
                     ),
                   ),

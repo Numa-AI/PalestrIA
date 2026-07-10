@@ -70,6 +70,23 @@ async function resolveAdminOrg(supabase: any, token: string) {
     return { user, orgId: membership.org_id as string };
 }
 
+async function tenantFeatureEnabled(supabase: any, orgId: string, feature: string): Promise<boolean> {
+    const { data: sub, error: subError } = await supabase
+        .from("subscriptions")
+        .select("status, plans(features)")
+        .eq("org_id", orgId)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!sub || !["trialing", "active"].includes(sub.status)) return false;
+    const planRaw: any = sub.plans;
+    const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw;
+    if (plan?.features?.[feature] !== true) return false;
+    const { data: setting, error: settingError } = await supabase
+        .from("org_settings").select("value")
+        .eq("org_id", orgId).eq("key", `features.${feature}`).maybeSingle();
+    if (settingError) throw settingError;
+    return setting == null || setting.value === true;
+}
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders });
@@ -151,6 +168,9 @@ Deno.serve(async (req) => {
         return json({ error: msg, code: who.error }, status);
     }
     const orgId = who.orgId;
+    if (action === "start" && !await tenantFeatureEnabled(supabase, orgId, "client_online_payments")) {
+        return json({ error: "Pagamenti online non disponibili per il piano o disattivati", code: "feature_disabled" }, 403);
+    }
 
     try {
         if (action === "start") {

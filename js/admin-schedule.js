@@ -1046,20 +1046,15 @@ async function schedSaveOverride(timeLabel, tsId) {
     // vuoto/invalido → null (= default del tipo); '0' resta uno 0 legittimo
     const capacity = rawCap === '' ? null : _schedParseInt(rawCap, null);
 
-    const payload = {
-        org_id: org,
-        date: _schedOverrideDate,
-        time: timeLabel,
-        slot_type: st ? st.key : null,
-        slot_type_id: stId,
-        capacity
-    };
+    if (capacity === null || capacity < 0) { _schedToast('⚠️ Inserisci una capienza valida (anche 0).', 'error'); return; }
 
     try {
-        // upsert sul vincolo unico (org_id, date, time)
-        const { error } = await supabaseClient
-            .from('schedule_overrides')
-            .upsert(payload, { onConflict: 'org_id,date,time' });
+        const { error } = await supabaseClient.rpc('admin_upsert_schedule_override', {
+            p_date: _schedOverrideDate,
+            p_time: timeLabel,
+            p_slot_type_id: stId,
+            p_capacity: capacity,
+        });
         if (error) throw error;
         _schedToast('✅ Override salvato.');
         await _schedLoadOverrides(_schedOverrideDate);
@@ -1075,12 +1070,10 @@ async function schedDeleteOverride(timeLabel) {
     if (!org || !_schedOverrideDate) return;
     if (!await showConfirm(`Rimuovere l'override delle ${timeLabel} del ${_schedOverrideDate}?`)) return;
     try {
-        const { error } = await supabaseClient
-            .from('schedule_overrides')
-            .delete()
-            .eq('org_id', org)
-            .eq('date', _schedOverrideDate)
-            .eq('time', timeLabel);
+        const { error } = await supabaseClient.rpc('admin_delete_schedule_override', {
+            p_date: _schedOverrideDate,
+            p_time: timeLabel,
+        });
         if (error) throw error;
         _schedToast('🗑️ Override rimosso.');
         await _schedLoadOverrides(_schedOverrideDate);

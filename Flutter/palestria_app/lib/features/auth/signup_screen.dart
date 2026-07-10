@@ -54,8 +54,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           .rpc('get_public_org_settings', params: {'p_org_slug': slug});
       final name = (res is Map) ? res['branding.studio_name'] as String? : null;
       if (mounted) {
-        setState(() => _studioName =
-            (name != null && name.trim().isNotEmpty) ? name.trim() : '');
+        setState(
+          () => _studioName = (name != null && name.trim().isNotEmpty)
+              ? name.trim()
+              : '',
+        );
       }
     } catch (_) {
       if (mounted) setState(() => _studioName = null);
@@ -76,29 +79,33 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     }
     final children = <Widget>[];
     if (_lockedSlug && _studioName == '') {
-      children.add(_studioBanner(
-        icon: Icons.error_outline,
-        color: AppColors.dangerDark,
-        bg: AppColors.dangerSurface,
-        title: '⚠️ Palestra non riconosciuta',
-        value: 'Codice: ${widget.orgSlug}',
-      ));
+      children.add(
+        _studioBanner(
+          icon: Icons.error_outline,
+          color: AppColors.dangerDark,
+          bg: AppColors.dangerSurface,
+          title: '⚠️ Palestra non riconosciuta',
+          value: 'Codice: ${widget.orgSlug}',
+        ),
+      );
       children.add(const SizedBox(height: AppSpacing.sm));
     }
-    children.add(TextFormField(
-      controller: _orgSlug,
-      readOnly: _lockedSlug,
-      decoration: InputDecoration(
-        labelText: 'Codice palestra',
-        prefixIcon: _lockedSlug ? const Icon(Icons.verified_outlined) : null,
-        helperText: _lockedSlug
-            ? 'Ti stai iscrivendo a questo studio.'
-            : 'Te lo fornisce il tuo trainer (es. "studio-rossi").',
+    children.add(
+      TextFormField(
+        controller: _orgSlug,
+        readOnly: _lockedSlug,
+        decoration: InputDecoration(
+          labelText: 'Codice palestra',
+          prefixIcon: _lockedSlug ? const Icon(Icons.verified_outlined) : null,
+          helperText: _lockedSlug
+              ? 'Ti stai iscrivendo a questo studio.'
+              : 'Te lo fornisce il tuo trainer (es. "studio-rossi").',
+        ),
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? 'Inserisci il codice della tua palestra.'
+            : null,
       ),
-      validator: (v) => (v == null || v.trim().isEmpty)
-          ? 'Inserisci il codice della tua palestra.'
-          : null,
-    ));
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
@@ -127,17 +134,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: color)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
               ],
             ),
           ),
@@ -160,7 +173,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       _loading = true;
       _error = null;
     });
-    final result = await ref.read(authRepositoryProvider).registerClient(
+    final result = await ref
+        .read(authRepositoryProvider)
+        .registerClient(
           name: _name.text,
           email: _email.text,
           password: _password.text,
@@ -173,8 +188,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       setState(() => _error = result.error);
       return;
     }
-    AppSnack.success(context,
-        'Registrazione inviata! Se richiesto, conferma la tua email e poi accedi.');
+    AppSnack.success(
+      context,
+      'Registrazione inviata! Se richiesto, conferma la tua email e poi accedi.',
+    );
     context.go('/login');
   }
 
@@ -198,8 +215,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _name,
-                      decoration:
-                          const InputDecoration(labelText: 'Nome e cognome'),
+                      decoration: const InputDecoration(
+                        labelText: 'Nome e cognome',
+                      ),
                       validator: (v) => (v == null || v.trim().length < 2)
                           ? 'Inserisci il tuo nome.'
                           : null,
@@ -218,14 +236,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       controller: _whatsapp,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                          labelText: 'WhatsApp (opzionale)'),
+                        labelText: 'WhatsApp (opzionale)',
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _password,
                       obscureText: true,
-                      decoration:
-                          const InputDecoration(labelText: 'Password'),
+                      decoration: const InputDecoration(labelText: 'Password'),
                       validator: (v) => (v == null || v.length < 6)
                           ? 'La password deve avere almeno 6 caratteri.'
                           : null,
@@ -235,9 +253,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       Text(
                         _error!,
                         style: const TextStyle(
-                            color: AppColors.dangerDark,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600),
+                          color: AppColors.dangerDark,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                     const SizedBox(height: AppSpacing.xl),
@@ -248,7 +267,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Text('Crea account'),
                     ),

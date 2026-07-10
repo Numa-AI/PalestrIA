@@ -262,102 +262,28 @@ async function handleClientPayment(session: Stripe.Checkout.Session): Promise<vo
     const clientEmail  = session.customer_details?.email || session.customer_email || md.client_email || null;
     const bookingId    = md.booking_id || null;
 
-    // 1) Idempotenza: se esiste già un payment con questo intent, non rifacciamo nulla.
-    const { data: existingPay, error: existErr } = await supabase
-        .from("payments")
-        .select("id")
-        .eq("stripe_payment_intent", paymentIntentId)
-        .maybeSingle();
-    if (existErr) console.error("[stripe-webhook] lookup payment esistente errore:", existErr.message);
-    if (existingPay) {
-        console.log(`[stripe-webhook] client payment già registrato (intent ${paymentIntentId}), skip`);
-        return;
-    }
-
-    // 2) Crea l'eventuale pacchetto / abbonamento prima del payment, così possiamo
-    //    collegarne l'id nel ledger (FK opzionali su payments).
-    let packageId: string | null = null;
-    let membershipId: string | null = null;
-
-    if (kind === "package_purchase") {
-        const totalSessions = parseInt(md.total_sessions || "0", 10);
-        if (clientUserId && totalSessions > 0) {
-            const { data: pkg, error: pkgErr } = await supabase
-                .from("client_packages")
-                .insert({
-                    org_id:             orgId,
-                    user_id:            clientUserId,
-                    label:              md.package_label || "Pacchetto",
-                    total_sessions:     totalSessions,
-                    remaining_sessions: totalSessions,
-                    expires_at:         md.expires_at || null,
-                    price:              amount,
-                    status:             "active",
-                })
-                .select("id")
-                .single();
-            if (pkgErr) console.error("[stripe-webhook] insert client_packages errore:", pkgErr.message);
-            else packageId = pkg?.id ?? null;
-        } else {
-            console.warn("[stripe-webhook] package_purchase: client_user_id o total_sessions mancanti, salto creazione pacchetto");
-        }
-    }
-
-    if (kind === "membership") {
-        const periodStart = md.period_start || null;
-        const periodEnd   = md.period_end   || null;
-        if (clientUserId && periodStart && periodEnd) {
-            const lessonsQuota = md.lessons_quota ? parseInt(md.lessons_quota, 10) : null;
-            const { data: mem, error: memErr } = await supabase
-                .from("client_memberships")
-                .insert({
-                    org_id:        orgId,
-                    user_id:       clientUserId,
-                    plan_label:    md.plan_label || "Abbonamento",
-                    period_start:  periodStart,
-                    period_end:    periodEnd,
-                    lessons_quota: lessonsQuota,
-                    price:         amount,
-                    status:        "active",
-                })
-                .select("id")
-                .single();
-            if (memErr) console.error("[stripe-webhook] insert client_memberships errore:", memErr.message);
-            else membershipId = mem?.id ?? null;
-        } else {
-            console.warn("[stripe-webhook] membership: client_user_id/period_start/period_end mancanti, salto creazione abbonamento");
-        }
-    }
-
-    // 3) Riga ledger nel payments. method='stripe' (pagamento online cliente).
-    const { error: payErr } = await supabase
-        .from("payments")
-        .insert({
-            org_id:               orgId,
-            client_user_id:       clientUserId,
-            client_email:         clientEmail,
-            amount,
-            currency,
-            method:               "stripe",
-            kind,
-            booking_id:           bookingId,
-            membership_id:        membershipId,
-            package_id:           packageId,
-            note:                 md.note || null,
-            stripe_payment_intent: paymentIntentId,
-        });
-
-    if (payErr) {
-        // 23505 = unique_violation: race con un altro tentativo → trattiamo come idempotente.
-        if ((payErr as { code?: string }).code === "23505") {
-            console.log(`[stripe-webhook] client payment race su intent ${paymentIntentId}, già presente`);
-            return;
-        }
-        console.error("[stripe-webhook] insert payments errore:", payErr.message);
-        throw payErr;
-    }
-
-    console.log(`[stripe-webhook] client payment registrato org=${orgId} kind=${kind} amount=${amount}${currency} intent=${paymentIntentId}`);
+    const totalSessions = md.total_sessions ? parseInt(md.total_sessions, 10) : null;
+    const lessonsQuota = md.lessons_quota ? parseInt(md.lessons_quota, 10) : null;
+    const { data, error } = await supabase.rpc("record_stripe_client_payment", {
+        p_org_id: orgId,
+        p_payment_intent: paymentIntentId,
+        p_kind: kind,
+        p_amount: amount,
+        p_currency: currency,
+        p_client_user_id: clientUserId,
+        p_client_email: clientEmail,
+        p_booking_id: bookingId,
+        p_total_sessions: totalSessions,
+        p_package_label: md.package_label || null,
+        p_expires_at: md.expires_at || null,
+        p_plan_label: md.plan_label || null,
+        p_period_start: md.period_start || null,
+        p_period_end: md.period_end || null,
+        p_lessons_quota: lessonsQuota,
+        p_note: md.note || null,
+    });
+    if (error) throw error;
+    console.log(`[stripe-webhook] client payment registrato org=${orgId} kind=${kind} amount=${amount}${currency} intent=${paymentIntentId} idempotent=${Boolean(data?.idempotent)}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

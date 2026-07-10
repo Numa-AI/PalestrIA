@@ -33,19 +33,20 @@ Future<int> shareFiscalReport({
 
   final byEmail = <String, AdminProfile>{
     for (final p in profiles)
-      if (p.email.isNotEmpty) p.email.toLowerCase(): p
+      if (p.email.isNotEmpty) p.email.toLowerCase(): p,
   };
 
   final dt = DateFormat('dd/MM/yyyy HH:mm', 'it_IT');
 
-  final filtered = payments
-      .where((p) => reportMethods.contains(p.method) && p.amount > 0)
-      .toList()
-    ..sort((a, b) {
-      final ax = a.createdAt?.toIso8601String() ?? '';
-      final bx = b.createdAt?.toIso8601String() ?? '';
-      return ax.compareTo(bx);
-    });
+  final filtered =
+      payments
+          .where((p) => reportMethods.contains(p.method) && p.amount > 0)
+          .toList()
+        ..sort((a, b) {
+          final ax = a.createdAt?.toIso8601String() ?? '';
+          final bx = b.createdAt?.toIso8601String() ?? '';
+          return ax.compareTo(bx);
+        });
 
   final data = <List<String>>[];
   for (final p in filtered) {
@@ -54,9 +55,11 @@ Future<int> shareFiscalReport({
     final parts = full.isEmpty ? <String>[] : full.split(RegExp(r'\s+'));
     final nome = parts.isEmpty ? '' : parts.first;
     final cognome = parts.length <= 1 ? '' : parts.sublist(1).join(' ');
-    final addr = [u?.indirizzoVia, u?.indirizzoPaese, u?.indirizzoCap]
-        .where((x) => x != null && x.isNotEmpty)
-        .join(', ');
+    final addr = [
+      u?.indirizzoVia,
+      u?.indirizzoPaese,
+      u?.indirizzoCap,
+    ].where((x) => x != null && x.isNotEmpty).join(', ');
     data.add([
       nome,
       cognome,
@@ -89,8 +92,10 @@ Future<int> shareFiscalReport({
         ),
         pw.SizedBox(height: 10),
         if (data.isEmpty)
-          pw.Text('Nessun pagamento fiscale nel periodo.',
-              style: const pw.TextStyle(fontSize: 11))
+          pw.Text(
+            'Nessun pagamento fiscale nel periodo.',
+            style: const pw.TextStyle(fontSize: 11),
+          )
         else
           pw.TableHelper.fromTextArray(
             headers: const [
@@ -101,13 +106,14 @@ Future<int> shareFiscalReport({
               'Data e Ora',
               'Tipo',
               'Metodo',
-              'Importo (€)'
+              'Importo (€)',
             ],
             data: data,
-            headerStyle:
-                pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
-            headerDecoration:
-                const pw.BoxDecoration(color: PdfColors.grey200),
+            headerStyle: pw.TextStyle(
+              fontSize: 8,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
             cellStyle: const pw.TextStyle(fontSize: 8),
             cellAlignment: pw.Alignment.centerLeft,
             cellAlignments: {7: pw.Alignment.centerRight},
@@ -129,7 +135,9 @@ Future<int> shareFiscalReport({
   final bytes = await doc.save();
   final dateFmt = DateFormat('dd-MM-yyyy').format(now);
   await Printing.sharePdf(
-      bytes: bytes, filename: 'PalestrIA_Report_Fiscale_$dateFmt.pdf');
+    bytes: bytes,
+    filename: 'PalestrIA_Report_Fiscale_$dateFmt.pdf',
+  );
   return data.length;
 }
 

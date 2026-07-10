@@ -11,8 +11,18 @@ import '../../../core/theme/ui_kit.dart';
 import 'stats_charts.dart';
 
 const _monthsShort = [
-  'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
-  'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'
+  'Gen',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mag',
+  'Giu',
+  'Lug',
+  'Ago',
+  'Set',
+  'Ott',
+  'Nov',
+  'Dic',
 ];
 
 /// Pannello drill-down "Fatturato — Dettaglio" (port di renderFatturatoDetail,
@@ -57,32 +67,35 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     // In Reale i pagamenti di oggi sono già incassati → confine = domani.
-    final pastCutoff =
-        _reale ? today.add(const Duration(days: 1)) : today;
+    final pastCutoff = _reale ? today.add(const Duration(days: 1)) : today;
 
     double price(Booking b) => bookingPrice(b, widget.settings, widget.config);
 
     // Booking non-cancellati, esclusi i gratuiti.
     final valid = widget.bookings
-        .where((b) =>
-            b.status != 'cancelled' && b.paymentMethod != 'lezione-gratuita')
+        .where(
+          (b) =>
+              b.status != 'cancelled' && b.paymentMethod != 'lezione-gratuita',
+        )
         .toList();
     final period = valid.where((b) {
       final d = _pd(b.date);
-      return d != null &&
-          !d.isBefore(widget.from) &&
-          !d.isAfter(widget.to);
+      return d != null && !d.isBefore(widget.from) && !d.isAfter(widget.to);
     }).toList();
-    final past =
-        period.where((b) => _pd(b.date)!.isBefore(pastCutoff)).toList();
-    final future =
-        period.where((b) => !_pd(b.date)!.isBefore(pastCutoff)).toList();
+    final past = period
+        .where((b) => _pd(b.date)!.isBefore(pastCutoff))
+        .toList();
+    final future = period
+        .where((b) => !_pd(b.date)!.isBefore(pastCutoff))
+        .toList();
 
     double payInRange(DateTime a, DateTime b) => payments
-        .where((p) =>
-            p.createdAt != null &&
-            !p.createdAt!.isBefore(a) &&
-            p.createdAt!.isBefore(b))
+        .where(
+          (p) =>
+              p.createdAt != null &&
+              !p.createdAt!.isBefore(a) &&
+              p.createdAt!.isBefore(b),
+        )
         .fold<double>(0, (s, p) => s + p.amount);
 
     final pastRevenue = _reale
@@ -110,13 +123,12 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
       }
     }
     final knownRev = pastRevenue + futureRevenue;
-    final weeklyAvg =
-        scheduledDays > 0 ? (knownRev / scheduledDays * 7).round() : 0;
-    final scheduleEstimate =
-        (scheduledDays > 0 && futureUnscheduledDays > 0)
-            ? (knownRev + knownRev / scheduledDays * futureUnscheduledDays)
-                .round()
-            : knownRev.round();
+    final weeklyAvg = scheduledDays > 0
+        ? (knownRev / scheduledDays * 7).round()
+        : 0;
+    final scheduleEstimate = (scheduledDays > 0 && futureUnscheduledDays > 0)
+        ? (knownRev + knownRev / scheduledDays * futureUnscheduledDays).round()
+        : knownRev.round();
 
     // ── Barre: 12 mesi + successivo ─────────────────────────────────────────
     final barLabels = <String>[], solid = <num>[], projected = <num>[];
@@ -124,8 +136,10 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
       final d = DateTime(now.year, now.month + i, 1);
       final mFrom = DateTime(d.year, d.month, 1);
       final mTo = DateTime(d.year, d.month + 1, 1); // esclusivo
-      barLabels.add(_monthsShort[d.month - 1] +
-          (d.year != now.year ? " '${d.year % 100}" : ''));
+      barLabels.add(
+        _monthsShort[d.month - 1] +
+            (d.year != now.year ? " '${d.year % 100}" : ''),
+      );
       final isCurrent = i == 0, isFuture = i > 0;
 
       double bookRev(DateTime a, DateTime b) => valid
@@ -136,9 +150,9 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
           .fold<double>(0, (s, x) => s + price(x));
 
       if (isCurrent) {
-        solid.add(_reale
-            ? payInRange(mFrom, pastCutoff)
-            : bookRev(mFrom, pastCutoff));
+        solid.add(
+          _reale ? payInRange(mFrom, pastCutoff) : bookRev(mFrom, pastCutoff),
+        );
         projected.add(_reale ? 0 : bookRev(pastCutoff, mTo));
       } else if (isFuture) {
         solid.add(0);
@@ -160,28 +174,41 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
           Row(
             children: [
               const Expanded(
-                child: Text('💰 Fatturato — Dettaglio',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.navy)),
+                child: Text(
+                  '💰 Fatturato — Dettaglio',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
               ),
-              Text(widget.filterLabel,
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.subtle)),
+              Text(
+                widget.filterLabel,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.subtle),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
           _modeTabs(),
           const SizedBox(height: AppSpacing.lg),
-          _kpis(pastRevenue, futureRevenue, scheduleEstimate, weeklyAvg,
-              payments, paymentsUnavailable),
+          _kpis(
+            pastRevenue,
+            futureRevenue,
+            scheduleEstimate,
+            weeklyAvg,
+            payments,
+            paymentsUnavailable,
+          ),
           const SizedBox(height: AppSpacing.lg),
-          const Text('Fatturato mensile (ultimi 12 mesi + successivo)',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.muted)),
+          const Text(
+            'Fatturato mensile (ultimi 12 mesi + successivo)',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.muted,
+            ),
+          ),
           const SizedBox(height: 6),
           MonthlyBarChart(
             labels: barLabels,
@@ -191,13 +218,15 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-              _reale
-                  ? 'Fatturato per tipo di pagamento'
-                  : 'Fatturato per tipo di lezione',
-              style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.muted)),
+            _reale
+                ? 'Fatturato per tipo di pagamento'
+                : 'Fatturato per tipo di lezione',
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.muted,
+            ),
+          ),
           const SizedBox(height: 6),
           _reale
               ? _byMethod(payments)
@@ -210,23 +239,26 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
   Widget _modeTabs() {
     final primary = Theme.of(context).colorScheme.primary;
     Widget tab(String label, bool active, VoidCallback onTap) => Expanded(
-          child: GestureDetector(
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: active ? primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: active ? Colors.white : AppColors.muted)),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active ? primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: active ? Colors.white : AppColors.muted,
             ),
           ),
-        );
+        ),
+      ),
+    );
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -242,17 +274,25 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
     );
   }
 
-  Widget _kpis(double pastRev, double futureRev, int estimate, int weeklyAvg,
-      List<PaymentRow> payments, bool unavailable) {
+  Widget _kpis(
+    double pastRev,
+    double futureRev,
+    int estimate,
+    int weeklyAvg,
+    List<PaymentRow> payments,
+    bool unavailable,
+  ) {
     String eur(num v) => unavailable && _reale ? '—' : '€${_fmt(v.toDouble())}';
     final cards = <(String, String)>[];
     if (_reale) {
       final periodMethodTotal = payments
-          .where((p) =>
-              p.createdAt != null &&
-              !p.createdAt!.isBefore(widget.from) &&
-              !p.createdAt!.isAfter(widget.to) &&
-              p.method != 'gratuito')
+          .where(
+            (p) =>
+                p.createdAt != null &&
+                !p.createdAt!.isBefore(widget.from) &&
+                !p.createdAt!.isAfter(widget.to) &&
+                p.method != 'gratuito',
+          )
           .fold<double>(0, (s, p) => s + p.amount);
       cards.add((eur(pastRev), 'Incassato'));
       cards.add((eur(periodMethodTotal), 'Fatturato reale'));
@@ -269,7 +309,9 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
       children: [
         for (final c in cards)
           Container(
-            width: (MediaQuery.of(context).size.width - 2 * AppSpacing.lg - 40) / 2,
+            width:
+                (MediaQuery.of(context).size.width - 2 * AppSpacing.lg - 40) /
+                2,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
             decoration: BoxDecoration(
               color: const Color(0xFFFAFAFA),
@@ -279,18 +321,22 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(c.$1,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111111),
-                        fontFeatures: AppText.tabularNums)),
+                Text(
+                  c.$1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111111),
+                    fontFeatures: AppText.tabularNums,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(c.$2,
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.subtle)),
+                Text(
+                  c.$2,
+                  style: const TextStyle(fontSize: 11, color: AppColors.subtle),
+                ),
               ],
             ),
           ),
@@ -299,7 +345,10 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
   }
 
   List<DonutSlice> _byType(
-      List<Booking> past, List<Booking> future, double Function(Booking) price) {
+    List<Booking> past,
+    List<Booking> future,
+    double Function(Booking) price,
+  ) {
     final rev = <String, double>{};
     for (final b in [...past, ...future]) {
       rev[b.slotType] = (rev[b.slotType] ?? 0) + price(b);
@@ -324,10 +373,12 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
       'iban': ('Bonifico', AppColors.amber),
       'stripe': ('Stripe', Color(0xFF635BFF)),
     };
-    final periodPayments = payments.where((p) =>
-        p.createdAt != null &&
-        !p.createdAt!.isBefore(widget.from) &&
-        !p.createdAt!.isAfter(widget.to));
+    final periodPayments = payments.where(
+      (p) =>
+          p.createdAt != null &&
+          !p.createdAt!.isBefore(widget.from) &&
+          !p.createdAt!.isAfter(widget.to),
+    );
     final byMethod = <String, double>{};
     double freeValue = 0;
     var freeCount = 0;
@@ -354,13 +405,16 @@ class _FatturatoDetailState extends ConsumerState<FatturatoDetail> {
     }
     if (freeCount > 0) {
       slices.add(
-          DonutSlice('Lezione gratuita', freeValue, const Color(0xFFA855F7)));
+        DonutSlice('Lezione gratuita', freeValue, const Color(0xFFA855F7)),
+      );
     }
     if (slices.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
-        child: Text('Nessun incasso registrato nel periodo',
-            style: AppText.meta),
+        child: Text(
+          'Nessun incasso registrato nel periodo',
+          style: AppText.meta,
+        ),
       );
     }
     return TypeDonutChart(slices: slices);

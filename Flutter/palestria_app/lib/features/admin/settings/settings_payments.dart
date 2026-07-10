@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_providers.dart';
+import '../../../core/data/billing_saas.dart';
 import '../../../core/org/org_settings_service.dart';
+import '../../../core/security/external_url.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/theme/ui_kit.dart';
 
@@ -74,19 +76,21 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
         client
             .from('organizations')
             .select(
-                'stripe_account_id,stripe_charges_enabled,stripe_account_email')
+              'stripe_account_id,stripe_charges_enabled,stripe_account_email',
+            )
             .eq('id', _orgId)
             .maybeSingle(),
       ]);
       final billing = results[0] as Map<String, dynamic>?;
       _slotTypes = [
-        for (final r in (results[1] as List)) (r as Map).cast<String, dynamic>()
+        for (final r in (results[1] as List))
+          (r as Map).cast<String, dynamic>(),
       ];
       _stripe = results[2] as Map<String, dynamic>?;
       if (billing != null) {
         _model = (billing['default_model'] as String?) ?? 'pay_per_session';
-        _threshold.text =
-            ((billing['block_unpaid_threshold'] as num?) ?? 0).toString();
+        _threshold.text = ((billing['block_unpaid_threshold'] as num?) ?? 0)
+            .toString();
         _grace.text = ((billing['grace_days'] as num?) ?? 0).toString();
         _blockMemb = (billing['block_if_membership_expired'] as bool?) ?? true;
         _blockPkg = (billing['block_if_no_package'] as bool?) ?? true;
@@ -94,15 +98,17 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
       }
       final pricesCache =
           (widget.service.get('billing_client.prices') as Map?)
-                  ?.cast<String, dynamic>() ??
-              {};
+              ?.cast<String, dynamic>() ??
+          {};
       for (final st in _slotTypes) {
         final key = st['key'] as String;
-        final price = (st['default_price'] as num?)?.toDouble() ??
+        final price =
+            (st['default_price'] as num?)?.toDouble() ??
             (pricesCache[key] as num?)?.toDouble() ??
             0;
-        _prices[st['id'] as String] =
-            TextEditingController(text: price.toStringAsFixed(2));
+        _prices[st['id'] as String] = TextEditingController(
+          text: price.toStringAsFixed(2),
+        );
       }
     } catch (_) {
       // offline/errore: mostra comunque il form coi default
@@ -113,13 +119,22 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
 
   Future<void> _connectStripe() async {
     try {
+      final enabled = await ref.read(
+        featureEnabledProvider('client_online_payments').future,
+      );
+      if (!enabled) {
+        throw Exception(
+          'Pagamenti online non disponibili per il piano corrente',
+        );
+      }
       final res = await ref
           .read(supabaseProvider)
           .functions
           .invoke('stripe-connect', body: {'action': 'start'});
-      final url = (res.data as Map?)?['url'] as String?;
-      if (url == null) throw Exception('Avvio collegamento non riuscito');
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final url = trustedExternalUri((res.data as Map?)?['url'] as String?);
+      if (url == null) throw Exception('URL di collegamento non valido');
+      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (!opened) throw Exception('Impossibile aprire Stripe');
     } catch (e) {
       if (mounted) AppSnack.error(context, 'Errore collegamento Stripe: $e');
     }
@@ -131,15 +146,18 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
       builder: (ctx) => AlertDialog(
         title: const Text('Scollega Stripe'),
         content: const Text(
-            'Scollegare il tuo account Stripe? I clienti non potranno più '
-            'pagarti online finché non lo ricolleghi.'),
+          'Scollegare il tuo account Stripe? I clienti non potranno più '
+          'pagarti online finché non lo ricolleghi.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annulla')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Scollega')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Scollega'),
+          ),
         ],
       ),
     );
@@ -164,8 +182,7 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
       await client.from('billing_settings').upsert({
         'org_id': _orgId,
         'default_model': _model,
-        'block_unpaid_threshold':
-            double.tryParse(_threshold.text.trim()) ?? 0,
+        'block_unpaid_threshold': double.tryParse(_threshold.text.trim()) ?? 0,
         'block_if_membership_expired': _blockMemb,
         'block_if_no_package': _blockPkg,
         'grace_days': int.tryParse(_grace.text.trim()) ?? 0,
@@ -207,10 +224,14 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
       children: [
         _stripeCard(),
         const SizedBox(height: AppSpacing.lg),
-        const Text('Modello di pagamento predefinito',
-            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
-        const Text('Applicato di default ai nuovi clienti (override per-cliente).',
-            style: AppText.meta),
+        const Text(
+          'Modello di pagamento predefinito',
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+        ),
+        const Text(
+          'Applicato di default ai nuovi clienti (override per-cliente).',
+          style: AppText.meta,
+        ),
         const SizedBox(height: AppSpacing.sm),
         RadioGroup<String>(
           groupValue: _model,
@@ -221,60 +242,77 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
                 RadioListTile<String>(
                   contentPadding: EdgeInsets.zero,
                   value: m.$1,
-                  title: Text(m.$2,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  title: Text(
+                    m.$2,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   subtitle: Text(m.$3, style: AppText.meta),
                 ),
             ],
           ),
         ),
         const Divider(height: AppSpacing.lg),
-        const Text('Blocco prenotazioni per pagamenti',
-            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+        const Text(
+          'Blocco prenotazioni per pagamenti',
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: AppSpacing.sm),
         TextField(
           controller: _threshold,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-              labelText: 'Soglia debito massimo (€, 0 = nessun blocco)'),
+            labelText: 'Soglia debito massimo (€, 0 = nessun blocco)',
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
         TextField(
           controller: _grace,
           keyboardType: TextInputType.number,
-          decoration:
-              const InputDecoration(labelText: 'Giorni di tolleranza (grace)'),
+          decoration: const InputDecoration(
+            labelText: 'Giorni di tolleranza (grace)',
+          ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _blockMemb,
           onChanged: (v) => setState(() => _blockMemb = v),
-          title: const Text('Blocca se abbonamento scaduto',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          title: const Text(
+            'Blocca se abbonamento scaduto',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _blockPkg,
           onChanged: (v) => setState(() => _blockPkg = v),
-          title: const Text('Blocca se pacchetto esaurito',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          title: const Text(
+            'Blocca se pacchetto esaurito',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _autoDec,
           onChanged: (v) => setState(() => _autoDec = v),
-          title: const Text('Decremento automatico pacchetto',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          title: const Text(
+            'Decremento automatico pacchetto',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
         ),
         const Divider(height: AppSpacing.lg),
-        const Text('Listino prezzi per tipo di slot',
-            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+        const Text(
+          'Listino prezzi per tipo di slot',
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: AppSpacing.sm),
         if (_slotTypes.isEmpty)
           const Text(
-              'Nessun tipo di slot configurato. Aggiungili da Gestione Orari.',
-              style: AppText.meta)
+            'Nessun tipo di slot configurato. Aggiungili da Gestione Orari.',
+            style: AppText.meta,
+          )
         else
           for (final st in _slotTypes)
             Padding(
@@ -283,17 +321,21 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
                 children: [
                   Expanded(
                     child: Text(
-                        '${st['label']}${(st['is_active'] as bool? ?? true) ? '' : ' (disattivo)'}',
-                        style: const TextStyle(fontSize: 13.5)),
+                      '${st['label']}${(st['is_active'] as bool? ?? true) ? '' : ' (disattivo)'}',
+                      style: const TextStyle(fontSize: 13.5),
+                    ),
                   ),
                   SizedBox(
                     width: 110,
                     child: TextField(
                       controller: _prices[st['id']],
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
-                          prefixText: '€ ', isDense: true),
+                        prefixText: '€ ',
+                        isDense: true,
+                      ),
                     ),
                   ),
                 ],
@@ -322,37 +364,43 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('🔗 Incassi online — Stripe',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
           const Text(
-              'Collega il TUO account Stripe: i pagamenti dei clienti arrivano '
-              'direttamente a te.',
-              style: AppText.meta),
+            '🔗 Incassi online — Stripe',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const Text(
+            'Collega il TUO account Stripe: i pagamenti dei clienti arrivano '
+            'direttamente a te.',
+            style: AppText.meta,
+          ),
           const SizedBox(height: AppSpacing.sm),
           if (hasAcct) ...[
             Text(
-                chOk
-                    ? '✅ Account collegato e attivo.'
-                    : '⏳ Account collegato — onboarding da completare su Stripe.',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: chOk
-                        ? AppColors.successEmeraldDark
-                        : const Color(0xFFB45309))),
-            if (email.isNotEmpty)
-              Text(email, style: AppText.meta),
+              chOk
+                  ? '✅ Account collegato e attivo.'
+                  : '⏳ Account collegato — onboarding da completare su Stripe.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: chOk
+                    ? AppColors.successEmeraldDark
+                    : const Color(0xFFB45309),
+              ),
+            ),
+            if (email.isNotEmpty) Text(email, style: AppText.meta),
             const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
                 if (!chOk)
                   FilledButton(
-                      onPressed: _connectStripe,
-                      child: const Text('Completa su Stripe')),
+                    onPressed: _connectStripe,
+                    child: const Text('Completa su Stripe'),
+                  ),
                 if (!chOk) const SizedBox(width: AppSpacing.sm),
                 OutlinedButton(
-                    onPressed: _disconnectStripe,
-                    child: const Text('Scollega')),
+                  onPressed: _disconnectStripe,
+                  child: const Text('Scollega'),
+                ),
               ],
             ),
           ] else
