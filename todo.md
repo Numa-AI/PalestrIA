@@ -15,7 +15,7 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-07-10.
 - [x] Backend: book_slot idempotente e server-authoritative; guard identita/email verificata, cliente archiviato, debiti, pacchetti, mensili, quota e data lezione; snapshot del prezzo personalizzato.
 - [x] Stripe pagamenti-cliente: creazione entitlement + ledger atomica e deduplicata per PaymentIntent (record_stripe_client_payment).
 - [x] QA automatica: dart analyze lib test pulito; flutter test --no-pub 7/7; node --check sugli asset modificati; audit statico migration 30-38 e git diff --check puliti.
-- [ ] **DEPLOY**: applicare migration 00000000000031-00000000000038; deployare admin-manage-client e la nuova stripe-webhook; pubblicare gli asset PWA (CACHE_NAME palestria-v591).
+- [x] **DEPLOY FATTO** (2026-07-10): `supabase db push` → migration **0028-0038** applicate sul remoto `rwaiekhllujximrqftmp`; `supabase functions deploy admin-manage-client stripe-webhook` OK; asset PWA pushati su `origin/main` (commit **d12602d**, cache-bust `palestria-v591`).
 - [ ] **QA INTEGRAZIONE/PRODUZIONE**: con DB Supabase reale verificare concorrenza capienza, retry idempotenti, consumo/refund pacchetto e quota mensile, grace period, rettifiche, cambio email e webhook Stripe. Aggiungere scenari cross-tenant/RLS dedicati alle nuove RPC.
 - [ ] **QA VISIVA**: verificare su Android e PWA desktop/mobile i bottom sheet vendita/gestione cliente, card salute, controlli prezzo/note e override. Il browser integrato non era disponibile in questa sessione.
 
@@ -31,7 +31,8 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-07-10.
 - [x] Membership: selezione della membership realmente attiva; storico prenotazioni esteso a 190 giorni per i grafici mensili.
 - [x] Billing SaaS ricaricato automaticamente al rientro dal browser Stripe.
 - [x] Verifiche: `dart analyze lib test` pulito; `flutter test --no-pub` 4/4 passati; manifest XML valido; `git diff --check` pulito.
-- [ ] **DEPLOY OBBLIGATORIO**: `supabase db push`; deploy `invite-org-member`, `send-admin-message`, `generate-monthly-report`, `stripe-connect`; aggiungere `palestria://app/recovery` agli URL redirect consentiti in Supabase Auth remoto.
+- [x] **DEPLOY FATTO** (2026-07-10): `supabase db push` (0030 inclusa); deploy `invite-org-member`, `send-admin-message`, `generate-monthly-report`, `stripe-connect` OK; `palestria://app/recovery` aggiunto alla `uri_allow_list` Auth remota (Management API, prima era vuota).
+- [ ] **⚠️ EMERSO durante il deploy**: il `site_url` Auth del progetto remoto è ancora `http://localhost:3000` → i link nelle email Auth (conferma signup, reset password web) che non passano un `redirect_to` allowlistato ricadono su localhost. Decidere l'URL di produzione (es. `https://numa-ai.github.io/PalestrIA/`) e impostarlo in Dashboard → Auth → URL Configuration (o Management API `PATCH /config/auth`).
 - [ ] **BUILD/QA DEVICE**: la build locale si ferma per un path Nextcloud corrotto/troncato (`C:\Users\andre\Nextcloud\...`), non per errori Dart. Buildare da un clone/cartella locale non virtualizzata e verificare recovery, invito staff, agenda staff, feature gating e push.
 
 ---
@@ -52,7 +53,7 @@ Portate le **7 voci nuove** del changelog Thomas dal 2026-07-05 (l'ultimo port e
 **① Backend — notifica admin "nuovo iscritto" via trigger DB + pg_net** (fix architetturale, vale PWA+Flutter):
 - [x] **Migration `00000000000029_notify_admin_new_client_server_trigger.sql`**: `create extension pg_net`; funzione `notify_admin_new_client()` `SECURITY DEFINER search_path=''` (guardia freschezza 15min su `auth.users.created_at`, legge secret da **Vault** `new_client_notify_secret`, `net.http_post` con header `x-internal-secret`, tutto in `EXCEPTION WHEN OTHERS`→non aborta il signup); trigger `trg_notify_admin_new_client AFTER INSERT ON profiles` (org già risolta in `NEW.org_id`).
 - [x] **Edge `notify-admin-new-client/index.ts`**: canale **interno** (header `x-internal-secret`==env `NEW_CLIENT_NOTIFY_SECRET`, soggetto=`user_id` dal body) OPPURE **utente** (Bearer `getUser`, fallback client); org+nome derivati server-side dal profilo del soggetto (anti-spoof); **dedup** su `admin_messages` (kind `new_client`, stesso body, <5min, org-scoped, fail-open). `config.toml`: `verify_jwt=false`.
-- [ ] **⚠️ DEPLOY MANUALE (obbligatorio, sennò la notifica non parte)**: (1) `select gen_random_uuid();`→VALORE; (2) `select vault.create_secret('<VALORE>','new_client_notify_secret');`; (3) `supabase secrets set NEW_CLIENT_NOTIFY_SECRET=<VALORE>`; (4) `supabase functions deploy notify-admin-new-client --no-verify-jwt`; (5) `supabase db push` (0029). CI baseline-only: la 0029 usa pg_net/Vault → verificare il job "Validate baseline migration" (la sposta in /tmp come le altre post-baseline).
+- [x] **DEPLOY FATTO** (2026-07-10): UUID generato e salvato con `vault.create_secret(…,'new_client_notify_secret')` sul remoto (via `supabase db query --linked`) + `supabase secrets set NEW_CLIENT_NOTIFY_SECRET=<stesso valore>` + `supabase functions deploy notify-admin-new-client --no-verify-jwt` + `supabase db push` (0029 applicata). Resta il QA end-to-end (registrazione → push admin, vedi sotto).
 
 **② PWA — Progressi popup zoom kg/reps/serie/tutti** (admin + cliente):
 - [x] **Admin `admin-schede.js`+`admin.css`**: nuovo popup zoom (riusa shell `.schede-ex-detail-*`) con **video + grafici kg/reps/serie/tutti**. Rollup arricchito in `_schedeClientRenderProgressi` (weight max/reps media per serie/sets count; esercizio compare anche solo-reps); card immagine cliccabile + bottone `.schede-prog-zoom`; nuove `_schedeProgOpenZoom/_schedeProgCloseZoom/_schedeProgSetZoomMode/_schedeProgRenderZoomChart/_schedeProgDrawZoomChart`+`_schedeHexRgba`; in "Tutti" curve sovrapposte con **tratteggio differenziato** (kg pieno, reps `[7,5]`, serie `[2,5]`); stats **senza "N sessioni"**; popup largo desktop (`@media 900px` max-width 880px). `_drawAdminChart` con 4° param `{color,unit}`. CSS `.schede-prog-zoom-*`. admin-schede.js v52→**53**, admin.css v83→**84**.
@@ -72,7 +73,7 @@ Portate le **7 voci nuove** del changelog Thomas dal 2026-07-05 (l'ultimo port e
 - [ ] **⚠️ AZIONE UTENTE Flutter**: `flutter build appbundle` + verifica su device (selettore Progressi client+admin, riordino blocchi client+admin, creazione SS/Circuito admin) + commit ramo Flutter.
 
 **Deploy web + QA**:
-- [ ] **Push asset** su `origin/main`+`saas-main` (cache-bust `palestria-v586`) → Pages. Nessuna migration richiesta lato asset; la 0029/edge/secret vanno deployati a parte (vedi ①).
+- [x] **Push asset FATTO** (2026-07-10): commit **d12602d** su `origin/main` → Pages (include i cache-bust v586→v591). La 0029/edge/secret deployati (vedi ①).
 - [ ] **QA**: (1) registra utente → push admin "New entry!" + riga `new_client` in admin_messages + log edge; 2ª iscrizione ravvicinata **non** duplica; (2) admin Schede→plan→Progressi cliente / card cliente Progressi → popup video+grafico, selettore kg/reps/serie/tutti, "Tutti" senza curve coperte, cardio senza selettore; (3) editor schede SS/Circuito → frecce sempre visibili a destra (PWA) / riordino blocchi (Flutter admin+client); (4) creazione Super Serie/Circuito da app Flutter admin; (5) quota localStorage: nessun toast spurio.
 
 ---
@@ -84,7 +85,7 @@ Richiesta utente sull'app Flutter (poi portata al PWA per parità §0.3). Il tab
 - [x] **Flutter — Profilo a 3 tab** ([profile_screen.dart](Flutter/palestria_app/lib/features/client/profile/profile_screen.dart)): pill-bar **Prossime / Passate / Transazioni**, paginazione 5→+20; hero mostra **Nome e Cognome** (prima solo il nome); **rimosso il recap dati** (`_infoCard`). Card prenotazione estratta in `BookingCard` riusabile ([booking_card.dart](Flutter/palestria_app/lib/features/client/booking/booking_card.dart)).
 - [x] **Flutter — dati transazioni**: modello `ClientPayment` ([client_payment.dart](Flutter/palestria_app/lib/core/models/client_payment.dart)) + `BookingRepository.fetchOwnPayments` + `ownPaymentsProvider`. `flutter analyze lib` **pulito**.
 - [x] **PWA — tab Transazioni** ([prenotazioni.html](prenotazioni.html)): 3ª tab; `_ensurePayments()`/`renderTransactions()`/`buildTransactionCard()` (query `payments` client-side, RLS own-only) + refresh su realtime; hero allineato a **Nome e Cognome**. Cache-bust `sw.js` v584→**v585**.
-- [ ] **NON committato/buildato/deployato** (lo fa l'utente): rebuild AAB Flutter + push ramo web → Pages.
+- [ ] **AZIONE UTENTE**: rebuild AAB Flutter. (Push ramo web → Pages **FATTO** 2026-07-10, commit d12602d.)
 - [ ] **QA**: (1) cliente → **Prenotazioni** mostra solo il calendario (niente pill-bar); (2) **Profilo** → hero con nome+cognome, niente recap dati, 3 tab; (3) **Prossime/Passate** = le vecchie "Le mie" (annulla/richiedi annullo funzionano); (4) **Transazioni** elenca i pagamenti (lezione/abbonamento/pacchetto/mora) con importo+metodo+data, empty-state se vuoto; (5) parità PWA idem.
 
 ---
@@ -176,7 +177,7 @@ Diagnosi: la piattaforma SaaS è corretta (backend `create_organization`/`join_o
 - [x] **Rimosso file morto** `tabs_placeholder.dart`.
 
 **Residui — DA DEPLOYARE / DECIDERE**
-- [ ] **⚠️ DEPLOY migration `00000000000028`** (schede clienti) quando si vuole abilitare la modalità "anche i clienti": `supabase db push`. È CI-safe (solo tabelle baseline). Finché non deployata, il flag `features.client_manage_plans` funziona solo per nascondere/mostrare, non per far salvare i clienti.
+- [x] **DEPLOY migration `00000000000028` FATTO** (2026-07-10, `supabase db push`): la modalità "anche i clienti" è ora attivabile davvero col flag `features.client_manage_plans`.
 - [ ] **Parità web schede clienti**: la PWA (allenamento.html) mostra i pulsanti di modifica scheda ai clienti senza gate sul flag → replicare il gate `features.client_manage_plans` anche lì (con la 0028 deployata, un cliente web può salvare solo se il flag è ON; senza gate UI vede pulsanti che falliscono a flag OFF, come prima).
 - [ ] **Unique index parziale server-side** su `bookings(org_id,user_id,date,time) where status in ('confirmed','cancellation_requested')` → attiva l'handler `duplicate_booking` già in `book_slot` (dead code). ⚠️ Verificare prima che non esistano doppioni in prod, poi `db push`. Riguarda anche il web.
 - [ ] **QR tablet** = capability URL permanente anon lettura+scrittura senza scadenza/revoca — già rimandato in mig.0023 (token opaco a scadenza). Da fare prima di distribuire l'app.
@@ -256,7 +257,7 @@ Portati da `code-review2.md` (Thomas) e dalle voci nuove del changelog Thomas **
 - [x] **CSS `?v=` allineati** (#6): `login.css` → v6 su tutte le pagine (era admin v5 vs v4); `allenamento.css` → v57 (era admin v55 vs v56).
 - [x] **Cache-busting**: `sw.js` `CACHE_NAME` → **palestria-v576**; bump `?v=` di admin.css(82)/data.js(96)/admin-calendar(23)/admin-payments(19)/admin.js(121)/ui.js(4)/calendar.js(10)/admin-registro(11)/pull-to-refresh(2). `node --check` OK su tutti (JS + inline admin.html).
 - [x] **N/A** (non toccati): #2 `accept_offered_request` (flusso assente), #3 `admin_pay_bookings`/`admin_add_credit` (crediti rimossi; admin_pay_bookings già su ledger `payments`), tab Richieste (modulo assente), i client-credit items; codice morto già rimosso dall'audit (`_buildExercisePicker`, `calculateTotalWeeklySlots`, `hasPushEnabled`, ecc.).
-- [ ] **DEPLOY asset GitHub Pages**: push branch (cache-bust applicato, `CACHE_NAME palestria-v576`).
+- [x] **DEPLOY asset GitHub Pages FATTO** (2026-07-10): commit **d12602d** su `origin/main` (i cache-bust successivi, fino a v591, sono cumulativi).
 - [ ] **QA produzione**: capienza slot con annullamento pendente (niente posto fantasma); badge per-lezione; "Seleziona passate"; **shell iOS su iPhone** (scroll+fling barra ferma, cambio tab torna in cima, PTR solo da cima, tastiera, chiusura/riapertura app; Android PTR nativo ancora ok).
 
 ---
