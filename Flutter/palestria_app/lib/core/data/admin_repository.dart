@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_providers.dart';
 import '../auth/normalize.dart';
 import '../models/booking.dart';
+import 'billing_realtime.dart';
 
 /// Profilo cliente lato admin (da get_all_profiles_basic, spec-data §4.4).
 class AdminProfile {
@@ -393,6 +394,7 @@ final adminRepositoryProvider = FutureProvider<AdminRepository?>((ref) async {
 
 /// Prenotazioni org (refresh: ref.invalidate).
 final adminBookingsProvider = FutureProvider<List<Booking>>((ref) async {
+  ref.watch(billingRealtimeTickProvider);
   final repo = await ref.watch(adminRepositoryProvider.future);
   if (repo == null) return const [];
   return repo.fetchAllBookings();
@@ -514,6 +516,7 @@ final adminClientsProvider = FutureProvider<List<AdminClient>>((ref) async {
 
 /// Pagamenti del mese corrente (per "Incassato questo mese" + recenti).
 final monthPaymentsProvider = FutureProvider<List<PaymentRow>>((ref) async {
+  ref.watch(billingRealtimeTickProvider);
   final repo = await ref.watch(adminRepositoryProvider.future);
   if (repo == null) return const [];
   final now = DateTime.now();
@@ -522,6 +525,7 @@ final monthPaymentsProvider = FutureProvider<List<PaymentRow>>((ref) async {
 
 /// Pagamenti da inizio anno scorso (per l'analytics con filtro periodo).
 final statsPaymentsProvider = FutureProvider<List<PaymentRow>>((ref) async {
+  ref.watch(billingRealtimeTickProvider);
   final repo = await ref.watch(adminRepositoryProvider.future);
   if (repo == null) return const [];
   final now = DateTime.now();

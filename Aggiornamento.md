@@ -10,6 +10,27 @@ una *Parte tecnica* autosufficiente (file, identificatori, prima/dopo, deploy).
 ---
 
 <!-- Le prossime voci vanno qui, in cima. -->
+## 2026-07-10 - Realtime billing, pacchetti scalati all'ingresso e book_slot legacy-safe
+
+**Problema/feature.** L'app Flutter aggiornava saldo, pagamenti e pacchetti solo dopo refresh. I pacchetti consumavano l'ingresso già durante la prenotazione; inoltre il ramo a entrata di `book_slot` poteva restituire un'eccezione DB, mostrata dall'app come falso errore di connessione, se una qualsiasi prenotazione storica aveva un orario non convertibile col cast rigido.
+
+### Parte tecnica
+
+- Migration `00000000000042_realtime_and_deferred_package_consumption.sql`, già applicata sul remoto:
+  - `safe_booking_start_at(date,time,timezone)` estrae in sicurezza il primo `HH:MM` e restituisce `NULL` sui formati legacy invalidi; `process_due_session_balance_entries` salta tali righe invece di interrompere il processo e `book_slot`;
+  - `bookings.reserved_package_id` separa la **riserva** dal consumo; `book_slot` blocca il pacchetto sotto lock e verifica `remaining_sessions > prenotazioni_riservate`, ma non decrementa più il saldo;
+  - `process_due_package_consumptions` converte la riserva in `consumed_package_id` e decrementa il pacchetto all'ora di inizio, una volta sola, registrando `package_consumed_at`; cancellazioni/cambi modello prima dell'inizio liberano la riserva senza refund fittizi;
+  - backfill transazionale restituisce gli ingressi delle prenotazioni future già scalate dalle versioni precedenti e le trasforma in riserve;
+  - il job pg_cron ogni minuto esegue sia gli addebiti a entrata sia i consumi pacchetto;
+  - `bookings`, `client_balance_entries`, `payments`, `client_packages` e `client_memberships` vengono aggiunte idempotentemente alla publication `supabase_realtime`.
+- Flutter: nuovo `billing_realtime.dart`, canale unico filtrato per `org_id`; prenotazioni, pagamenti, saldi e riepiloghi cliente/admin osservano lo stesso tick. `booking_repository.dart` distingue `PostgrestException` dagli errori offline e registra codice/messaggio DB nei log.
+- PWA: i canali inline di `admin.html` e `prenotazioni.html` ascoltano le stesse cinque tabelle; cache service worker `palestria-v596`.
+- QA/deploy: migration 42 applicata con `supabase db push --yes`, Local=Remote=42; `flutter analyze` senza problemi, test 9/9, sei script inline PWA compilati e `git diff --check` pulito.
+
+### Deploy residuo
+
+Pubblicare gli asset PWA v596 e distribuire una nuova build Flutter: il backend è già corretto, mentre il refresh automatico nell'app richiede il nuovo codice Dart.
+
 ## 2026-07-10 - Conto credito/debito scalato all'inizio della lezione
 
 **Problema/feature.** Nel modello a entrata il riepilogo sommava prenotazioni non pagate e lezioni future nel browser. Un anticipo non era un vero credito spendibile, un debito manuale non era rappresentabile e il saldo poteva cambiare prima dell'effettivo inizio. Ora ogni cliente ha un conto economico append-only: importi positivi sono credito del cliente, importi negativi sono debito; il prezzo congelato della lezione viene addebitato esclusivamente quando scatta l'orario di inizio nella timezone dello studio.

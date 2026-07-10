@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -175,6 +176,16 @@ class BookingRepository {
         'timeout',
         'Connessione lenta: non è chiaro se la prenotazione sia stata registrata. '
             'Controlla "Le mie prenotazioni" prima di riprovare.',
+      );
+    } on PostgrestException catch (error, stackTrace) {
+      invalidateAvailability();
+      debugPrint(
+        '[book_slot] errore database ${error.code}: ${error.message}\n$stackTrace',
+      );
+      return BookingResult.fail(
+        'database_error',
+        'Errore del server durante la prenotazione'
+            '${error.code == null ? '' : ' (${error.code})'}. Riprova.',
       );
     } catch (_) {
       invalidateAvailability();

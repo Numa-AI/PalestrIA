@@ -1115,6 +1115,10 @@
                     return supabaseClient
                         .channel('admin-rt')
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'client_balance_entries' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'client_packages' }, _adminDebouncedSync)
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'client_memberships' }, _adminDebouncedSync)
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, _adminDebouncedSync)
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, _adminDebouncedSync)
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, _adminDebouncedSync)

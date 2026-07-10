@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/booking_repository.dart';
+import '../../../core/data/billing_realtime.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/models/client_payment.dart';
@@ -120,6 +121,7 @@ final scheduleOverridesProvider =
 
 /// Prenotazioni dell'utente corrente (refresh: ref.invalidate).
 final ownBookingsProvider = FutureProvider<List<Booking>>((ref) async {
+  ref.watch(billingRealtimeTickProvider);
   final session = ref.watch(sessionProvider);
   if (session == null) return const [];
   final repo = await ref.watch(bookingRepositoryProvider.future);
@@ -128,6 +130,7 @@ final ownBookingsProvider = FutureProvider<List<Booking>>((ref) async {
 
 /// Transazioni (ledger `payments`) dell'utente corrente (refresh: invalidate).
 final ownPaymentsProvider = FutureProvider<List<ClientPayment>>((ref) async {
+  ref.watch(billingRealtimeTickProvider);
   final session = ref.watch(sessionProvider);
   if (session == null) return const [];
   final repo = await ref.watch(bookingRepositoryProvider.future);

@@ -148,6 +148,8 @@ create table bookings (
     -- uuid "soft" (no FK): le tabelle billing sono create più sotto e il refund gestisce
     -- comunque le righe eventualmente sparite.
     consumed_package_id         uuid,
+    reserved_package_id         uuid,
+    package_consumed_at         timestamptz,
     consumed_membership_id      uuid,
     cancellation_requested_at   timestamptz,
     cancelled_at                timestamptz,

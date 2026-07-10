@@ -74,6 +74,9 @@ Go-to-market confermato dall'utente: **lancio entro fine 2026 su ENTRAMBI gli st
       isAnagraficaComplete)
 - [x] OrgSettings service (`org_settings_service.dart`): cache memoria→prefs `org_<id>_<key>`,
       RPC upsert_org_setting, canale Realtime `org_settings_<orgId>`, reset al logout
+- [x] Realtime economico condiviso (`billing_realtime.dart`, 2026-07-10): singolo canale org-scoped
+      per bookings, saldo cliente, payments, pacchetti e membership; i provider cliente/admin
+      si ricaricano automaticamente anche dopo i job server, senza pull-to-refresh.
 - [x] Tema: `tokens.dart` (palette/ombre/radius/testi dal CSS) + `org_theme.dart`
       (OrgBranding con dark −10%, snapshot pre-paint, buildAppTheme M3)
 - [x] Shell navigazione: go_router con redirect per ruolo (claim org_role → /admin, altrimenti
@@ -108,6 +111,8 @@ Go-to-market confermato dall'utente: **lancio entro fine 2026 su ENTRAMBI gli st
       primo nome, bottone modifica), warning cumulabili §7.2 (completa anagrafica / imposta cert /
       scaduto / scade fra N gg), card stato pagamenti §7.3 (`billing_status.dart`: 7 varianti
       free/monthly/package/pay_per_session con debito da prezzi org), card dati, logout
+- [x] Billing cliente server-authoritative: credito/debito live e pacchetti scalati dal cron solo
+      all'ora di inizio lezione; la prenotazione conserva una riserva senza consumare l'ingresso.
 - [x] **Modifica profilo** (`edit_profile_sheet.dart` §7.7): nome disabilitato, email (cambio via
       auth con conferma), whatsapp (is_whatsapp_taken con exclude), CF upper, indirizzo con
       normalizeComune, CAP 5 cifre, cert con append history, assicurazione sempre disabilitata,
@@ -189,9 +194,9 @@ Go-to-market confermato dall'utente: **lancio entro fine 2026 su ENTRAMBI gli st
       nota Pagamenti cliente, e **Abbonamento SaaS**: entitlements (get_tenant_entitlements: piano,
       stato trial/active/past_due, clienti), 3 piani (Starter/Pro/Business) → **Stripe Checkout via
       billing-checkout aperto nel browser esterno** (niente IAP), "Gestisci abbonamento" → billing-portal
-- [x] **Tab Pagamenti** (§7, `payments_tab.dart` + `pay_debt_sheet.dart`): stat card "Da Incassare"
-      (debitori raggruppati per contatto, espandibili) + "Incassato questo mese" (ledger payments),
-      popup "Segna come pagato" (selezione lezioni + metodo → admin_pay_bookings)
+- [x] **Tab Pagamenti** (§7, `payments_tab.dart` + `client_balance_sheet.dart`): saldo firmato live,
+      stat card "Da Incassare" + "Incassato questo mese" e operazioni Incassa/Aggiungi credito/
+      Aggiungi debito; aggiornamento automatico via Realtime.
 - [x] **Tab Statistiche & Fatturato** (§8, `analytics_tab.dart` + `stats_charts.dart` + 4 pannelli +
       `fiscal_report.dart`) — **PORTATA COMPLETA (Stage A+B+C, 2026-07-07)**. Dashboard (Stage A): filtri completi (questo mese / mese prossimo / mese scorso /
       quest'anno / anno scorso) con **confronto % sul periodo precedente**; 4 stat card (Fatturato

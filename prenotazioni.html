@@ -409,6 +409,10 @@
                 const _prenoRtFactory = () => supabaseClient
                     .channel('preno-rt')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, _debouncedFullSync)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'client_balance_entries' }, _debouncedFullSync)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, _debouncedFullSync)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'client_packages' }, _debouncedFullSync)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'client_memberships' }, _debouncedFullSync)
                     .subscribe();
                 if (typeof window._registerRealtimeChannel === 'function') _realtimeChannel = window._registerRealtimeChannel('preno-rt', _prenoRtFactory);
                 else _realtimeChannel = _prenoRtFactory();

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/client_billing_models.dart';
+import '../../../core/data/billing_realtime.dart';
 import '../../../core/data/schedule_config.dart';
 
 /// Stato pagamenti del cliente (§7.3 spec-client) — card riepilogo.
@@ -22,6 +23,7 @@ class ClientBillingStatus {
 final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
   ref,
 ) async {
+  ref.watch(billingRealtimeTickProvider);
   final session = ref.watch(sessionProvider);
   final orgContext = await ref.watch(orgContextProvider.future);
   if (session == null || orgContext.orgId == null) return null;
@@ -144,12 +146,14 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
       final debt = (account['debt'] as num?)?.toDouble() ?? 0;
       final credit = (account['credit'] as num?)?.toDouble() ?? 0;
       final future = (account['scheduled'] as num?)?.toDouble() ?? 0;
-      String euro(double value) => value.toStringAsFixed(2).replaceAll('.', ',');
+      String euro(double value) =>
+          value.toStringAsFixed(2).replaceAll('.', ',');
       if (debt > 0) {
         return ClientBillingStatus(
           icon: '💳',
           title: 'Debito da saldare: €${euro(debt)}',
-          detail: 'Saldo conto €${euro(balance)} · lezioni future €${euro(future)}.',
+          detail:
+              'Saldo conto €${euro(balance)} · lezioni future €${euro(future)}.',
           tone: 'warn',
         );
       }
@@ -157,14 +161,16 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
         return ClientBillingStatus(
           icon: '💰',
           title: 'Credito disponibile: €${euro(credit)}',
-          detail: 'Verrà scalato automaticamente all’inizio delle lezioni · future €${euro(future)}.',
+          detail:
+              'Verrà scalato automaticamente all’inizio delle lezioni · future €${euro(future)}.',
           tone: 'ok',
         );
       }
       return ClientBillingStatus(
         icon: '✅',
         title: 'Saldo conto: €0,00',
-        detail: 'Lezioni future previste: €${euro(future)}. L’addebito avviene all’ora di inizio.',
+        detail:
+            'Lezioni future previste: €${euro(future)}. L’addebito avviene all’ora di inizio.',
         tone: 'neutral',
       );
   }

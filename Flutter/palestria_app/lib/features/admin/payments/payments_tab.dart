@@ -5,6 +5,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/normalize.dart';
 import '../../../core/data/admin_repository.dart';
 import '../../../core/data/booking_pricing.dart';
+import '../../../core/data/billing_realtime.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/org/org_settings_service.dart';
@@ -61,6 +62,7 @@ class ClientBalanceAccount {
 final adminClientBalancesProvider = FutureProvider<List<ClientBalanceAccount>>((
   ref,
 ) async {
+  ref.watch(billingRealtimeTickProvider);
   final result = await ref
       .read(supabaseProvider)
       .rpc('get_client_balance_overview')
@@ -151,7 +153,9 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
             children: [
               Row(
                 children: [
-                  const Expanded(child: Text('Pagamenti', style: AppText.pageTitle)),
+                  const Expanded(
+                    child: Text('Pagamenti', style: AppText.pageTitle),
+                  ),
                   FilledButton.icon(
                     onPressed: modelAsync.isLoading || billingModel == 'free'
                         ? null
@@ -639,7 +643,9 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
               onTap: () => Navigator.pop(ctx, ClientBalanceOperation.credit),
             ),
             ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.remove_circle_outline)),
+              leading: const CircleAvatar(
+                child: Icon(Icons.remove_circle_outline),
+              ),
               title: const Text('Aggiungi debito'),
               subtitle: const Text('Addebito manuale extra sul conto'),
               onTap: () => Navigator.pop(ctx, ClientBalanceOperation.debt),

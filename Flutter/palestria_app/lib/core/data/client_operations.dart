@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_providers.dart';
 import 'admin_repository.dart';
+import 'billing_realtime.dart';
 
 class ClientPackageSummary {
   const ClientPackageSummary({
@@ -381,5 +382,6 @@ final clientOperationsRepositoryProvider = Provider<ClientOperationsRepository>(
 
 final clientFinancialSummaryProvider = FutureProvider.autoDispose
     .family<ClientFinancialSummary, String>((ref, userId) async {
+      ref.watch(billingRealtimeTickProvider);
       return ref.watch(clientOperationsRepositoryProvider).fetchSummary(userId);
     });
