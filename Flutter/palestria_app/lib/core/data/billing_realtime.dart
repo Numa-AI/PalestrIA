@@ -26,6 +26,7 @@ final billingRealtimeTickProvider = StreamProvider.autoDispose<int>((
     'client_packages',
     'client_memberships',
     'bookings',
+    'admin_audit_log',
   ]) {
     channel = channel.onPostgresChanges(
       event: PostgresChangeEvent.all,

@@ -43,6 +43,8 @@ let recentListVisible   = false;
 let _paymentsReqCounter = 0;
 let _recentPayments     = [];   // cache ultima fetch payments (cappata a 50, solo per la lista UI)
 let _clientBalances     = [];   // conto firmato: positivo=credito, negativo=debito
+let _membershipPayments = [];
+let _paymentsBillingModel = 'pay_per_session';
 // KPI mese corrente: aggregati lato server sull'INTERO mese (non sulla lista cappata).
 // null finché non caricati → il paint mostra "—" invece di un valore sottostimato.
 let _monthRevenue       = null; // somma amount del mese corrente
@@ -157,7 +159,7 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
             // (b) KPI mese: aggregazione lato server sull'INTERO mese (H5 bug A) →
             //     conteggio esatto via head+count e somma su una query separata filtrata
             //     sul periodo, indipendente dal limite della lista.
-            const [recentRes, monthCountRes, monthSumRes, balancesRes] = await Promise.all([
+            const [recentRes, monthCountRes, monthSumRes, balancesRes, membershipsRes, modelRes] = await Promise.all([
                 _rpcWithTimeout(
                     supabaseClient.from('payments')
                         .select('id, created_at, client_email, amount, currency, method, kind, note, period_start, period_end')
@@ -178,6 +180,8 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
                     15000
                 ),
                 _rpcWithTimeout(supabaseClient.rpc('get_client_balance_overview'), 15000),
+                _rpcWithTimeout(supabaseClient.rpc('get_membership_payment_overview'), 15000),
+                _rpcWithTimeout(supabaseClient.from('billing_settings').select('default_model').eq('org_id', window._orgId).maybeSingle(), 15000),
             ]);
             if (reqId !== _paymentsReqCounter) return; // render più recente → scarto
 
@@ -194,6 +198,9 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
             }
             if (balancesRes?.error) console.warn('[Payments] fetch saldi cliente:', balancesRes.error.message);
             else _clientBalances = balancesRes?.data || [];
+            if (membershipsRes?.error) console.warn('[Payments] fetch rinnovi:', membershipsRes.error.message);
+            else _membershipPayments = membershipsRes?.data || [];
+            if (!modelRes?.error) _paymentsBillingModel = modelRes?.data?.default_model || 'pay_per_session';
 
             _paintPaymentsTab({ preserveUiState: true });
         } catch (e) {
@@ -203,8 +210,11 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
 }
 
 function _paintPaymentsTab({ preserveUiState }) {
-    const contacts = _clientBalances.filter(c => Number(c.debt || 0) > 0);
-    const totalUnpaid = contacts.reduce((s, c) => s + Number(c.debt || 0), 0);
+    const isMembership = _paymentsBillingModel === 'monthly';
+    const contacts = isMembership
+        ? _membershipPayments.filter(c => c.needs_renewal)
+        : _clientBalances.filter(c => Number(c.debt || 0) > 0);
+    const totalUnpaid = contacts.reduce((s, c) => s + Number(isMembership ? c.amount : c.debt || 0), 0);
 
     // Incasso e conteggio del mese corrente: aggregati lato server sull'INTERO mese
     // (H5 bug A). NON derivati dalla lista cappata a 50 (sottostimerebbe). Finché non
@@ -223,6 +233,8 @@ function _paintPaymentsTab({ preserveUiState }) {
     const debtorsList = document.getElementById('debtorsList');
     const recentList  = document.getElementById('creditsList');
     if (!debtorsList) return;
+    const debtTitle = document.querySelector('#statcard-debtors h3');
+    if (debtTitle) debtTitle.textContent = isMembership ? 'Da rinnovare' : 'Da Incassare';
 
     if (!preserveUiState) {
         clearSearch();
@@ -242,10 +254,12 @@ function _paintPaymentsTab({ preserveUiState }) {
 
     // Lista "Non in regola"
     if (contacts.length === 0) {
-        debtorsList.innerHTML = '<div class="empty-slot">Nessun cliente con pagamenti in sospeso! 🎉</div>';
+        debtorsList.innerHTML = `<div class="empty-slot">${isMembership ? 'Tutti gli abbonamenti risultano coperti.' : 'Nessun cliente con pagamenti in sospeso! 🎉'}</div>`;
     } else {
         debtorsList.innerHTML = '';
-        contacts.forEach((c, i) => debtorsList.appendChild(createBalanceDebtorCard(c, `main-${i}`)));
+        contacts.forEach((c, i) => debtorsList.appendChild(isMembership
+            ? createMembershipRenewalCard(c, `main-${i}`)
+            : createBalanceDebtorCard(c, `main-${i}`)));
     }
 
     // Lista "Pagamenti recenti" (ledger)
@@ -289,6 +303,24 @@ function _createPaymentRow(p) {
 // Card cliente "non in regola" — apre il popup di saldo al click.
 // Card costruita dal conto server-authoritative. Non somma piu le prenotazioni
 // nel browser: credito, debito e addebiti all'inizio lezione arrivano dal ledger.
+function createMembershipRenewalCard(item, cardId) {
+    const card = document.createElement('div');
+    card.className = 'debtor-card';
+    card.id = `debtor-card-${cardId}`;
+    const end = item.period_end ? new Date(item.period_end) : null;
+    const endLabel = end ? `${end.getDate()}/${end.getMonth() + 1}/${end.getFullYear()}` : 'mai attivato';
+    card.innerHTML = `<div class="debtor-card-header" style="cursor:default">
+        <div class="debtor-info"><div class="debtor-name">${_escHtml(item.name || 'Cliente')}</div>
+        <div class="debtor-contact"><span>Abbonamento scaduto: ${_escHtml(endLabel)}</span></div></div>
+        <div class="debtor-amount">Da incassare: €${Number(item.amount || 0).toFixed(2)}</div>
+        <button class="debt-popup-pay-btn" style="width:auto;margin-left:.75rem">Rinnova</button></div>`;
+    card.querySelector('button').addEventListener('click', () => {
+        openMembershipPopup();
+        setTimeout(() => selectSaleClient(item.name || 'Cliente', item.whatsapp || '', item.email || '', item.user_id), 0);
+    });
+    return card;
+}
+
 function createBalanceDebtorCard(account, cardId) {
     const card = document.createElement('div');
     card.className = 'debtor-card';

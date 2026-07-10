@@ -73,6 +73,67 @@ final adminClientBalancesProvider = FutureProvider<List<ClientBalanceAccount>>((
   ];
 });
 
+class MembershipPaymentAccount {
+  const MembershipPaymentAccount({
+    required this.userId,
+    required this.name,
+    required this.amount,
+    required this.needsRenewal,
+    this.email,
+    this.membershipId,
+    this.planLabel,
+    this.billingPeriod = 'monthly',
+    this.periodEnd,
+    this.paymentMethod,
+    this.paidAt,
+  });
+  final String userId;
+  final String name;
+  final String? email;
+  final String? membershipId;
+  final String? planLabel;
+  final String billingPeriod;
+  final DateTime? periodEnd;
+  final double amount;
+  final String? paymentMethod;
+  final DateTime? paidAt;
+  final bool needsRenewal;
+
+  factory MembershipPaymentAccount.fromRow(Map<String, dynamic> row) =>
+      MembershipPaymentAccount(
+        userId: row['user_id'] as String,
+        name: (row['name'] as String?) ?? 'Cliente',
+        email: row['email'] as String?,
+        membershipId: row['membership_id'] as String?,
+        planLabel: row['plan_label'] as String?,
+        billingPeriod: (row['billing_period'] as String?) ?? 'monthly',
+        periodEnd: row['period_end'] == null
+            ? null
+            : DateTime.tryParse(row['period_end'].toString()),
+        amount: (row['amount'] as num?)?.toDouble() ?? 0,
+        paymentMethod: row['payment_method'] as String?,
+        paidAt: row['paid_at'] == null
+            ? null
+            : DateTime.tryParse(row['paid_at'].toString()),
+        needsRenewal: row['needs_renewal'] == true,
+      );
+}
+
+final adminMembershipPaymentsProvider =
+    FutureProvider<List<MembershipPaymentAccount>>((ref) async {
+      ref.watch(billingRealtimeTickProvider);
+      final result = await ref
+          .read(supabaseProvider)
+          .rpc('get_membership_payment_overview')
+          .timeout(const Duration(seconds: 20));
+      return [
+        for (final row in result as List)
+          MembershipPaymentAccount.fromRow(
+            (row as Map).cast<String, dynamic>(),
+          ),
+      ];
+    });
+
 /// Formattatore € unico del modulo Pagamenti: virgola decimale italiana
 /// (es. "12,50"), niente decimali quando l'importo è intero. Condiviso con
 /// [PayDebtSheet] (che importa questo file) per evitare due copie divergenti.
@@ -116,6 +177,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
     final bookingsAsync = ref.watch(adminBookingsProvider);
     final paymentsAsync = ref.watch(monthPaymentsProvider);
     final balancesAsync = ref.watch(adminClientBalancesProvider);
+    final membershipPaymentsAsync = ref.watch(adminMembershipPaymentsProvider);
     final modelAsync = ref.watch(adminPaymentsDefaultModelProvider);
     final billingModel = modelAsync.value ?? 'pay_per_session';
     final (operationIcon, operationLabel) = switch (billingModel) {
@@ -133,7 +195,14 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
       data: (bookings) {
         final accounts = balancesAsync.value ?? const <ClientBalanceAccount>[];
         final debtors = accounts.where((account) => account.debt > 0).toList();
-        final totalUnpaid = debtors.fold<double>(0, (s, d) => s + d.debt);
+        final membershipPayments =
+            membershipPaymentsAsync.value ?? const <MembershipPaymentAccount>[];
+        final renewals = membershipPayments
+            .where((membership) => membership.needsRenewal)
+            .toList();
+        final totalUnpaid = billingModel == 'monthly'
+            ? renewals.fold<double>(0, (sum, item) => sum + item.amount)
+            : debtors.fold<double>(0, (sum, item) => sum + item.debt);
         final payments = paymentsAsync.value ?? const <PaymentRow>[];
         final monthRevenue = payments.fold<double>(0, (s, p) => s + p.amount);
 
@@ -142,6 +211,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
             ref.invalidate(adminBookingsProvider);
             ref.invalidate(monthPaymentsProvider);
             ref.invalidate(adminClientBalancesProvider);
+            ref.invalidate(adminMembershipPaymentsProvider);
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
@@ -169,11 +239,15 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
               Row(
                 children: [
                   _statCard(
-                    '💰',
-                    'Da Incassare',
+                    billingModel == 'monthly' ? '📅' : '💰',
+                    billingModel == 'monthly' ? 'Da rinnovare' : 'Da Incassare',
                     '€${formatEuro(totalUnpaid)}',
                     AppColors.danger,
-                    subtitle: debtors.isEmpty
+                    subtitle: billingModel == 'monthly'
+                        ? (renewals.isEmpty
+                              ? null
+                              : '${renewals.length} rinnovo${renewals.length == 1 ? '' : 'i'}')
+                        : debtors.isEmpty
                         ? null
                         : '${debtors.length} '
                               '${debtors.length == 1 ? 'debitore' : 'debitori'}',
@@ -202,7 +276,10 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
-              if (_showDebtors) _balanceDebtorsList(debtors),
+              if (_showDebtors)
+                billingModel == 'monthly'
+                    ? _membershipRenewalsList(renewals)
+                    : _balanceDebtorsList(debtors),
               if (_showRecent) _recentList(payments),
             ],
           ),
@@ -336,6 +413,82 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _membershipRenewalsList(List<MembershipPaymentAccount> renewals) {
+    if (renewals.isEmpty) {
+      return const AppEmptyState(
+        compact: true,
+        icon: Icons.verified_outlined,
+        title: 'Tutti gli abbonamenti risultano coperti.',
+      );
+    }
+    final clients =
+        ref.read(adminClientsProvider).value ?? const <AdminClient>[];
+    return Column(
+      children: [
+        for (final membership in renewals)
+          AppCard(
+            margin: const EdgeInsets.only(bottom: AppSpacing.md),
+            leftBarColor: AppColors.amber,
+            borderColor: AppColors.borderGray,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        membership.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        membership.periodEnd == null
+                            ? 'Nessun pagamento abbonamento registrato'
+                            : 'Scaduto il ${membership.periodEnd!.day}/${membership.periodEnd!.month}/${membership.periodEnd!.year}',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
+                      Text(
+                        'Da incassare: €${formatEuro(membership.amount)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.dangerDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    AdminClient? selected;
+                    for (final client in clients) {
+                      if (client.userId == membership.userId) {
+                        selected = client;
+                        break;
+                      }
+                    }
+                    final done = await showClientSaleSheet(
+                      context,
+                      ref,
+                      client: selected,
+                      initialKind: ClientSaleKind.membership,
+                      lockKind: true,
+                    );
+                    if (done == true) {
+                      ref.invalidate(adminMembershipPaymentsProvider);
+                      ref.invalidate(monthPaymentsProvider);
+                    }
+                  },
+                  child: const Text('Rinnova'),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -606,6 +759,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
       if (done == true) {
         ref.invalidate(adminBookingsProvider);
         ref.invalidate(monthPaymentsProvider);
+        ref.invalidate(adminMembershipPaymentsProvider);
       }
       return;
     }

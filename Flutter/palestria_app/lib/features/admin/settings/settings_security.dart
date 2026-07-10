@@ -24,6 +24,8 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
   late bool _maintMode;
   late final TextEditingController _maintMsg;
   bool _savingMsg = false;
+  bool _checkingHealth = false;
+  String? _healthResult;
 
   @override
   void initState() {
@@ -145,6 +147,32 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
     }
   }
 
+  Future<void> _runHealthCheck() async {
+    setState(() {
+      _checkingHealth = true;
+      _healthResult = null;
+    });
+    try {
+      final response = await ref
+          .read(supabaseProvider)
+          .rpc('admin_health_check')
+          .timeout(const Duration(seconds: 20));
+      final data = (response as Map?)?.cast<String, dynamic>() ?? const {};
+      final ok = data['success'] != false;
+      if (mounted) {
+        setState(() {
+          _healthResult = ok
+              ? 'Nessuna anomalia rilevata.'
+              : 'Sono state rilevate anomalie nei dati.';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _healthResult = 'Verifica non riuscita: $e');
+    } finally {
+      if (mounted) setState(() => _checkingHealth = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -181,6 +209,39 @@ class _SecuritySectionState extends ConsumerState<SecuritySection> {
               child: Text(_savingMsg ? '...' : 'Salva'),
             ),
           ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.slate50,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Verifica integrità dati',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Controlla eventuali anomalie nei dati dell’organizzazione.',
+                style: AppText.meta,
+              ),
+              if (_healthResult != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(_healthResult!, style: AppText.meta),
+              ],
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: _checkingHealth ? null : _runHealthCheck,
+                icon: const Icon(Icons.manage_search_outlined),
+                label: Text(_checkingHealth ? 'Verifica...' : 'Verifica'),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         Container(

@@ -302,6 +302,9 @@ create table client_memberships (
     status         text not null default 'active' check (status in ('active','expired','cancelled')),
     auto_renew     boolean not null default false,
     price          numeric(10,2),
+    payment_id     uuid,
+    payment_method text,
+    paid_at        timestamptz,
     created_at     timestamptz not null default now()
 );
 create index client_memberships_org_user_idx on client_memberships (org_id, user_id);

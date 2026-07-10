@@ -44,6 +44,44 @@ let _registroState = {
 };
 const REGISTRO_PAGE_SIZE = 50;
 let _registroFiltered = [];
+let _registroAuditRows = [];
+let _registroRealtimeChannel = null;
+let _registroRealtimeOrg = null;
+
+const _REGISTRO_BILLING_CONFIG = {
+    lesson_booked:                { icon:'📅', cls:'rtype-booking', label:'Lezione a entrata', group:'lesson_billing' },
+    lesson_charge_applied:        { icon:'➖', cls:'rtype-pending', label:'Addebito lezione', group:'lesson_billing' },
+    lesson_charge_reversed:       { icon:'↩️', cls:'rtype-paid', label:'Storno lezione', group:'lesson_billing' },
+    lesson_payment_recorded:      { icon:'💶', cls:'rtype-paid', label:'Incasso lezione', group:'lesson_billing', payment:true },
+    lesson_waived:                { icon:'🎁', cls:'rtype-paid', label:'Lezione abbuonata', group:'lesson_billing' },
+    lesson_waiver_reversed:       { icon:'↩️', cls:'rtype-pending', label:'Revoca abbuono', group:'lesson_billing' },
+    client_credit_added:          { icon:'⬆️', cls:'rtype-paid', label:'Credito aggiunto', group:'lesson_billing' },
+    client_debt_added:            { icon:'⬇️', cls:'rtype-pending', label:'Debito aggiunto', group:'lesson_billing' },
+    client_payment_recorded:      { icon:'💶', cls:'rtype-paid', label:'Saldo incassato', group:'lesson_billing', payment:true },
+    client_balance_reset:         { icon:'🧹', cls:'rtype-cancelled', label:'Saldo annullato', group:'lesson_billing' },
+    package_sold:                 { icon:'🎟️', cls:'rtype-paid', label:'Pacchetto venduto', group:'package_billing', payment:true },
+    package_payment_recorded:     { icon:'🎟️', cls:'rtype-paid', label:'Pacchetto incassato', group:'package_billing', payment:true },
+    package_lesson_reserved:      { icon:'🔒', cls:'rtype-booking', label:'Ingresso riservato', group:'package_billing' },
+    package_lesson_consumed:      { icon:'🎫', cls:'rtype-paid', label:'Ingresso scalato', group:'package_billing' },
+    package_reservation_released: { icon:'🔓', cls:'rtype-cancelled', label:'Riserva liberata', group:'package_billing' },
+    package_lesson_restored:      { icon:'↩️', cls:'rtype-paid', label:'Ingresso restituito', group:'package_billing' },
+    package_cancelled:            { icon:'❌', cls:'rtype-cancelled', label:'Pacchetto annullato', group:'package_billing' },
+    membership_sold:              { icon:'🪪', cls:'rtype-paid', label:'Abbonamento incassato', group:'membership_billing', payment:true },
+    membership_payment_recorded:  { icon:'🪪', cls:'rtype-paid', label:'Abbonamento incassato', group:'membership_billing', payment:true },
+    membership_lesson_used:       { icon:'✅', cls:'rtype-booking', label:'Lezione in abbonamento', group:'membership_billing' },
+    membership_lesson_restored:   { icon:'↩️', cls:'rtype-paid', label:'Quota abbonamento restituita', group:'membership_billing' },
+    membership_cancelled:         { icon:'❌', cls:'rtype-cancelled', label:'Abbonamento annullato', group:'membership_billing' },
+    free_lesson_booked:           { icon:'🎁', cls:'rtype-booking', label:'Lezione gratuita', group:'lesson_billing' },
+};
+
+function _registroNormalizeAuditRow(row) {
+    if (row?.action !== 'stripe_client_payment') return row;
+    const kind = row.metadata?.kind;
+    const action = kind === 'package_purchase' ? 'package_payment_recorded'
+                 : kind === 'membership' ? 'membership_payment_recorded'
+                 : 'lesson_payment_recorded';
+    return { ...row, action, metadata: { ...(row.metadata || {}), method:'stripe' } };
+}
 
 // ── Aggrega tutti gli eventi da tutte le sorgenti dati ─────────────────────
 function buildRegistroEntries() {
@@ -55,6 +93,22 @@ function buildRegistroEntries() {
     };
 
     const entries = [];
+    const auditBookingCreated = new Set();
+    const auditBookingPaid = new Set();
+
+    for (const row of _registroAuditRows) {
+        const cfg = _REGISTRO_BILLING_CONFIG[row.action];
+        if (!cfg) continue;
+        const m = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+        const bookingId = m.booking_id || (row.target_type === 'booking' ? row.target_id : null);
+        if (bookingId && ['lesson_booked','package_lesson_reserved','membership_lesson_used','free_lesson_booked'].includes(row.action)) {
+            auditBookingCreated.add(String(bookingId));
+            if (row.action !== 'lesson_booked') auditBookingPaid.add(String(bookingId));
+        }
+        if (bookingId && ['lesson_payment_recorded','client_payment_recorded'].includes(row.action)) {
+            auditBookingPaid.add(String(bookingId));
+        }
+    }
 
     // Helper: determina se un'azione è stata fatta da admin
     // (created_by/cancelled_by diverso da user_id = qualcun altro ha agito per conto dell'utente)
@@ -87,22 +141,24 @@ function buildRegistroEntries() {
         const createdByAdmin   = _isAdminAction(b.createdBy, b.userId);
         const cancelledByAdmin = _isAdminAction(b.cancelledBy, b.userId);
 
-        entries.push({
-            ...base,
-            eventType:     'booking_created',
-            timestamp:     createdAt,
-            amount:        getBookingPrice(b),
-            paymentMethod: b.paymentMethod || (b.status === 'cancelled' ? b.cancelledPaymentMethod : null) || null,
-            bookingStatus: b.status,
-            bookingPaid:   b.paid || (b.status === 'cancelled' && !!b.cancelledPaidAt),
-            actorType:     createdByAdmin ? 'admin' : 'user',
-        });
+        if (!auditBookingCreated.has(String(b.sbId || b.id))) {
+            entries.push({
+                ...base,
+                eventType:     'booking_created',
+                timestamp:     createdAt,
+                amount:        getBookingPrice(b),
+                paymentMethod: b.paymentMethod || (b.status === 'cancelled' ? b.cancelledPaymentMethod : null) || null,
+                bookingStatus: b.status,
+                bookingPaid:   b.paid || (b.status === 'cancelled' && !!b.cancelledPaidAt),
+                actorType:     createdByAdmin ? 'admin' : 'user',
+            });
+        }
 
         // Evento: pagamento ricevuto
         // Per prenotazioni annullate-dopo-pagamento usiamo cancelledPaidAt/cancelledPaymentMethod
         const paidAtTs  = b.paidAt || (b.status === 'cancelled' ? b.cancelledPaidAt  : null);
         const paidMeth  = b.paymentMethod || (b.status === 'cancelled' ? b.cancelledPaymentMethod : null);
-        if (paidAtTs) {
+        if (paidAtTs && !auditBookingPaid.has(String(b.sbId || b.id))) {
             entries.push({
                 ...base,
                 eventType:     'booking_paid',
@@ -146,6 +202,39 @@ function buildRegistroEntries() {
                 actorType:     cancelIsSystem ? 'system' : (cancelledByAdmin ? 'admin' : 'user'),
             });
         }
+    }
+
+    // 2. Ledger/audit server: vendite, riserve, scalature all'inizio lezione,
+    // addebiti, crediti/debiti e storni. Sono gli eventi autoritativi e persistono
+    // anche quando lo stato corrente di booking/pacchetto/abbonamento cambia.
+    const users = typeof UserStorage !== 'undefined' && UserStorage.getAll ? UserStorage.getAll() : [];
+    for (const row of _registroAuditRows) {
+        const cfg = _REGISTRO_BILLING_CONFIG[row.action];
+        if (!cfg) continue;
+        const m = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+        const user = m.client_user_id ? users.find(u => String(u.userId) === String(m.client_user_id)) : null;
+        const bookingId = m.booking_id || (row.target_type === 'booking' ? row.target_id : null);
+        const amount = m.amount == null ? null : Number(m.amount);
+        entries.push({
+            bookingId,
+            eventType: row.action,
+            eventGroup: cfg.group,
+            timestamp: new Date(row.created_at),
+            clientName: m.client_name || user?.name || m.client_email || 'Cliente',
+            clientPhone: m.client_phone || user?.whatsapp || '',
+            clientEmail: m.client_email || user?.email || '',
+            lessonDate: m.lesson_date || null,
+            lessonTime: m.lesson_time || null,
+            slotType: m.slot_type || null,
+            slotLabel: SLOT_LABEL[m.slot_type] || m.slot_type || '',
+            notes: m.note || '',
+            amount: Number.isFinite(amount) ? amount : null,
+            paymentMethod: m.payment_method || m.method || null,
+            bookingStatus: m.status || null,
+            bookingPaid: cfg.payment ? true : null,
+            actorType: row.actor_user_id ? 'admin' : 'system',
+            isPayment: cfg.payment === true,
+        });
     }
 
     return entries;
@@ -204,7 +293,7 @@ function applyRegistroFilters() {
             if (range.to   && e.timestamp > range.to)   return false;
         }
         // Tipo evento (multi-selezione: nessun bottone attivo = tutti)
-        if (activeTypes.length > 0 && !activeTypes.includes(e.eventType)) return false;
+        if (activeTypes.length > 0 && !activeTypes.includes(e.eventType) && !activeTypes.includes(e.eventGroup)) return false;
         // Tipo lezione
         if (filterSlot !== 'all' && e.slotType !== filterSlot) return false;
         // Metodo pagamento
@@ -251,7 +340,7 @@ function applyRegistroFilters() {
 function _updateRegistroSummary(filtered) {
     const totalEvents   = filtered.length;
     const totalPaid     = filtered
-        .filter(e => e.eventType === 'booking_paid')
+        .filter(e => e.eventType === 'booking_paid' || e.isPayment === true)
         .reduce((s, e) => s + (e.amount || 0), 0);
     const totalBookings = filtered.filter(e => e.eventType === 'booking_created').length;
 
@@ -297,6 +386,7 @@ function renderRegistroTable() {
         booking_paid:             { icon: '✅', cls: 'rtype-paid',       label: 'Pagamento' },
         booking_cancelled:        { icon: '❌', cls: 'rtype-cancelled',  label: 'Annullamento' },
         booking_cancellation_req: { icon: '⏳', cls: 'rtype-pending',    label: 'Rich. Annullamento' },
+        ..._REGISTRO_BILLING_CONFIG,
     };
     const METHOD_ICON  = { contanti: '💵', 'contanti-report': '🧾', carta: '💳', iban: '🏦' };
     const METHOD_LABEL = { contanti: 'Contanti', 'contanti-report': 'Contanti con Report', carta: 'Carta', iban: 'Bonifico' };
@@ -675,7 +765,18 @@ async function _registroRefreshData() {
         // Registro = vista di audit dei movimenti: deve avere dati COMPLETI, non la cache
         // delta ottimizzata per l'egress (una riga saltata dal watermark sparirebbe fino a
         // un full/reload). forceFull bypassa watermark/_shouldFullSync (throttlato a 10s).
-        await BookingStorage.syncFromSupabase({ forceFull: true });
+        const [, auditRes] = await Promise.all([
+            BookingStorage.syncFromSupabase({ forceFull: true }),
+            _rpcWithTimeout(
+                supabaseClient.from('admin_audit_log')
+                    .select('id,actor_user_id,action,target_type,target_id,metadata,created_at,event_key')
+                    .order('created_at', { ascending:false })
+                    .limit(5000),
+                20000
+            )
+        ]);
+        if (auditRes?.error) throw auditRes.error;
+        _registroAuditRows = (auditRes?.data || []).map(_registroNormalizeAuditRow);
         _registroLastSyncAt = Date.now();
         // Re-render solo se siamo ancora sul tab Registro: evita lavoro inutile
         // se l'utente ha già cambiato tab mentre il fetch era in volo.
@@ -690,8 +791,32 @@ async function _registroRefreshData() {
     }
 }
 
+function _ensureRegistroRealtime() {
+    const orgId = window._orgId;
+    if (!orgId || typeof supabaseClient === 'undefined') return;
+    if (_registroRealtimeChannel && _registroRealtimeOrg === orgId) return;
+    if (_registroRealtimeChannel) {
+        try { supabaseClient.removeChannel(_registroRealtimeChannel); } catch (_) {}
+    }
+    _registroRealtimeOrg = orgId;
+    _registroRealtimeChannel = supabaseClient
+        .channel('registro-billing-' + orgId)
+        .on('postgres_changes', {
+            event: 'INSERT', schema: 'public', table: 'admin_audit_log',
+            filter: 'org_id=eq.' + orgId,
+        }, payload => {
+            const row = _registroNormalizeAuditRow(payload?.new);
+            if (!row || !_REGISTRO_BILLING_CONFIG[row.action]) return;
+            if (!_registroAuditRows.some(x => x.id === row.id)) _registroAuditRows.unshift(row);
+            const active = document.querySelector('.admin-tab.active');
+            if (active && active.dataset.tab === 'registro') applyRegistroFilters();
+        })
+        .subscribe();
+}
+
 // ── Entry point chiamato da switchTab ──────────────────────────────────────
 function renderRegistroTab() {
+    _ensureRegistroRealtime();
     applyRegistroFilters();      // render immediato da cache (no flicker)
     _registroRefreshData();      // fetch in background, guardato
 }

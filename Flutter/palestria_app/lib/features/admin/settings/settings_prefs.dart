@@ -23,6 +23,15 @@ class _PolicySectionState extends State<PolicySection> {
   late final TextEditingController _maxAdvance;
   late bool _requiresAccount;
   late String _cancelMode;
+  late bool _certEditable;
+  late bool _certBlockExpired;
+  late bool _certBlockNotSet;
+  late bool _assicBlockExpired;
+  late bool _assicBlockNotSet;
+  late bool _showCertBadge;
+  late bool _showAssicBadge;
+  late bool _showDocBadge;
+  late bool _showAnagBadge;
   bool _saving = false;
 
   @override
@@ -40,6 +49,15 @@ class _PolicySectionState extends State<PolicySection> {
     );
     _requiresAccount = s.getBool('booking.policy.requires_account', false);
     _cancelMode = s.getString('booking.policy.cancel_mode', 'penalty');
+    _certEditable = s.getBool('cert_scadenza_editable', true);
+    _certBlockExpired = s.getBool('cert_block_expired', false);
+    _certBlockNotSet = s.getBool('cert_block_not_set', false);
+    _assicBlockExpired = s.getBool('assic_block_expired', false);
+    _assicBlockNotSet = s.getBool('assic_block_not_set', false);
+    _showCertBadge = s.getBool('show_cert_badge', true);
+    _showAssicBadge = s.getBool('show_assic_badge', true);
+    _showDocBadge = s.getBool('show_doc_badge', true);
+    _showAnagBadge = s.getBool('show_anag_badge', true);
   }
 
   @override
@@ -68,6 +86,15 @@ class _PolicySectionState extends State<PolicySection> {
       );
       await s.set('booking.policy.requires_account', _requiresAccount);
       await s.set('booking.policy.cancel_mode', _cancelMode);
+      await s.set('cert_scadenza_editable', _certEditable);
+      await s.set('cert_block_expired', _certBlockExpired);
+      await s.set('cert_block_not_set', _certBlockNotSet);
+      await s.set('assic_block_expired', _assicBlockExpired);
+      await s.set('assic_block_not_set', _assicBlockNotSet);
+      await s.set('show_cert_badge', _showCertBadge);
+      await s.set('show_assic_badge', _showAssicBadge);
+      await s.set('show_doc_badge', _showDocBadge);
+      await s.set('show_anag_badge', _showAnagBadge);
       if (mounted) AppSnack.success(context, 'Policy salvata.');
     } catch (e) {
       if (mounted) AppSnack.error(context, 'Errore: $e');
@@ -124,6 +151,61 @@ class _PolicySectionState extends State<PolicySection> {
             style: AppText.meta,
           ),
         ),
+        const Divider(height: AppSpacing.lg),
+        const Text(
+          'Certificato medico e assicurazione',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        _toggle(
+          'Scadenza certificato modificabile dal cliente',
+          _certEditable,
+          (v) => setState(() => _certEditable = v),
+        ),
+        _toggle(
+          'Blocca se il certificato è scaduto',
+          _certBlockExpired,
+          (v) => setState(() => _certBlockExpired = v),
+        ),
+        _toggle(
+          'Blocca se il certificato non è impostato',
+          _certBlockNotSet,
+          (v) => setState(() => _certBlockNotSet = v),
+        ),
+        _toggle(
+          'Blocca se l’assicurazione è scaduta',
+          _assicBlockExpired,
+          (v) => setState(() => _assicBlockExpired = v),
+        ),
+        _toggle(
+          'Blocca se l’assicurazione non è impostata',
+          _assicBlockNotSet,
+          (v) => setState(() => _assicBlockNotSet = v),
+        ),
+        const Divider(height: AppSpacing.lg),
+        const Text(
+          'Badge sulla card partecipante',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        _toggle(
+          'Certificato medico',
+          _showCertBadge,
+          (v) => setState(() => _showCertBadge = v),
+        ),
+        _toggle(
+          'Assicurazione',
+          _showAssicBadge,
+          (v) => setState(() => _showAssicBadge = v),
+        ),
+        _toggle(
+          'Documento non firmato',
+          _showDocBadge,
+          (v) => setState(() => _showDocBadge = v),
+        ),
+        _toggle(
+          'Anagrafica incompleta',
+          _showAnagBadge,
+          (v) => setState(() => _showAnagBadge = v),
+        ),
         const SizedBox(height: AppSpacing.sm),
         FilledButton(
           onPressed: _saving ? null : _save,
@@ -139,6 +221,20 @@ class _PolicySectionState extends State<PolicySection> {
       controller: c,
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label),
+    ),
+  );
+
+  Widget _toggle(
+    String title,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) => SwitchListTile(
+    contentPadding: EdgeInsets.zero,
+    value: value,
+    onChanged: onChanged,
+    title: Text(
+      title,
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
     ),
   );
 }

@@ -10,6 +10,21 @@ una *Parte tecnica* autosufficiente (file, identificatori, prima/dopo, deploy).
 ---
 
 <!-- Le prossime voci vanno qui, in cima. -->
+## 2026-07-10 - Gestione pagamenti e rinnovi abbonamenti
+
+**Problema/feature.** L'abbonamento creava una copertura e una riga generica nel ledger, ma Pagamenti non mostrava clienti scaduti/da rinnovare né collegava esplicitamente l'incasso al periodo. In alcuni dati reali l'RPC poteva inoltre terminare con `23502` (campo obbligatorio nullo).
+
+### Parte tecnica
+
+- Migration `00000000000043_membership_payment_management.sql`, applicata sul remoto:
+  - aggiunge a `client_memberships` `payment_id`, `payment_method`, `paid_at` e collega lo storico esistente tramite `payments.membership_id`;
+  - `admin_record_membership_payment` valorizza esplicitamente ID, timestamp, stato, contatori, periodo, valuta, metodo e chiave idempotente, senza dipendere da default potenzialmente divergenti; un eventuale futuro `NOT NULL` riporta il nome esatto del campo tramite `GET STACKED DIAGNOSTICS`;
+  - ogni rinnovo crea una nuova membership per il periodo 1/3/12 mesi e un nuovo `payments(kind='membership')`, conservando integralmente lo storico;
+  - `get_membership_payment_overview()` restituisce copertura più recente, ultimo incasso, importo e `needs_renewal` per tutti i clienti del modello Abbonamento.
+- Flutter `payments_tab.dart`: nel modello Abbonamento la prima statistica diventa **Da rinnovare**, mostra importo/clienti scaduti e apre **Rinnova** con cliente e tipo operazione già bloccati sull'abbonamento.
+- PWA `admin-payments.js`: stessa panoramica e card Rinnova; `admin-payments.js?v=27`, service worker `palestria-v597`.
+- QA/deploy: `flutter analyze` pulito, test 9/9, JS e script inline validi, `git diff --check` pulito; migration 43 applicata con `supabase db push --yes`.
+
 ## 2026-07-10 - Realtime billing, pacchetti scalati all'ingresso e book_slot legacy-safe
 
 **Problema/feature.** L'app Flutter aggiornava saldo, pagamenti e pacchetti solo dopo refresh. I pacchetti consumavano l'ingresso già durante la prenotazione; inoltre il ramo a entrata di `book_slot` poteva restituire un'eccezione DB, mostrata dall'app come falso errore di connessione, se una qualsiasi prenotazione storica aveva un orario non convertibile col cast rigido.

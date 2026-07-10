@@ -29,6 +29,8 @@ const _timezoneOptions = [
 ];
 
 const _currencyOptions = ['EUR', 'USD', 'GBP', 'CHF'];
+const _languageOptions = ['it', 'en', 'fr', 'de', 'es'];
+const _dateFormatOptions = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
 
 /// Tab Impostazioni org (spec-admin §12). Versione con le sezioni principali:
 /// Branding, Localizzazione, Pagamenti cliente, e Billing SaaS (Stripe web).
@@ -76,6 +78,28 @@ class SettingsTab extends ConsumerWidget {
                 defaultValue: 'EUR',
                 options: _currencyOptions,
               ),
+              _DropdownSetting(
+                service: service,
+                settingKey: 'locale.language',
+                label: 'Lingua',
+                defaultValue: 'it',
+                options: _languageOptions,
+                optionLabels: const {
+                  'it': 'Italiano',
+                  'en': 'English',
+                  'fr': 'Français',
+                  'de': 'Deutsch',
+                  'es': 'Español',
+                },
+              ),
+              _DropdownSetting(
+                service: service,
+                settingKey: 'locale.date_format',
+                label: 'Formato data',
+                defaultValue: 'DD/MM/YYYY',
+                options: _dateFormatOptions,
+              ),
+              _FirstDaySetting(service: service),
             ]),
             _section('🏢 Dati azienda & fiscali', [
               CompanySection(service: service),
@@ -131,6 +155,10 @@ class _BrandingSection extends ConsumerStatefulWidget {
 
 class _BrandingSectionState extends ConsumerState<_BrandingSection> {
   late final TextEditingController _studioName;
+  late final TextEditingController _pwaName;
+  late final TextEditingController _homeDuration;
+  late final TextEditingController _logoUrl;
+  late final TextEditingController _faviconUrl;
   late final TextEditingController _primaryColor;
   bool _saving = false;
 
@@ -140,6 +168,18 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
     _studioName = TextEditingController(
       text: widget.service.getString('branding.studio_name', ''),
     );
+    _pwaName = TextEditingController(
+      text: widget.service.getString('branding.pwa_name', ''),
+    );
+    _homeDuration = TextEditingController(
+      text: widget.service.getString('branding.home_duration', ''),
+    );
+    _logoUrl = TextEditingController(
+      text: widget.service.getString('branding.logo_url', ''),
+    );
+    _faviconUrl = TextEditingController(
+      text: widget.service.getString('branding.favicon_url', ''),
+    );
     _primaryColor = TextEditingController(
       text: widget.service.getString('branding.primary_color', '#8B5CF6'),
     );
@@ -148,6 +188,10 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
   @override
   void dispose() {
     _studioName.dispose();
+    _pwaName.dispose();
+    _homeDuration.dispose();
+    _logoUrl.dispose();
+    _faviconUrl.dispose();
     _primaryColor.dispose();
     super.dispose();
   }
@@ -156,6 +200,16 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
     setState(() => _saving = true);
     try {
       await widget.service.set('branding.studio_name', _studioName.text.trim());
+      await widget.service.set('branding.pwa_name', _pwaName.text.trim());
+      await widget.service.set(
+        'branding.home_duration',
+        _homeDuration.text.trim(),
+      );
+      await widget.service.set('branding.logo_url', _logoUrl.text.trim());
+      await widget.service.set(
+        'branding.favicon_url',
+        _faviconUrl.text.trim(),
+      );
       await widget.service.set(
         'branding.primary_color',
         _primaryColor.text.trim(),
@@ -185,6 +239,33 @@ class _BrandingSectionState extends ConsumerState<_BrandingSection> {
         ),
         const SizedBox(height: AppSpacing.md),
         TextField(
+          controller: _pwaName,
+          decoration: const InputDecoration(
+            labelText: 'Nome PWA (app installata)',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        TextField(
+          controller: _homeDuration,
+          decoration: const InputDecoration(
+            labelText: 'Durata sessione (home)',
+            hintText: 'Es. 80 minuti',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        TextField(
+          controller: _logoUrl,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(labelText: 'URL logo'),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        TextField(
+          controller: _faviconUrl,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(labelText: 'URL favicon'),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        TextField(
           controller: _primaryColor,
           decoration: const InputDecoration(
             labelText: 'Colore primario (hex)',
@@ -210,6 +291,7 @@ class _DropdownSetting extends ConsumerStatefulWidget {
     required this.label,
     required this.defaultValue,
     required this.options,
+    this.optionLabels = const {},
   });
 
   final OrgSettingsService service;
@@ -217,6 +299,7 @@ class _DropdownSetting extends ConsumerStatefulWidget {
   final String label;
   final String defaultValue;
   final List<String> options;
+  final Map<String, String> optionLabels;
 
   @override
   ConsumerState<_DropdownSetting> createState() => _DropdownSettingState();
@@ -259,12 +342,64 @@ class _DropdownSettingState extends ConsumerState<_DropdownSetting> {
         decoration: InputDecoration(labelText: widget.label),
         items: [
           for (final o in widget.options)
-            DropdownMenuItem(value: o, child: Text(o)),
+            DropdownMenuItem(
+              value: o,
+              child: Text(widget.optionLabels[o] ?? o),
+            ),
         ],
         onChanged: _onChanged,
       ),
     );
   }
+}
+
+class _FirstDaySetting extends StatefulWidget {
+  const _FirstDaySetting({required this.service});
+  final OrgSettingsService service;
+
+  @override
+  State<_FirstDaySetting> createState() => _FirstDaySettingState();
+}
+
+class _FirstDaySettingState extends State<_FirstDaySetting> {
+  late int _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.service.getNumber('locale.first_day_of_week', 1).toInt();
+    if (_value < 0 || _value > 6) _value = 1;
+  }
+
+  Future<void> _change(int? value) async {
+    if (value == null || value == _value) return;
+    final previous = _value;
+    setState(() => _value = value);
+    try {
+      await widget.service.set('locale.first_day_of_week', value);
+      if (mounted) AppSnack.success(context, 'Impostazione salvata.');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _value = previous);
+        AppSnack.error(context, 'Errore: $e');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+    child: DropdownButtonFormField<int>(
+      initialValue: _value,
+      decoration: const InputDecoration(labelText: 'Primo giorno settimana'),
+      items: const [
+        DropdownMenuItem(value: 1, child: Text('Lunedì')),
+        DropdownMenuItem(value: 0, child: Text('Domenica')),
+        DropdownMenuItem(value: 6, child: Text('Sabato')),
+      ],
+      onChanged: _change,
+    ),
+  );
 }
 
 /// Sezione Billing SaaS: entitlements + apertura Stripe su browser esterno.

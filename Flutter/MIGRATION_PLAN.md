@@ -113,6 +113,8 @@ Go-to-market confermato dall'utente: **lancio entro fine 2026 su ENTRAMBI gli st
       free/monthly/package/pay_per_session con debito da prezzi org), card dati, logout
 - [x] Billing cliente server-authoritative: credito/debito live e pacchetti scalati dal cron solo
       all'ora di inizio lezione; la prenotazione conserva una riserva senza consumare l'ingresso.
+- [x] Pagamenti abbonamento per periodo (`migration 43`): ogni copertura 1/3/12 mesi ha payment
+      collegato, metodo/data incasso, panoramica rinnovi e azione Rinnova precompilata nella tab Pagamenti.
 - [x] **Modifica profilo** (`edit_profile_sheet.dart` §7.7): nome disabilitato, email (cambio via
       auth con conferma), whatsapp (is_whatsapp_taken con exclude), CF upper, indirizzo con
       normalizeComune, CAP 5 cifre, cert con append history, assicurazione sempre disabilitata,

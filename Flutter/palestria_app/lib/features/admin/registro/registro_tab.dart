@@ -15,11 +15,13 @@ class RegistroEvent {
     required this.type,
     required this.timestamp,
     required this.clientName,
-    required this.slotType,
-    required this.lessonDate,
-    required this.lessonTime,
+    this.slotType = '',
+    this.lessonDate = '',
+    this.lessonTime = '',
+    this.billingKind = 'booking',
     this.amount,
     this.method,
+    this.note,
   });
   final String type; // created | paid | cancelled | cancel_req
   final DateTime timestamp;
@@ -27,8 +29,10 @@ class RegistroEvent {
   final String slotType;
   final String lessonDate;
   final String lessonTime;
+  final String billingKind;
   final double? amount;
   final String? method;
+  final String? note;
 }
 
 /// Tab Registro (spec-admin §5): 3 sub-tab — eventi prenotazioni, notifiche
@@ -44,6 +48,7 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
   int _sub = 0;
   String _query = '';
   String _range = 'all'; // all | month | year
+  String _billingKind = 'all';
 
   @override
   Widget build(BuildContext context) {
@@ -107,9 +112,18 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
   // ---- Sub-tab 1: Registro eventi ----
   Widget _registroPanel() {
     final bookingsAsync = ref.watch(adminBookingsProvider);
+    final auditAsync = ref.watch(adminAuditLogProvider);
     final config =
         ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
     final settings = ref.watch(orgSettingsProvider).value;
+
+    if (auditAsync.isLoading) return const AppLoading();
+    if (auditAsync.hasError) {
+      return AppErrorRetry(
+        message: 'Errore caricamento log economici.',
+        onRetry: () => ref.invalidate(adminAuditLogProvider),
+      );
+    }
 
     return bookingsAsync.when(
       loading: () => const AppLoading(),
@@ -118,10 +132,18 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
         onRetry: () => ref.invalidate(adminBookingsProvider),
       ),
       data: (bookings) {
-        final events = _buildEvents(bookings, settings, config);
+        final events = _buildEvents(
+          bookings,
+          auditAsync.value ?? const [],
+          settings,
+          config,
+        );
         final filtered = _filterEvents(events);
         return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(adminBookingsProvider),
+          onRefresh: () async {
+            ref.invalidate(adminBookingsProvider);
+            ref.invalidate(adminAuditLogProvider);
+          },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.md,
@@ -147,6 +169,21 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
                   _rangeChip('Quest\'anno', 'year'),
                 ],
               ),
+              const SizedBox(height: AppSpacing.sm),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _billingChip('Tutti i tipi', 'all'),
+                    const SizedBox(width: 6),
+                    _billingChip('Lezioni / saldo', 'lesson'),
+                    const SizedBox(width: 6),
+                    _billingChip('Pacchetti', 'package'),
+                    const SizedBox(width: 6),
+                    _billingChip('Abbonamenti', 'membership'),
+                  ],
+                ),
+              ),
               const SizedBox(height: AppSpacing.md),
               if (filtered.isEmpty)
                 const AppEmptyState(
@@ -161,6 +198,12 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
       },
     );
   }
+
+  Widget _billingChip(String label, String value) => FilterChip(
+    selected: _billingKind == value,
+    label: Text(label),
+    onSelected: (_) => setState(() => _billingKind = value),
+  );
 
   Widget _rangeChip(String label, String value) {
     final active = _range == value;
@@ -190,28 +233,61 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
 
   List<RegistroEvent> _buildEvents(
     List<Booking> bookings,
+    List<Map<String, dynamic>> auditRows,
     OrgSettingsService? settings,
     OrgScheduleConfig config,
   ) {
     final events = <RegistroEvent>[];
+    final coveredCreated = <String>{};
+    final coveredPaid = <String>{};
+    for (final row in auditRows) {
+      final action = _auditAction(row);
+      if (_auditKind(action) == null) continue;
+      final metadata = _metadata(row);
+      final bookingId =
+          metadata['booking_id']?.toString() ??
+          (row['target_type'] == 'booking'
+              ? row['target_id']?.toString()
+              : null);
+      if (bookingId != null &&
+          const {
+            'lesson_booked',
+            'package_lesson_reserved',
+            'membership_lesson_used',
+            'free_lesson_booked',
+          }.contains(action)) {
+        coveredCreated.add(bookingId);
+        if (action != 'lesson_booked') coveredPaid.add(bookingId);
+      }
+      if (bookingId != null &&
+          const {
+            'lesson_payment_recorded',
+            'client_payment_recorded',
+          }.contains(action)) {
+        coveredPaid.add(bookingId);
+      }
+    }
     for (final b in bookings) {
       final name = b.name ?? '—';
       final amount = bookingPrice(b, settings, config);
-      events.add(
-        RegistroEvent(
-          type: 'created',
-          timestamp:
-              b.createdAt ??
-              DateTime.tryParse('${b.date}T08:00:00') ??
-              DateTime.now(),
-          clientName: name,
-          slotType: b.slotType,
-          lessonDate: b.date,
-          lessonTime: b.time,
-          amount: amount,
-        ),
-      );
-      if (b.paidAt != null) {
+      final bookingId = b.sbId ?? b.id;
+      if (!coveredCreated.contains(bookingId)) {
+        events.add(
+          RegistroEvent(
+            type: 'created',
+            timestamp:
+                b.createdAt ??
+                DateTime.tryParse('${b.date}T08:00:00') ??
+                DateTime.now(),
+            clientName: name,
+            slotType: b.slotType,
+            lessonDate: b.date,
+            lessonTime: b.time,
+            amount: amount,
+          ),
+        );
+      }
+      if (b.paidAt != null && !coveredPaid.contains(bookingId)) {
         events.add(
           RegistroEvent(
             type: 'paid',
@@ -250,6 +326,34 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
         );
       }
     }
+
+    for (final row in auditRows) {
+      final action = _auditAction(row);
+      final kind = _auditKind(action);
+      if (kind == null) continue;
+      final metadata = _metadata(row);
+      events.add(
+        RegistroEvent(
+          type: action,
+          timestamp:
+              DateTime.tryParse(row['created_at']?.toString() ?? '') ??
+              DateTime.now(),
+          clientName:
+              metadata['client_name']?.toString() ??
+              metadata['client_email']?.toString() ??
+              'Cliente',
+          slotType: metadata['slot_type']?.toString() ?? '',
+          lessonDate: metadata['lesson_date']?.toString() ?? '',
+          lessonTime: metadata['lesson_time']?.toString() ?? '',
+          billingKind: kind,
+          amount: (metadata['amount'] as num?)?.toDouble(),
+          method:
+              metadata['payment_method']?.toString() ??
+              metadata['method']?.toString(),
+          note: metadata['note']?.toString(),
+        ),
+      );
+    }
     events.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return events;
   }
@@ -263,33 +367,14 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
         return false;
       }
       if (_range == 'year' && e.timestamp.year != now.year) return false;
+      if (_billingKind != 'all' && e.billingKind != _billingKind) return false;
       if (q.isNotEmpty && !e.clientName.toLowerCase().contains(q)) return false;
       return true;
     }).toList();
   }
 
   Widget _eventRow(OrgScheduleConfig config, RegistroEvent e) {
-    final (label, bg, fg, emoji) = switch (e.type) {
-      'created' => (
-        'Prenotazione',
-        AppColors.infoSurface,
-        AppColors.blue600,
-        '📅',
-      ),
-      'paid' => ('Pagamento', AppColors.paidBg, AppColors.paidText, '✅'),
-      'cancelled' => (
-        'Annullamento',
-        AppColors.cancelledBg,
-        AppColors.cancelledText,
-        '❌',
-      ),
-      _ => (
-        'Rich. Annullamento',
-        AppColors.warnSurface,
-        AppColors.docWarnText,
-        '⏳',
-      ),
-    };
+    final (label, bg, fg, emoji) = _eventStyle(e.type);
     final ts = e.timestamp;
     final tsStr =
         '${ts.day.toString().padLeft(2, '0')}/${ts.month.toString().padLeft(2, '0')} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
@@ -320,23 +405,36 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
                   ),
                 ),
                 Text(
-                  '$tsStr · ${config.slotName(e.slotType)}',
+                  e.slotType.isEmpty
+                      ? tsStr
+                      : '$tsStr · ${config.slotName(e.slotType)}',
                   style: const TextStyle(
                     fontSize: 11.5,
                     color: AppColors.subtle,
                   ),
                 ),
-                Text(
-                  'Lezione ${_fmtLessonDate(e.lessonDate)} · ${e.lessonTime}',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: AppColors.subtle,
+                if (e.lessonDate.isNotEmpty)
+                  Text(
+                    'Lezione ${_fmtLessonDate(e.lessonDate)} · ${e.lessonTime}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.subtle,
+                    ),
                   ),
-                ),
+                if (e.note != null && e.note!.isNotEmpty)
+                  Text(
+                    e.note!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.subtle,
+                    ),
+                  ),
               ],
             ),
           ),
-          if (e.type == 'paid' && e.amount != null)
+          if (_isPaymentEvent(e.type) && e.amount != null)
             Text(
               '+€${_fmt(e.amount!)}',
               style: const TextStyle(
@@ -350,6 +448,18 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
                 color: AppColors.muted,
+              ),
+            ),
+          if (e.type != 'created' &&
+              !_isPaymentEvent(e.type) &&
+              e.amount != null)
+            Text(
+              '${e.amount! >= 0 ? '+' : '-'}€${_fmt(e.amount!.abs())}',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: e.amount! >= 0
+                    ? AppColors.paidText
+                    : AppColors.dangerDark,
               ),
             ),
         ],
@@ -552,4 +662,198 @@ class _RegistroTabState extends ConsumerState<RegistroTab> {
     if (d == null || m == null) return iso;
     return '$d/$m';
   }
+
+  static Map<String, dynamic> _metadata(Map<String, dynamic> row) =>
+      (row['metadata'] as Map?)?.cast<String, dynamic>() ?? const {};
+
+  static String _auditAction(Map<String, dynamic> row) {
+    final action = row['action'] as String? ?? '';
+    if (action != 'stripe_client_payment') return action;
+    return switch (_metadata(row)['kind']) {
+      'package_purchase' => 'package_payment_recorded',
+      'membership' => 'membership_payment_recorded',
+      _ => 'lesson_payment_recorded',
+    };
+  }
+
+  static String? _auditKind(String action) {
+    if (action.startsWith('package_')) return 'package';
+    if (action.startsWith('membership_')) return 'membership';
+    if (const {
+      'lesson_booked',
+      'lesson_charge_applied',
+      'lesson_charge_reversed',
+      'lesson_payment_recorded',
+      'lesson_waived',
+      'lesson_waiver_reversed',
+      'client_credit_added',
+      'client_debt_added',
+      'client_payment_recorded',
+      'client_balance_reset',
+      'free_lesson_booked',
+    }.contains(action)) {
+      return 'lesson';
+    }
+    return null;
+  }
+
+  static bool _isPaymentEvent(String type) => const {
+    'paid',
+    'lesson_payment_recorded',
+    'client_payment_recorded',
+    'package_sold',
+    'package_payment_recorded',
+    'membership_sold',
+    'membership_payment_recorded',
+  }.contains(type);
+
+  static (String, Color, Color, String) _eventStyle(String type) =>
+      switch (type) {
+        'created' => (
+          'Prenotazione',
+          AppColors.infoSurface,
+          AppColors.blue600,
+          '📅',
+        ),
+        'paid' => ('Pagamento', AppColors.paidBg, AppColors.paidText, '✅'),
+        'cancelled' => (
+          'Annullamento',
+          AppColors.cancelledBg,
+          AppColors.cancelledText,
+          '❌',
+        ),
+        'cancel_req' => (
+          'Rich. Annullamento',
+          AppColors.warnSurface,
+          AppColors.docWarnText,
+          '⏳',
+        ),
+        'lesson_booked' => (
+          'Lezione a entrata',
+          AppColors.infoSurface,
+          AppColors.blue600,
+          '📅',
+        ),
+        'lesson_charge_applied' => (
+          'Addebito lezione',
+          AppColors.warnSurface,
+          AppColors.docWarnText,
+          '➖',
+        ),
+        'lesson_charge_reversed' => (
+          'Storno lezione',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '↩️',
+        ),
+        'lesson_payment_recorded' || 'client_payment_recorded' => (
+          'Incasso saldo',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '💶',
+        ),
+        'client_credit_added' => (
+          'Credito aggiunto',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '⬆️',
+        ),
+        'client_debt_added' => (
+          'Debito aggiunto',
+          AppColors.warnSurface,
+          AppColors.docWarnText,
+          '⬇️',
+        ),
+        'client_balance_reset' => (
+          'Saldo annullato',
+          AppColors.cancelledBg,
+          AppColors.cancelledText,
+          '🧹',
+        ),
+        'lesson_waived' => (
+          'Lezione abbuonata',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '🎁',
+        ),
+        'lesson_waiver_reversed' => (
+          'Revoca abbuono',
+          AppColors.warnSurface,
+          AppColors.docWarnText,
+          '↩️',
+        ),
+        'package_sold' => (
+          'Pacchetto venduto',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '🎟️',
+        ),
+        'package_payment_recorded' => (
+          'Pacchetto incassato',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '🎟️',
+        ),
+        'package_lesson_reserved' => (
+          'Ingresso riservato',
+          AppColors.infoSurface,
+          AppColors.blue600,
+          '🔒',
+        ),
+        'package_lesson_consumed' => (
+          'Ingresso scalato',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '🎫',
+        ),
+        'package_reservation_released' => (
+          'Riserva liberata',
+          AppColors.cancelledBg,
+          AppColors.cancelledText,
+          '🔓',
+        ),
+        'package_lesson_restored' => (
+          'Ingresso restituito',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '↩️',
+        ),
+        'package_cancelled' => (
+          'Pacchetto annullato',
+          AppColors.cancelledBg,
+          AppColors.cancelledText,
+          '❌',
+        ),
+        'membership_sold' || 'membership_payment_recorded' => (
+          'Abbonamento incassato',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '🪪',
+        ),
+        'membership_lesson_used' => (
+          'Lezione in abbonamento',
+          AppColors.infoSurface,
+          AppColors.blue600,
+          '✅',
+        ),
+        'membership_lesson_restored' => (
+          'Quota restituita',
+          AppColors.paidBg,
+          AppColors.paidText,
+          '↩️',
+        ),
+        'membership_cancelled' => (
+          'Abbonamento annullato',
+          AppColors.cancelledBg,
+          AppColors.cancelledText,
+          '❌',
+        ),
+        'free_lesson_booked' => (
+          'Lezione gratuita',
+          AppColors.infoSurface,
+          AppColors.blue600,
+          '🎁',
+        ),
+        _ => ('Evento', AppColors.slate50, AppColors.muted, '•'),
+      };
 }

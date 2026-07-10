@@ -312,6 +312,20 @@ class AdminRepository {
     return [for (final r in rows) (r as Map).cast<String, dynamic>()];
   }
 
+  /// Eventi economici autoritativi del Registro.
+  Future<List<Map<String, dynamic>>> fetchAdminAuditLog() async {
+    final rows = await _client
+        .from('admin_audit_log')
+        .select(
+          'id,actor_user_id,action,target_type,target_id,metadata,created_at,event_key',
+        )
+        .eq('org_id', orgId)
+        .order('created_at', ascending: false)
+        .limit(5000)
+        .timeout(const Duration(seconds: 20));
+    return [for (final r in rows) (r as Map).cast<String, dynamic>()];
+  }
+
   static String _rand36(int len) {
     const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
     var seed = DateTime.now().microsecondsSinceEpoch;
@@ -546,4 +560,13 @@ final clientNotificationsProvider = FutureProvider<List<Map<String, dynamic>>>((
   final repo = await ref.watch(adminRepositoryProvider.future);
   if (repo == null) return const [];
   return repo.fetchClientNotifications();
+});
+
+final adminAuditLogProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  ref.watch(billingRealtimeTickProvider);
+  final repo = await ref.watch(adminRepositoryProvider.future);
+  if (repo == null) return const [];
+  return repo.fetchAdminAuditLog();
 });
