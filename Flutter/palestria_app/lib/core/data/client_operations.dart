@@ -127,6 +127,9 @@ class ClientFinancialSummary {
     this.collected = 0,
     this.unpaid = 0,
     this.unpaidCount = 0,
+    this.scheduled = 0,
+    this.credit = 0,
+    this.creditCount = 0,
   });
   final String model;
   final double? customPrice;
@@ -138,6 +141,9 @@ class ClientFinancialSummary {
   final double collected;
   final double unpaid;
   final int unpaidCount;
+  final double scheduled;
+  final double credit;
+  final int creditCount;
 
   ClientPackageSummary? get activePackage {
     for (final p in packages) {
@@ -180,6 +186,9 @@ class ClientFinancialSummary {
       collected: (totals['collected'] as num?)?.toDouble() ?? 0,
       unpaid: (totals['unpaid'] as num?)?.toDouble() ?? 0,
       unpaidCount: (totals['unpaid_count'] as num?)?.toInt() ?? 0,
+      scheduled: (totals['scheduled'] as num?)?.toDouble() ?? 0,
+      credit: (totals['credit'] as num?)?.toDouble() ?? 0,
+      creditCount: (totals['credit_count'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -234,6 +243,7 @@ class ClientOperationsRepository {
     required String method,
     int? lessonsQuota,
     bool autoRenew = false,
+    String billingPeriod = 'monthly',
     String? note,
     String? idempotencyKey,
   }) async {
@@ -251,6 +261,7 @@ class ClientOperationsRepository {
             'p_auto_renew': autoRenew,
             'p_idempotency_key': idempotencyKey ?? operationKey('membership'),
             'p_note': note,
+            'p_billing_period': billingPeriod,
           },
         )
         .timeout(const Duration(seconds: 30));

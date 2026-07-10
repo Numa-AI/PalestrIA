@@ -73,12 +73,19 @@ class ClientFinancialPanel extends ConsumerWidget {
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-              child: _metric(
-                'Da incassare',
-                '€${_money(data.unpaid)}',
-                Icons.pending_actions_outlined,
-                data.unpaid > 0 ? AppColors.dangerDark : AppColors.subtle,
-              ),
+              child: data.model == 'pay_per_session'
+                  ? _metric(
+                      'Credito lezioni',
+                      '€${_money(data.credit)}',
+                      Icons.pending_actions_outlined,
+                      data.unpaid > 0 ? AppColors.dangerDark : AppColors.subtle,
+                    )
+                  : _metric(
+                      'Modello',
+                      _billingLabel(data.model),
+                      Icons.account_balance_wallet_outlined,
+                      AppColors.primary,
+                    ),
             ),
           ],
         ),
@@ -106,7 +113,7 @@ class ClientFinancialPanel extends ConsumerWidget {
             _action(
               context,
               Icons.calendar_month_outlined,
-              'Nuovo mensile',
+              'Nuovo abbonamento',
               () => _sale(context, ref, ClientSaleKind.membership),
             ),
             _action(
@@ -268,7 +275,7 @@ class ClientFinancialPanel extends ConsumerWidget {
     const labels = {
       'pay_per_session': 'Pagamento a lezione',
       'package': 'Pacchetto / carnet',
-      'monthly': 'Abbonamento mensile',
+      'monthly': 'Abbonamento',
       'free': 'Gratuito',
     };
     return Container(
@@ -655,6 +662,15 @@ class ClientFinancialPanel extends ConsumerWidget {
   static String _money(double value) => value
       .toStringAsFixed(value == value.roundToDouble() ? 0 : 2)
       .replaceAll('.', ',');
+
+  static String _billingLabel(String model) => const {
+    'pay_per_session': 'A entrata',
+    'package': 'Pacchetto',
+    'monthly': 'Mensile',
+    'quarterly': 'Trimestrale',
+    'annual': 'Annuale',
+    'free': 'Gratuito',
+  }[model] ?? model;
   static String _date(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }

@@ -140,6 +140,8 @@ create table bookings (
     payment_method              text,
     paid_at                     timestamptz,
     custom_price                numeric(10,2),
+    billing_voided_at           timestamptz,
+    billing_void_reason         text,
     -- Tracciano QUALE pacchetto/abbonamento è stato consumato da questa prenotazione,
     -- per restituire la sessione/quota in caso di cancellazione (refund deterministico).
     -- uuid "soft" (no FK): le tabelle billing sono create più sotto e il refund gestisce
@@ -256,6 +258,15 @@ create table billing_settings (
     block_if_no_package        boolean not null default true,
     grace_days                 integer not null default 0,
     package_auto_decrement     boolean not null default true,
+    default_membership_period  text not null default 'monthly'
+                               check (default_membership_period in ('monthly','quarterly','annual')),
+    package_label              text not null default 'Pacchetto 10 ingressi',
+    package_sessions           integer not null default 10 check (package_sessions between 1 and 10000),
+    package_price              numeric(10,2) not null default 0 check (package_price >= 0),
+    membership_monthly_price   numeric(10,2) not null default 0 check (membership_monthly_price >= 0),
+    membership_quarterly_price numeric(10,2) not null default 0 check (membership_quarterly_price >= 0),
+    membership_annual_price    numeric(10,2) not null default 0 check (membership_annual_price >= 0),
+    model_changed_at           timestamptz not null default now(),
     updated_at                 timestamptz not null default now()
 );
 
@@ -266,6 +277,7 @@ create table client_billing_profiles (
     user_id        uuid references profiles(id) on delete cascade,
     client_email   text,
     model_override text check (model_override in ('pay_per_session','monthly','package','free')),
+    membership_period_override text check (membership_period_override in ('monthly','quarterly','annual')),
     custom_price   numeric(10,2),
     notes          text,
     created_at     timestamptz not null default now(),
@@ -279,6 +291,7 @@ create table client_memberships (
     org_id         uuid not null references organizations(id) on delete cascade,
     user_id        uuid not null references profiles(id) on delete cascade,
     plan_label     text,
+    billing_period text not null default 'monthly' check (billing_period in ('monthly','quarterly','annual')),
     period_start   date not null,
     period_end     date not null,
     lessons_quota  integer,                                  -- null = illimitato

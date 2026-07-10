@@ -283,6 +283,10 @@ const SLOT_PRICES = {
 // calcola il prezzo di uno specifico booking.
 function getBookingPrice(booking) {
     if (!booking) return 0;
+    // Un cambio del modello predefinito annulla le sole posizioni operative
+    // ancora aperte. La prenotazione resta nello storico, ma non genera piu
+    // saldo, incasso o previsione economica.
+    if (booking.billingVoidedAt) return 0;
     if (booking.customPrice != null && !Number.isNaN(Number(booking.customPrice))) {
         return Number(booking.customPrice);
     }
@@ -1057,7 +1061,7 @@ class BookingStorage {
             // debiti vecchi (>60gg) restano visibili in Pagamenti/debitori e non si rischia di non
             // incassarli. Lo storico completo per-cliente (anche pagato) è on-demand via
             // fetchClientHistory(); le query stats/export complete via fetchForAdmin().
-            const bookingSelect = 'id,local_id,user_id,date,time,slot_type,date_display,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,created_at,cancellation_requested_at,cancelled_at,updated_at,cancelled_payment_method,cancelled_paid_at,cancelled_refund_pct,created_by,cancelled_by,arrived_at';
+            const bookingSelect = 'id,local_id,user_id,date,time,slot_type,date_display,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,billing_voided_at,billing_void_reason,created_at,cancellation_requested_at,cancelled_at,updated_at,cancelled_payment_method,cancelled_paid_at,cancelled_refund_pct,created_by,cancelled_by,arrived_at';
             // ownOnly: filtra per user_id server-side (es. prenotazioni.html — anche admin vedono solo i propri)
             const pastD   = new Date(); pastD.setDate(pastD.getDate() - 60);
             const futureD = new Date(); futureD.setDate(futureD.getDate() + 90);
@@ -1254,6 +1258,8 @@ class BookingStorage {
             paymentMethod:            row.payment_method || null,
             paidAt:                   row.paid_at || null,
             customPrice:              row.custom_price != null ? Number(row.custom_price) : null,
+            billingVoidedAt:          row.billing_voided_at || null,
+            billingVoidReason:        row.billing_void_reason || null,
             createdAt:                row.created_at,
             cancellationRequestedAt:  row.cancellation_requested_at || null,
             cancelledAt:              row.cancelled_at || null,
@@ -1308,7 +1314,7 @@ class BookingStorage {
         if (this._adminFetchInFlightByKey[cacheKey]) return this._adminFetchInFlightByKey[cacheKey];
 
         this._adminFetchInFlightByKey[cacheKey] = (async () => {
-            const adminCols = 'id,date,time,slot_type,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,created_at,cancelled_at,cancelled_paid_at,cancelled_payment_method,cancelled_refund_pct';
+            const adminCols = 'id,date,time,slot_type,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,billing_voided_at,billing_void_reason,created_at,cancelled_at,cancelled_paid_at,cancelled_payment_method,cancelled_refund_pct';
             // Paginazione: il server limita a 1000 righe per request
             const PAGE = 1000;
             let all = [], pageFrom = 0, done = false;
@@ -1357,7 +1363,7 @@ class BookingStorage {
         if (email)    ors.push(`email.eq.${quote(email)}`);
         if (whatsapp) ors.push(`whatsapp.eq.${quote(whatsapp)}`);
         if (!ors.length) return null;
-        const cols = 'id,local_id,user_id,date,time,slot_type,date_display,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,created_at,cancellation_requested_at,cancelled_at,cancelled_payment_method,cancelled_paid_at,cancelled_refund_pct,updated_at,created_by,cancelled_by,arrived_at';
+        const cols = 'id,local_id,user_id,date,time,slot_type,date_display,name,email,whatsapp,notes,status,paid,payment_method,paid_at,custom_price,billing_voided_at,billing_void_reason,created_at,cancellation_requested_at,cancelled_at,cancelled_payment_method,cancelled_paid_at,cancelled_refund_pct,updated_at,created_by,cancelled_by,arrived_at';
         try {
             const { data, error } = await fetchAllPaginated(() => supabaseClient
                 .from('bookings')

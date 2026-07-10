@@ -10,6 +10,34 @@ una *Parte tecnica* autosufficiente (file, identificatori, prima/dopo, deploy).
 ---
 
 <!-- Le prossime voci vanno qui, in cima. -->
+## 2026-07-10 - Modello di pagamento predefinito separato e cambio sicuro
+
+**Problema/feature.** La configurazione mostrava sempre insieme modello, blocchi e listino slot, anche quando non erano pertinenti. Mancavano i pacchetti abbonamento da 1/3/12 mesi, un listino dedicato, il credito derivato delle lezioni a entrata e una transizione sicura tra modelli. Un cambio diretto poteva inoltre lasciare attivi pacchetti, membership e override incompatibili. Il modello è unico (**Abbonamento**): mensile/trimestrale/annuale sono soltanto durate commerciali, non tipi di pagamento distinti.
+
+### Parte tecnica
+
+- Migration `00000000000039_default_billing_models.sql` (schema finale riportato anche nella baseline):
+  - `billing_settings`: unico `default_model='monthly'` per Abbonamento; `default_membership_period` resta metadata compatibile per la durata, mentre i prezzi `membership_monthly_price/membership_quarterly_price/membership_annual_price` rappresentano i pacchetti da 1/3/12 mesi; listino carnet `package_label/package_sessions/package_price`, `model_changed_at`;
+  - `client_billing_profiles.membership_period_override`, `client_memberships.billing_period`;
+  - `bookings.billing_voided_at/billing_void_reason`: annullano una posizione economica operativa senza eliminare la prenotazione o alterare il ledger storico;
+  - `apply_client_booking_price()` ora fotografa sempre `custom_price` per il modello a entrata usando prima l'override cliente e poi `get_org_price(org_id, slot_type)`. Il cambio successivo del listino non riscrive lezioni già prenotate;
+  - `get_billing_model_change_impact(model)` restituisce i conteggi mostrati prima della conferma;
+  - `admin_save_default_billing_model(...)` è la sola transizione autorizzata: lock della riga per-org, confronto col modello atteso, obbligo dei tre flag di conferma, annullamento atomico di saldi aperti/pacchetti/membership/override, salvataggio dei listini slot e audit `default_billing_model_changed`. Le durate 1/3/12 mesi vengono normalizzate nello stesso modello e il loro cambio non attiva annullamenti globali. `payments` non viene modificata;
+  - trigger `guard_default_billing_model_transition` blocca i vecchi frontend che provano un `UPDATE` diretto; `guard_voided_booking_payment` impedisce di incassare una posizione annullata;
+  - `get_client_financial_summary()` espone per l'entrata `unpaid` (maturato), `scheduled` (futuro) e `credit` (totale); per pacchetto/gratuito/abbonamenti i valori credito sono zero;
+  - `admin_record_membership_payment(..., p_billing_period)` registra mensile, trimestrale o annuale e mantiene la periodicità nell'override cliente.
+- PWA: `js/admin-settings.js` separa quattro scelte (**A entrata / Pacchetto / Abbonamento / Gratuito**) e mostra solo la card pertinente; Abbonamento contiene i tre pacchetti 1/3/12 mesi. Il cambio di tipo esegue tre `showConfirm`; `js/admin-payments.js` calcola automaticamente le tre durate. `prenotazioni.html` e `js/admin-clients.js` mostrano il credito a entrata come maturato + futuro.
+- Flutter: nuovo contratto puro `client_billing_models.dart` con quattro tipi; `settings_payments.dart` replica sezioni e tre `AlertDialog`; `client_sale_sheet.dart` gestisce pacchetti abbonamento da 1/3/12 mesi; profilo cliente e pannello trainer distinguono credito a entrata da copertura abbonamento.
+- Test: `flutter analyze lib test` pulito; `flutter test --no-pub` 9/9; nuovo `client_billing_models_test.dart`; `node --check` sui quattro asset JS e compilazione dei tre script inline di `prenotazioni.html`; `git diff --check` pulito. QA visiva locale admin non eseguita perché la sessione browser localhost non era autenticata.
+- Cache busting PWA finale: `sw.js` `palestria-v591` → `palestria-v593`; `data.js?v=102`, `admin-settings.js?v=12`, `admin-payments.js?v=24`, `admin-clients.js?v=21`.
+
+### Deploy
+
+1. Eseguire `supabase db push` per applicare la migration 39 prima di pubblicare il frontend.
+2. Pubblicare gli asset PWA e verificare l'attivazione di `palestria-v592`.
+3. Ricostruire AAB/APK Flutter.
+4. QA autenticata: provare tutti i sei modelli, i tre alert, il mantenimento del ledger storico, la vendita da listino e due organizzazioni per escludere effetti cross-tenant.
+
 ## 2026-07-10 - Modulo operativo SaaS per clienti, pacchetti, mensili e override capienza
 
 **Problema/feature.** Il trainer non poteva vendere entitlement dall'app Flutter, modificare il modello economico di un cliente o aumentare in sicurezza la capienza di una singola data. La PWA esponeva parti del flusso, ma senza una transazione unica e senza una vista salute coerente. I retry potevano inoltre duplicare vendite o consumi.
@@ -118,4 +146,3 @@ Colonne usate: `id, amount, currency, method, kind, created_at, note, period_sta
 - `BookingRepository.fetchOwnPayments(userId)`: `from('payments').select(cols).eq('client_user_id',userId).order('created_at',desc).limit(200)`.
 - `ownPaymentsProvider` (FutureProvider) accanto a `ownBookingsProvider`.
 - `profile_screen.dart` → `ConsumerStatefulWidget` con pill-bar 3 tab (Prossime/Passate/Transazioni), paginazione `_visible` 5→+20; hero con nome completo; rimosso `_infoCard`; card transazione con colore bordo per `kind`.
-

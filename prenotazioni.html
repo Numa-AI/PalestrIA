@@ -280,7 +280,7 @@
     <script src="js/org-settings.js?v=9"></script>
     <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=101"></script>
+    <script src="js/data.js?v=102"></script>
     <script src="js/auth.js?v=37"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
@@ -530,6 +530,8 @@
             let payBadge = '';
             if (b.status === 'cancelled') {
                 payBadge = `<span class="preno-badge preno-badge-cancelled">✕ Annullata</span>`;
+            } else if (b.billingVoidedAt) {
+                payBadge = `<span class="preno-badge preno-badge-cancelled">Saldo annullato · cambio modello</span>`;
             } else if (b.paid) {
                 const methodLabels = { contanti: '💵 Pagata con Contanti', 'contanti-report': '🧾 Pagata con Contanti (Report)', carta: '💳 Pagata con Carta', iban: '🏦 Pagata con Bonifico', stripe: '💳 Pagata con Stripe', pacchetto: '🎫 Pagata con Pacchetto', abbonamento: '📅 Pagata con Abbonamento', gratuito: '🎁 Lezione Gratuita' };
                 const method = methodLabels[b.paymentMethod] || '✓ Pagata';
@@ -754,12 +756,13 @@
             const esc = (typeof _escHtml === 'function') ? _escHtml : (s) => s;
             try {
                 const [bsRes, cbpRes, memRes, pkgRes] = await Promise.all([
-                    orgId ? supabaseClient.from('billing_settings').select('default_model').eq('org_id', orgId).maybeSingle() : Promise.resolve({ data: null }),
-                    orgId ? supabaseClient.from('client_billing_profiles').select('model_override').eq('org_id', orgId).eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
-                    supabaseClient.from('client_memberships').select('plan_label, period_end, lessons_quota, lessons_used, status').eq('user_id', user.id).eq('status', 'active').order('period_end', { ascending: false }).limit(1).maybeSingle(),
+                    orgId ? supabaseClient.from('billing_settings').select('default_model,default_membership_period').eq('org_id', orgId).maybeSingle() : Promise.resolve({ data: null }),
+                    orgId ? supabaseClient.from('client_billing_profiles').select('model_override,membership_period_override').eq('org_id', orgId).eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+                    supabaseClient.from('client_memberships').select('plan_label, billing_period, period_end, lessons_quota, lessons_used, status').eq('user_id', user.id).eq('status', 'active').order('period_end', { ascending: false }).limit(1).maybeSingle(),
                     supabaseClient.from('client_packages').select('label, remaining_sessions, status').eq('user_id', user.id).eq('status', 'active'),
                 ]);
-                const model = (cbpRes.data && cbpRes.data.model_override) || (bsRes.data && bsRes.data.default_model) || 'pay_per_session';
+                const baseModel = (cbpRes.data && cbpRes.data.model_override) || (bsRes.data && bsRes.data.default_model) || 'pay_per_session';
+                const model = baseModel;
                 let icon = '💳', title = '', detail = '', tone = 'neutral';
 
                 if (model === 'free') {
@@ -770,12 +773,13 @@
                     const active = m && m.period_end && (new Date(m.period_end) >= todayMidnight);
                     if (active) {
                         icon = '📅'; tone = 'ok';
-                        title = 'Abbonamento attivo' + (m.plan_label ? ' · ' + m.plan_label : '');
+                        const periodName = m.billing_period === 'annual' ? '12 mesi' : (m.billing_period === 'quarterly' ? '3 mesi' : '1 mese');
+                        title = `Abbonamento attivo · ${periodName}` + (m.plan_label ? ' · ' + m.plan_label : '');
                         const quota = (m.lessons_quota == null) ? 'lezioni illimitate' : `${m.lessons_used || 0}/${m.lessons_quota} lezioni usate`;
                         detail = `Valido fino al ${fmtDate(m.period_end)} · ${quota}`;
                     } else {
                         icon = '📅'; tone = 'warn'; title = 'Abbonamento non attivo';
-                        detail = 'Contatta il trainer per attivare o rinnovare l\'abbonamento mensile.';
+                        detail = 'Contatta il trainer per attivare un pacchetto da 1, 3 o 12 mesi.';
                     }
                 } else if (model === 'package') {
                     const pkgs = Array.isArray(pkgRes.data) ? pkgRes.data : [];
@@ -784,12 +788,19 @@
                     if (remaining > 0) { tone = 'ok'; title = `Pacchetto: ${remaining} ingress${remaining === 1 ? 'o' : 'i'} rimast${remaining === 1 ? 'o' : 'i'}`; detail = 'Gli ingressi si scalano automaticamente a ogni prenotazione.'; }
                     else { tone = 'warn'; title = 'Pacchetto esaurito'; detail = 'Contatta il trainer per acquistare un nuovo pacchetto.'; }
                 } else {
-                    // pay_per_session → dovuto da prenotazioni passate non pagate
-                    const ub = (typeof getUserBookings === 'function') ? getUserBookings() : { past: [] };
-                    const unpaid = (ub.past || []).filter(b => !b.paid && b.status !== 'cancelled');
-                    const owed = unpaid.reduce((s, b) => s + ((typeof getBookingPrice === 'function' ? getBookingPrice(b) : 0) || 0), 0);
-                    if (owed > 0) { icon = '💳'; tone = 'warn'; title = `Da saldare: ${sym}${owed.toFixed(2)}`; detail = `${unpaid.length} lezion${unpaid.length === 1 ? 'e' : 'i'} non ancora pagat${unpaid.length === 1 ? 'a' : 'e'}.`; }
-                    else { icon = '✅'; tone = 'ok'; title = 'Pagamenti in regola'; detail = 'Paghi ogni lezione singolarmente.'; }
+                    // A entrata: credito/saldo derivato da ogni lezione, col prezzo
+                    // congelato alla prenotazione. Distingue maturato e futuro.
+                    const ub = (typeof getUserBookings === 'function') ? getUserBookings() : { past: [], upcoming: [] };
+                    const due = (ub.past || []).filter(b => !b.paid && !b.billingVoidedAt && b.status !== 'cancelled');
+                    const future = (ub.upcoming || []).filter(b => !b.paid && !b.billingVoidedAt && b.status !== 'cancelled');
+                    const dueAmount = due.reduce((s, b) => s + ((typeof getBookingPrice === 'function' ? getBookingPrice(b) : 0) || 0), 0);
+                    const futureAmount = future.reduce((s, b) => s + ((typeof getBookingPrice === 'function' ? getBookingPrice(b) : 0) || 0), 0);
+                    const credit = dueAmount + futureAmount;
+                    if (credit > 0) {
+                        icon = '💳'; tone = dueAmount > 0 ? 'warn' : 'neutral';
+                        title = `Credito lezioni da saldare: ${sym}${credit.toFixed(2)}`;
+                        detail = `Già maturato ${sym}${dueAmount.toFixed(2)} · lezioni future ${sym}${futureAmount.toFixed(2)}.`;
+                    } else { icon = '✅'; tone = 'ok'; title = `Credito lezioni: ${sym}0,00`; detail = 'Paghi ogni lezione singolarmente secondo il listino dello slot.'; }
                 }
 
                 const toneStyle = tone === 'warn'

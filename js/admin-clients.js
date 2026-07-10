@@ -685,7 +685,7 @@ function createClientCard(client, index) {
 
     const activeBookings = client.bookings.filter(b => b.status !== 'cancelled');
     // Totale dovuto = lezioni passate non pagate (nessun credito/sconto: modello pay-per-session)
-    const totalUnpaid = activeBookings.filter(b => !b.paid && bookingHasPassed(b) && b.status !== 'cancellation_requested').reduce((s, b) => s + getBookingPrice(b), 0);
+    const totalUnpaid = activeBookings.filter(b => !b.paid && !b.billingVoidedAt && bookingHasPassed(b) && b.status !== 'cancellation_requested').reduce((s, b) => s + getBookingPrice(b), 0);
 
     // Certificato medico e Assicurazione dal profilo utente
     const userRecord  = _getUserRecord(client.email, client.whatsapp);
@@ -743,6 +743,8 @@ function createClientCard(client, index) {
         const barColor = isCancelled ? '#e5e7eb' : ((typeof getSlotColor === 'function') ? getSlotColor(b.slotType) : '#cbd5e1');
         const statusPill = isCancelled
             ? `<span class="payment-status" style="background:#f3f4f6;color:#6b7280">✕ Annullata</span>`
+            : b.billingVoidedAt
+                ? `<span class="payment-status" style="background:#f3f4f6;color:#6b7280">Saldo annullato · cambio modello</span>`
             : isCancelPending
                 ? `<span class="payment-status" style="background:#fef3c7;color:#92400e">⏳ Annullamento</span>`
                 : isFree
@@ -1034,10 +1036,10 @@ async function _loadClientEconomy(index, userId, email) {
         }).join('') : '<div class="client-economy-row client-economy-empty"><span class="client-economy-icon">📅</span><span class="client-economy-label">Nessun abbonamento attivo</span></div>';
         body.innerHTML = `
             <div class="client-health-banner client-health-banner--${healthTone}"><span class="client-health-icon">${healthIcon}</span><div><strong>${healthTitle}</strong><small>${issues.length ? issues.join(' · ') : 'Pagamenti e documenti sotto controllo'}</small></div></div>
-            <div class="client-economy-metrics"><div class="client-economy-metric"><span>Incassato</span><strong>€${money(totals.collected)}</strong></div><div class="client-economy-metric"><span>Da incassare</span><strong>€${money(totals.unpaid)}</strong></div></div>
-            <div class="client-model-row"><label for="client-model-${index}">Modello tariffario</label><button type="button" class="client-model-edit" onclick="editClientBillingTerms('${_escAttr(userId)}',${index})" aria-label="Modifica prezzo personalizzato e note">Prezzo e note</button><select id="client-model-${index}" onchange="setClientBillingModel('${_escAttr(userId)}',${index},this.value)"><option value="pay_per_session" ${billing.model === 'pay_per_session' ? 'selected' : ''}>Pagamento a lezione</option><option value="package" ${billing.model === 'package' ? 'selected' : ''}>Pacchetto / carnet</option><option value="monthly" ${billing.model === 'monthly' ? 'selected' : ''}>Abbonamento mensile</option><option value="free" ${billing.model === 'free' ? 'selected' : ''}>Gratuito</option></select></div>
+            <div class="client-economy-metrics"><div class="client-economy-metric"><span>Incassato storico</span><strong>€${money(totals.collected)}</strong></div>${billing.model === 'pay_per_session' ? `<div class="client-economy-metric"><span>Credito lezioni</span><strong>€${money(totals.credit)}</strong><small>maturato €${money(totals.unpaid)} · futuro €${money(totals.scheduled)}</small></div>` : ''}</div>
+            <div class="client-model-row"><label for="client-model-${index}">Modello tariffario</label><button type="button" class="client-model-edit" onclick="editClientBillingTerms('${_escAttr(userId)}',${index})" aria-label="Modifica prezzo personalizzato e note">Prezzo e note</button><select id="client-model-${index}" onchange="setClientBillingModel('${_escAttr(userId)}',${index},this.value)"><option value="pay_per_session" ${billing.model === 'pay_per_session' ? 'selected' : ''}>Pagamento a lezione</option><option value="package" ${billing.model === 'package' ? 'selected' : ''}>Pacchetto / carnet</option><option value="monthly" ${billing.model === 'monthly' ? 'selected' : ''}>Abbonamento</option><option value="free" ${billing.model === 'free' ? 'selected' : ''}>Gratuito</option></select></div>
             ${pkgHTML}${memHTML}
-            <div class="client-ops-actions"><button class="client-ops-btn" onclick="openClientOperation(${index},'package')">🎟️ Vendi pacchetto</button><button class="client-ops-btn" onclick="openClientOperation(${index},'membership')">📅 Nuovo mensile</button><button class="client-ops-btn" onclick="setClientArchived('${_escAttr(userId)}',${index},${health.archived ? 'false' : 'true'})">${health.archived ? '↩ Riattiva' : '📦 Archivia'}</button></div>`;
+            <div class="client-ops-actions"><button class="client-ops-btn" onclick="openClientOperation(${index},'package')">🎟️ Vendi pacchetto</button><button class="client-ops-btn" onclick="openClientOperation(${index},'membership')">📅 Nuovo abbonamento</button><button class="client-ops-btn" onclick="setClientArchived('${_escAttr(userId)}',${index},${health.archived ? 'false' : 'true'})">${health.archived ? '↩ Riattiva' : '📦 Archivia'}</button></div>`;
     } catch (e) {
         console.error('[_loadClientEconomy] error:', e);
         body.innerHTML = '<div class="client-economy-empty">Errore nel caricamento. <button class="client-ops-btn" onclick="_loadClientEconomy(' + index + ',\'' + _escAttr(userId) + '\',\'' + _escAttr(email || '') + '\')">Riprova</button></div>';

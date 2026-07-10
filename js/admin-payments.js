@@ -70,7 +70,7 @@ function getUnpaidAmountForContact(whatsapp, email) {
     BookingStorage.getAllBookings().forEach(booking => {
         const phoneMatch = normWhatsapp && normalizePhone(booking.whatsapp) === normWhatsapp;
         const emailMatch = emailLow && booking.email && booking.email.toLowerCase() === emailLow;
-        if ((phoneMatch || emailMatch) && !booking.paid && bookingHasPassed(booking)
+        if ((phoneMatch || emailMatch) && !booking.paid && !booking.billingVoidedAt && bookingHasPassed(booking)
             && booking.status !== 'cancelled' && booking.status !== 'cancellation_requested') {
             totalUnpaid += getBookingPrice(booking);
         }
@@ -99,7 +99,7 @@ function _getUnpaidContacts() {
     }
 
     allBookings.forEach(booking => {
-        if (!booking.paid && bookingHasPassed(booking)
+        if (!booking.paid && !booking.billingVoidedAt && bookingHasPassed(booking)
             && booking.status !== 'cancelled' && booking.status !== 'cancellation_requested') {
             const normPhone = normalizePhone(booking.whatsapp);
             let key = _findKey(normPhone, booking.email);
@@ -371,7 +371,7 @@ function openDebtPopup(whatsapp, email, name) {
         .filter(b => {
             const phoneMatch = normWhatsapp && normalizePhone(b.whatsapp) === normWhatsapp;
             const emailMatch = emailLow && b.email && b.email.toLowerCase() === emailLow;
-            return (phoneMatch || emailMatch) && !b.paid
+            return (phoneMatch || emailMatch) && !b.paid && !b.billingVoidedAt
                 && b.status !== 'cancelled' && b.status !== 'cancellation_requested';
         })
         .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
@@ -618,6 +618,7 @@ function closePaymentsActionSheet() {
 let _saleType = null;            // 'package' | 'membership'
 let _saleContact = null;         // { name, whatsapp, email, userId }
 let _saleOperationKey = null;    // stabile durante retry/timeout della stessa vendita
+let _saleBillingCatalog = null;
 
 function openSellPackagePopup()  { _openSalePopup('package'); }
 function openMembershipPopup()   { _openSalePopup('membership'); }
@@ -675,9 +676,17 @@ function _openSalePopup(type) {
                     <input type="date" id="saleExpires" class="manual-note-input">
                 </div>` : `
                 <div class="manual-entry-field">
+                    <span class="debt-field-label">Durata da listino</span>
+                    <select class="debt-method-select" id="saleBillingPeriod" onchange="_applySaleMembershipPeriod()">
+                        <option value="monthly">1 mese</option>
+                        <option value="quarterly">3 mesi</option>
+                        <option value="annual">12 mesi</option>
+                    </select>
+                </div>
+                <div class="manual-entry-field">
                     <span class="debt-field-label">Periodo</span>
                     <div style="display:flex;gap:0.5rem;">
-                        <input type="date" id="salePeriodStart" class="manual-note-input" value="${periodStart}">
+                        <input type="date" id="salePeriodStart" class="manual-note-input" value="${periodStart}" onchange="_applySaleMembershipPeriod()">
                         <input type="date" id="salePeriodEnd" class="manual-note-input" value="${periodEnd}">
                     </div>
                 </div>
@@ -714,7 +723,46 @@ function _openSalePopup(type) {
             </div>
         </div>`;
     document.body.appendChild(overlay);
+    _loadSaleBillingCatalog(type);
     setTimeout(() => document.getElementById('saleClientInput')?.focus(), 100);
+}
+
+async function _loadSaleBillingCatalog(type) {
+    try {
+        const { data, error } = await supabaseClient.from('billing_settings')
+            .select('default_model,default_membership_period,package_label,package_sessions,package_price,membership_monthly_price,membership_quarterly_price,membership_annual_price')
+            .eq('org_id', window._orgId).maybeSingle();
+        if (error || !data || _saleType !== type) return;
+        _saleBillingCatalog = data;
+        if (type === 'package') {
+            const label = document.getElementById('saleLabel');
+            const sessions = document.getElementById('saleSessions');
+            const price = document.getElementById('salePrice');
+            if (label) label.value = data.package_label || 'Pacchetto 10 ingressi';
+            if (sessions) sessions.value = Number(data.package_sessions || 10);
+            if (price) price.value = Number(data.package_price || 0).toFixed(2);
+        } else {
+            const period = document.getElementById('saleBillingPeriod');
+            if (period) period.value = 'monthly';
+            _applySaleMembershipPeriod();
+        }
+    } catch (e) { console.warn('[sale] listino non disponibile:', e && e.message); }
+}
+
+function _applySaleMembershipPeriod() {
+    const period = document.getElementById('saleBillingPeriod')?.value || 'monthly';
+    const months = period === 'annual' ? 12 : (period === 'quarterly' ? 3 : 1);
+    const startRaw = document.getElementById('salePeriodStart')?.value;
+    const start = startRaw ? new Date(startRaw + 'T12:00:00') : new Date();
+    const end = new Date(start.getFullYear(), start.getMonth() + months, start.getDate());
+    const endEl = document.getElementById('salePeriodEnd');
+    if (endEl) endEl.value = _isoDate(end);
+    const labels = { monthly: 'Abbonamento · 1 mese', quarterly: 'Abbonamento · 3 mesi', annual: 'Abbonamento · 12 mesi' };
+    const fields = { monthly: 'membership_monthly_price', quarterly: 'membership_quarterly_price', annual: 'membership_annual_price' };
+    const labelEl = document.getElementById('saleLabel');
+    const priceEl = document.getElementById('salePrice');
+    if (labelEl) labelEl.value = labels[period];
+    if (priceEl && _saleBillingCatalog) priceEl.value = Number(_saleBillingCatalog[fields[period]] || 0).toFixed(2);
 }
 
 function closeSalePopup() {
@@ -826,6 +874,7 @@ async function saveSale() {
                 p_auto_renew:    !!document.getElementById('saleAutoRenew')?.checked,
                 p_idempotency_key: _saleOperationKey,
                 p_note: note || null,
+                p_billing_period: document.getElementById('saleBillingPeriod')?.value || 'monthly',
             }), 30000));
         }
 

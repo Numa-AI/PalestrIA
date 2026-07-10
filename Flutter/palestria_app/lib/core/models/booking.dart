@@ -18,6 +18,8 @@ class Booking {
     this.paymentMethod,
     this.paidAt,
     this.customPrice,
+    this.billingVoidedAt,
+    this.billingVoidReason,
     this.createdAt,
     this.cancellationRequestedAt,
     this.cancelledAt,
@@ -48,6 +50,8 @@ class Booking {
   final String? paymentMethod;
   final DateTime? paidAt;
   final double? customPrice;
+  final DateTime? billingVoidedAt;
+  final String? billingVoidReason;
   final DateTime? createdAt;
   final DateTime? cancellationRequestedAt;
   final DateTime? cancelledAt;
@@ -60,6 +64,7 @@ class Booking {
 
   bool get isOccupying =>
       status == 'confirmed' || status == 'cancellation_requested';
+  bool get isBillingVoided => billingVoidedAt != null;
 
   static Booking fromRow(Map<String, dynamic> row) => Booking(
     id: (row['local_id'] as String?) ?? (row['id'] as String),
@@ -78,6 +83,8 @@ class Booking {
     paymentMethod: row['payment_method'] as String?,
     paidAt: _ts(row['paid_at']),
     customPrice: (row['custom_price'] as num?)?.toDouble(),
+    billingVoidedAt: _ts(row['billing_voided_at']),
+    billingVoidReason: row['billing_void_reason'] as String?,
     createdAt: _ts(row['created_at']),
     cancellationRequestedAt: _ts(row['cancellation_requested_at']),
     cancelledAt: _ts(row['cancelled_at']),
@@ -92,7 +99,8 @@ class Booking {
   static const selectColumns =
       'id, local_id, user_id, date, time, slot_type, date_display, name, '
       'email, whatsapp, notes, status, paid, payment_method, paid_at, '
-      'custom_price, created_at, cancellation_requested_at, cancelled_at, '
+      'custom_price, billing_voided_at, billing_void_reason, created_at, '
+      'cancellation_requested_at, cancelled_at, '
       'updated_at, arrived_at';
 }
 

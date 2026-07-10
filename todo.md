@@ -6,6 +6,19 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-07-10.
 
 ---
 
+## Modello di pagamento predefinito - PWA + Flutter (2026-07-10)
+
+- [x] Separati i quattro modelli **A entrata / Pacchetto / Abbonamento / Gratuito**: mensile, trimestrale e annuale sono pacchetti di durata dell'unico modello Abbonamento, non tipi distinti. Ogni UI mostra solo i controlli pertinenti; Gratuito non mostra listini.
+- [x] A entrata: prezzo della singola lezione congelato dal listino dello slot al momento della prenotazione; profilo cliente e pannello trainer mostrano credito totale, quota maturata e quota delle lezioni future.
+- [x] Pacchetto: listino dedicato nome + ingressi + prezzo, senza credito cliente; vendita PWA/Flutter precompilata dal listino.
+- [x] Abbonamento: unico tipo con tre pacchetti a listino da **1 / 3 / 12 mesi**, periodicità persistita e nessun credito cliente. Cambiare durata non annulla gli stati globali.
+- [x] Cambio modello: tre conferme consecutive con impatto reale; RPC transazionale annulla saldi operativi aperti, pacchetti, membership e override, ma conserva integralmente `payments` e statistiche storiche. Le vecchie app non possono bypassare il flusso con update diretto.
+- [x] QA automatica: `flutter analyze lib test` pulito; Flutter test 9/9; `node --check` e script inline PWA puliti; `git diff --check` pulito. Cache-bust finale `palestria-v593`.
+- [ ] **DEPLOY**: `supabase db push` (migration `00000000000039_default_billing_models.sql`) **prima** degli asset PWA; poi pubblicare PWA e ricostruire AAB/APK Flutter.
+- [ ] **QA AUTENTICATA/PRODUZIONE**: testare i quattro modelli, i pacchetti abbonamento 1/3/12 mesi e i tre alert su PWA desktop/mobile e Android; verificare vendita da listino, saldo maturato/futuro, annullamenti e ledger storico; aggiungere scenario SQL cross-tenant sulla nuova RPC. Il browser locale ha raggiunto il login ma non disponeva di una sessione localhost autenticata.
+
+---
+
 ## Client operations SaaS, billing e override - completati (2026-07-10)
 
 - [x] Flutter + PWA: vendita idempotente di pacchetti/carnet e mensili, rinnovo operativo, rettifiche contabili, annullamento entitlement e ledger auditabile.

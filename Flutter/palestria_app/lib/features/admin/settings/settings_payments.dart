@@ -4,15 +4,14 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/billing_saas.dart';
+import '../../../core/data/client_billing_models.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../../../core/security/external_url.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/theme/ui_kit.dart';
 
-/// Sezione "Pagamenti cliente" (port di _settRenderPayments §4): Stripe Connect
-/// (edge `stripe-connect`), modello di pagamento predefinito (billing_settings),
-/// blocco prenotazioni per pagamenti, listino prezzi per tipo di slot
-/// (`slot_types.default_price` + `org_settings billing_client.prices`).
+/// Pagamenti cliente: Stripe Connect, listini separati e cambio modello
+/// transazionale con tre conferme di sicurezza.
 class PaymentsSection extends ConsumerStatefulWidget {
   const PaymentsSection({super.key, required this.service});
   final OrgSettingsService service;
@@ -21,25 +20,25 @@ class PaymentsSection extends ConsumerStatefulWidget {
   ConsumerState<PaymentsSection> createState() => _PaymentsSectionState();
 }
 
-const _models = [
-  ('pay_per_session', '🎟️ A entrata', 'Il cliente paga ogni singola lezione.'),
-  ('monthly', '📆 Mensile', 'Abbonamento mensile a tariffa fissa.'),
-  ('package', '🎫 Pacchetto', 'Carnet di ingressi prepagato.'),
-  ('free', '🎁 Gratuito', 'Nessun pagamento richiesto.'),
-];
-
 class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
   bool _loading = true;
+  bool _saving = false;
   String _model = 'pay_per_session';
+  String _loadedModel = 'pay_per_session';
   final _threshold = TextEditingController(text: '0');
   final _grace = TextEditingController(text: '0');
+  final _packageLabel = TextEditingController(text: 'Pacchetto 10 ingressi');
+  final _packageSessions = TextEditingController(text: '10');
+  final _packagePrice = TextEditingController(text: '0');
+  final _monthlyPrice = TextEditingController(text: '0');
+  final _quarterlyPrice = TextEditingController(text: '0');
+  final _annualPrice = TextEditingController(text: '0');
   bool _blockMemb = true;
   bool _blockPkg = true;
   bool _autoDec = true;
   List<Map<String, dynamic>> _slotTypes = [];
   final Map<String, TextEditingController> _prices = {};
   Map<String, dynamic>? _stripe;
-  bool _saving = false;
 
   String get _orgId => widget.service.orgId;
 
@@ -51,9 +50,17 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
 
   @override
   void dispose() {
-    _threshold.dispose();
-    _grace.dispose();
-    for (final c in _prices.values) {
+    for (final c in [
+      _threshold,
+      _grace,
+      _packageLabel,
+      _packageSessions,
+      _packagePrice,
+      _monthlyPrice,
+      _quarterlyPrice,
+      _annualPrice,
+      ..._prices.values,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -62,12 +69,8 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
   Future<void> _load() async {
     final client = ref.read(supabaseProvider);
     try {
-      final results = await Future.wait([
-        client
-            .from('billing_settings')
-            .select('*')
-            .eq('org_id', _orgId)
-            .maybeSingle(),
+      final results = await Future.wait<dynamic>([
+        client.from('billing_settings').select('*').eq('org_id', _orgId).maybeSingle(),
         client
             .from('slot_types')
             .select('id,key,label,default_price,is_active')
@@ -75,93 +78,384 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
             .order('sort_order'),
         client
             .from('organizations')
-            .select(
-              'stripe_account_id,stripe_charges_enabled,stripe_account_email',
-            )
+            .select('stripe_account_id,stripe_charges_enabled,stripe_account_email')
             .eq('id', _orgId)
             .maybeSingle(),
       ]);
       final billing = results[0] as Map<String, dynamic>?;
       _slotTypes = [
-        for (final r in (results[1] as List))
-          (r as Map).cast<String, dynamic>(),
+        for (final r in results[1] as List) (r as Map).cast<String, dynamic>(),
       ];
       _stripe = results[2] as Map<String, dynamic>?;
       if (billing != null) {
-        _model = (billing['default_model'] as String?) ?? 'pay_per_session';
-        _threshold.text = ((billing['block_unpaid_threshold'] as num?) ?? 0)
-            .toString();
-        _grace.text = ((billing['grace_days'] as num?) ?? 0).toString();
+        _model = effectiveBillingModel(billing);
+        _loadedModel = _model;
+        _threshold.text = _number(billing['block_unpaid_threshold']);
+        _grace.text = _number(billing['grace_days']);
+        _packageLabel.text =
+            (billing['package_label'] as String?) ?? 'Pacchetto 10 ingressi';
+        _packageSessions.text = _number(billing['package_sessions'], fallback: 10);
+        _packagePrice.text = _money(billing['package_price']);
+        _monthlyPrice.text = _money(billing['membership_monthly_price']);
+        _quarterlyPrice.text = _money(billing['membership_quarterly_price']);
+        _annualPrice.text = _money(billing['membership_annual_price']);
         _blockMemb = (billing['block_if_membership_expired'] as bool?) ?? true;
         _blockPkg = (billing['block_if_no_package'] as bool?) ?? true;
         _autoDec = (billing['package_auto_decrement'] as bool?) ?? true;
       }
-      final pricesCache =
+      final cached =
           (widget.service.get('billing_client.prices') as Map?)
               ?.cast<String, dynamic>() ??
           {};
       for (final st in _slotTypes) {
-        final key = st['key'] as String;
-        final price =
+        final value =
             (st['default_price'] as num?)?.toDouble() ??
-            (pricesCache[key] as num?)?.toDouble() ??
+            (cached[st['key']] as num?)?.toDouble() ??
             0;
         _prices[st['id'] as String] = TextEditingController(
-          text: price.toStringAsFixed(2),
+          text: value.toStringAsFixed(2),
         );
       }
-    } catch (_) {
-      // offline/errore: mostra comunque il form coi default
+    } catch (e) {
+      if (mounted) AppSnack.error(context, 'Configurazione non disponibile: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  String _number(Object? value, {num fallback = 0}) =>
+      ((value as num?) ?? fallback).toString();
+  String _money(Object? value) =>
+      ((value as num?)?.toDouble() ?? 0).toStringAsFixed(2);
+  double _parseMoney(TextEditingController c) =>
+      double.tryParse(c.text.trim().replaceAll(',', '.')) ?? 0;
+
+  String _label(String model) => clientBillingModels
+      .firstWhere((m) => m.$1 == model, orElse: () => (model, model, ''))
+      .$2;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final client = ref.read(supabaseProvider);
+    var confirmed = false;
+    if (_model != _loadedModel) {
+      final impact = (await client.rpc(
+        'get_billing_model_change_impact',
+        params: {'p_model': _model},
+      )) as Map<String, dynamic>;
+      if (!mounted ||
+          !await _confirm(
+            '1/3 · Cambio modello',
+            'Stai passando da “${_label(_loadedModel)}” a “${_label(_model)}”. '
+                'Il nuovo modello sarà applicato come predefinito a tutti i clienti.',
+            'Continua',
+          )) {
+        return;
+      }
+      if (!mounted ||
+          !await _confirm(
+            '2/3 · Stati da annullare',
+            'Saranno annullati ${impact['open_session_balances'] ?? 0} saldi/crediti '
+                'a lezione, ${impact['active_packages'] ?? 0} pacchetti, '
+                '${impact['active_memberships'] ?? 0} abbonamenti e '
+                '${impact['client_overrides'] ?? 0} override cliente.',
+            'Continua',
+          )) {
+        return;
+      }
+      if (!mounted ||
+          !await _confirm(
+            '3/3 · Conferma definitiva',
+            'Pagamenti già registrati, incassi e statistiche storiche resteranno '
+                'invariati. Confermi il cambio del modello?',
+            'Conferma cambio',
+            destructive: true,
+          )) {
+        return;
+      }
+      confirmed = true;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final slotPrices = <String, dynamic>{};
+      for (final st in _slotTypes) {
+        slotPrices[st['key'] as String] = _parseMoney(
+          _prices[st['id'] as String]!,
+        );
+      }
+      final result = (await client.rpc(
+        'admin_save_default_billing_model',
+        params: {
+          'p_model': _model,
+          'p_block_unpaid_threshold': _parseMoney(_threshold),
+          'p_block_if_membership_expired': _blockMemb,
+          'p_block_if_no_package': _blockPkg,
+          'p_grace_days': int.tryParse(_grace.text.trim()) ?? 0,
+          'p_package_auto_decrement': _autoDec,
+          'p_package_label': _packageLabel.text.trim(),
+          'p_package_sessions': int.tryParse(_packageSessions.text.trim()) ?? 10,
+          'p_package_price': _parseMoney(_packagePrice),
+          'p_monthly_price': _parseMoney(_monthlyPrice),
+          'p_quarterly_price': _parseMoney(_quarterlyPrice),
+          'p_annual_price': _parseMoney(_annualPrice),
+          'p_slot_prices': slotPrices,
+          'p_expected_current_model': _loadedModel,
+          'p_confirm_1': confirmed,
+          'p_confirm_2': confirmed,
+          'p_confirm_3': confirmed,
+        },
+      )) as Map<String, dynamic>;
+      _loadedModel = _model;
+      await widget.service.load();
+      if (mounted) {
+        AppSnack.success(
+          context,
+          result['model_changed'] == true
+              ? 'Modello aggiornato: ${result['voided_session_balances'] ?? 0} saldi, '
+                    '${result['cancelled_packages'] ?? 0} pacchetti e '
+                    '${result['cancelled_memberships'] ?? 0} abbonamenti annullati.'
+              : 'Pagamenti salvati.',
+        );
+      }
+    } catch (e) {
+      if (mounted) AppSnack.error(context, 'Errore: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<bool> _confirm(
+    String title,
+    String message,
+    String action, {
+    bool destructive = false,
+  }) async =>
+      await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              style: destructive
+                  ? FilledButton.styleFrom(backgroundColor: AppColors.dangerDark)
+                  : null,
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(action),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const AppLoading();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _stripeCard(),
+        const SizedBox(height: AppSpacing.lg),
+        const Text(
+          'Modello di pagamento predefinito',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
+        const Text(
+          'Ogni modello mostra solo le impostazioni che gli appartengono.',
+          style: AppText.meta,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        RadioGroup<String>(
+          groupValue: _model,
+          onChanged: (v) => setState(() => _model = v ?? _model),
+          child: Column(
+            children: [
+              for (final m in clientBillingModels)
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  value: m.$1,
+                  title: Text(
+                    m.$2,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(m.$3, style: AppText.meta),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: AppSpacing.xl),
+        if (_model == 'pay_per_session') _payPerSessionSection(),
+        if (_model == 'package') _packageSection(),
+        if (isMembershipBillingModel(_model)) _membershipSection(),
+        const SizedBox(height: AppSpacing.lg),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: Text(_saving ? 'Salvataggio…' : 'Salva pagamenti'),
+        ),
+      ],
+    );
+  }
+
+  Widget _payPerSessionSection() => _section(
+    'A entrata · listino per lezione',
+    'Ogni prenotazione congela il prezzo dello slot. Il credito cliente separa maturato e futuro.',
+    [
+      TextField(
+        controller: _threshold,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(
+          labelText: 'Soglia credito scaduto (€, 0 = nessun blocco)',
+        ),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      if (_slotTypes.isEmpty)
+        const Text('Nessun tipo di slot configurato.', style: AppText.meta)
+      else
+        for (final st in _slotTypes) _slotPriceRow(st),
+    ],
+  );
+
+  Widget _packageSection() => _section(
+    'Pacchetto · listino',
+    'Il pacchetto ha un prezzo dedicato. Nel profilo cliente non compare credito a lezione.',
+    [
+      TextField(
+        controller: _packageLabel,
+        maxLength: 120,
+        decoration: const InputDecoration(labelText: 'Nome pacchetto'),
+      ),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _packageSessions,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Ingressi inclusi'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(child: _priceField(_packagePrice, 'Prezzo (€)')),
+        ],
+      ),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        value: _blockPkg,
+        onChanged: (v) => setState(() => _blockPkg = v),
+        title: const Text('Blocca senza pacchetto'),
+      ),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        value: _autoDec,
+        onChanged: (v) => setState(() => _autoDec = v),
+        title: const Text('Decremento automatico degli ingressi'),
+      ),
+    ],
+  );
+
+  Widget _membershipSection() => _section(
+    'Abbonamento · pacchetti per durata',
+    'Un solo modello con tre pacchetti di durata: 1 mese, 3 mesi oppure 12 mesi. Nel profilo compare la copertura attiva.',
+    [
+      _priceField(_monthlyPrice, 'Pacchetto 1 mese (€)'),
+      const SizedBox(height: AppSpacing.sm),
+      _priceField(_quarterlyPrice, 'Pacchetto 3 mesi (€)'),
+      const SizedBox(height: AppSpacing.sm),
+      _priceField(_annualPrice, 'Pacchetto 12 mesi (€)'),
+      const SizedBox(height: AppSpacing.sm),
+      TextField(
+        controller: _grace,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Giorni di tolleranza'),
+      ),
+      SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        value: _blockMemb,
+        onChanged: (v) => setState(() => _blockMemb = v),
+        title: const Text('Blocca abbonamento scaduto'),
+      ),
+    ],
+  );
+
+  Widget _section(String title, String description, List<Widget> children) =>
+      Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.slate50,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(description, style: AppText.meta),
+            const SizedBox(height: AppSpacing.md),
+            ...children,
+          ],
+        ),
+      );
+
+  Widget _slotPriceRow(Map<String, dynamic> st) => Padding(
+    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            '${st['label']}${(st['is_active'] as bool? ?? true) ? '' : ' (disattivo)'}',
+          ),
+        ),
+        SizedBox(
+          width: 112,
+          child: _priceField(_prices[st['id']]!, 'Prezzo (€)', dense: true),
+        ),
+      ],
+    ),
+  );
+
+  Widget _priceField(
+    TextEditingController controller,
+    String label, {
+    bool dense = false,
+  }) => TextField(
+    controller: controller,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: InputDecoration(labelText: label, isDense: dense),
+  );
 
   Future<void> _connectStripe() async {
     try {
       final enabled = await ref.read(
         featureEnabledProvider('client_online_payments').future,
       );
-      if (!enabled) {
-        throw Exception(
-          'Pagamenti online non disponibili per il piano corrente',
-        );
-      }
+      if (!enabled) throw Exception('Funzione non disponibile nel piano corrente');
       final res = await ref
           .read(supabaseProvider)
           .functions
           .invoke('stripe-connect', body: {'action': 'start'});
       final url = trustedExternalUri((res.data as Map?)?['url'] as String?);
-      if (url == null) throw Exception('URL di collegamento non valido');
-      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-      if (!opened) throw Exception('Impossibile aprire Stripe');
+      if (url == null || !await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        throw Exception('Impossibile aprire Stripe');
+      }
     } catch (e) {
       if (mounted) AppSnack.error(context, 'Errore collegamento Stripe: $e');
     }
   }
 
   Future<void> _disconnectStripe() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Scollega Stripe'),
-        content: const Text(
-          'Scollegare il tuo account Stripe? I clienti non potranno più '
-          'pagarti online finché non lo ricolleghi.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annulla'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Scollega'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
+    if (!await _confirm(
+      'Scollega Stripe',
+      'I clienti non potranno più pagarti online finché non lo ricolleghi.',
+      'Scollega',
+      destructive: true,
+    )) {
+      return;
+    }
     try {
       await ref
           .read(supabaseProvider)
@@ -175,242 +469,38 @@ class _PaymentsSectionState extends ConsumerState<PaymentsSection> {
     }
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    final client = ref.read(supabaseProvider);
-    try {
-      await client.from('billing_settings').upsert({
-        'org_id': _orgId,
-        'default_model': _model,
-        'block_unpaid_threshold': double.tryParse(_threshold.text.trim()) ?? 0,
-        'block_if_membership_expired': _blockMemb,
-        'block_if_no_package': _blockPkg,
-        'grace_days': int.tryParse(_grace.text.trim()) ?? 0,
-        'package_auto_decrement': _autoDec,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'org_id');
-
-      final pricesMap = <String, dynamic>{};
-      for (final st in _slotTypes) {
-        final id = st['id'] as String;
-        final key = st['key'] as String;
-        final val = double.tryParse(_prices[id]!.text.trim()) ?? 0;
-        pricesMap[key] = val;
-        await client
-            .from('slot_types')
-            .update({'default_price': val})
-            .eq('id', id)
-            .eq('org_id', _orgId);
-      }
-      await widget.service.set('billing_client.prices', pricesMap);
-      if (mounted) AppSnack.success(context, 'Pagamenti salvati.');
-    } catch (e) {
-      if (mounted) AppSnack.error(context, 'Errore: $e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(AppSpacing.md),
-        child: AppLoading(),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _stripeCard(),
-        const SizedBox(height: AppSpacing.lg),
-        const Text(
-          'Modello di pagamento predefinito',
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
-        ),
-        const Text(
-          'Applicato di default ai nuovi clienti (override per-cliente).',
-          style: AppText.meta,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        RadioGroup<String>(
-          groupValue: _model,
-          onChanged: (v) => setState(() => _model = v ?? _model),
-          child: Column(
-            children: [
-              for (final m in _models)
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: m.$1,
-                  title: Text(
-                    m.$2,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(m.$3, style: AppText.meta),
-                ),
-            ],
-          ),
-        ),
-        const Divider(height: AppSpacing.lg),
-        const Text(
-          'Blocco prenotazioni per pagamenti',
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        TextField(
-          controller: _threshold,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Soglia debito massimo (€, 0 = nessun blocco)',
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        TextField(
-          controller: _grace,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Giorni di tolleranza (grace)',
-          ),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _blockMemb,
-          onChanged: (v) => setState(() => _blockMemb = v),
-          title: const Text(
-            'Blocca se abbonamento scaduto',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _blockPkg,
-          onChanged: (v) => setState(() => _blockPkg = v),
-          title: const Text(
-            'Blocca se pacchetto esaurito',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _autoDec,
-          onChanged: (v) => setState(() => _autoDec = v),
-          title: const Text(
-            'Decremento automatico pacchetto',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ),
-        const Divider(height: AppSpacing.lg),
-        const Text(
-          'Listino prezzi per tipo di slot',
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        if (_slotTypes.isEmpty)
-          const Text(
-            'Nessun tipo di slot configurato. Aggiungili da Gestione Orari.',
-            style: AppText.meta,
-          )
-        else
-          for (final st in _slotTypes)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${st['label']}${(st['is_active'] as bool? ?? true) ? '' : ' (disattivo)'}',
-                      style: const TextStyle(fontSize: 13.5),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 110,
-                    child: TextField(
-                      controller: _prices[st['id']],
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        prefixText: '€ ',
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        const SizedBox(height: AppSpacing.md),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'Salvataggio...' : 'Salva pagamenti'),
-        ),
-      ],
-    );
-  }
-
   Widget _stripeCard() {
-    final hasAcct = (_stripe?['stripe_account_id'] as String?) != null;
-    final chOk = (_stripe?['stripe_charges_enabled'] as bool?) ?? false;
+    final hasAccount = (_stripe?['stripe_account_id'] as String?) != null;
+    final active = (_stripe?['stripe_charges_enabled'] as bool?) ?? false;
     final email = (_stripe?['stripe_account_email'] as String?) ?? '';
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.slate50,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            '🔗 Incassi online — Stripe',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+    return _section('Incassi online · Stripe', 'Collega il tuo account Stripe.', [
+      if (hasAccount) ...[
+        Text(
+          active ? 'Account collegato e attivo.' : 'Onboarding da completare.',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: active ? AppColors.successEmeraldDark : const Color(0xFFB45309),
           ),
-          const Text(
-            'Collega il TUO account Stripe: i pagamenti dei clienti arrivano '
-            'direttamente a te.',
-            style: AppText.meta,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          if (hasAcct) ...[
-            Text(
-              chOk
-                  ? '✅ Account collegato e attivo.'
-                  : '⏳ Account collegato — onboarding da completare su Stripe.',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: chOk
-                    ? AppColors.successEmeraldDark
-                    : const Color(0xFFB45309),
+        ),
+        if (email.isNotEmpty) Text(email, style: AppText.meta),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            if (!active)
+              FilledButton(
+                onPressed: _connectStripe,
+                child: const Text('Completa su Stripe'),
               ),
-            ),
-            if (email.isNotEmpty) Text(email, style: AppText.meta),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                if (!chOk)
-                  FilledButton(
-                    onPressed: _connectStripe,
-                    child: const Text('Completa su Stripe'),
-                  ),
-                if (!chOk) const SizedBox(width: AppSpacing.sm),
-                OutlinedButton(
-                  onPressed: _disconnectStripe,
-                  child: const Text('Scollega'),
-                ),
-              ],
-            ),
-          ] else
-            FilledButton.icon(
-              onPressed: _connectStripe,
-              icon: const Icon(Icons.link, size: 18),
-              label: const Text('Collega il mio account Stripe'),
-            ),
-        ],
-      ),
-    );
+            if (!active) const SizedBox(width: AppSpacing.sm),
+            OutlinedButton(onPressed: _disconnectStripe, child: const Text('Scollega')),
+          ],
+        ),
+      ] else
+        FilledButton.icon(
+          onPressed: _connectStripe,
+          icon: const Icon(Icons.link, size: 18),
+          label: const Text('Collega il mio account Stripe'),
+        ),
+    ]);
   }
 }

@@ -121,6 +121,10 @@ class BookingCard extends ConsumerWidget {
       text = '✕ Annullata';
       bg = AppColors.cancelledBg;
       fg = AppColors.cancelledText;
+    } else if (b.isBillingVoided) {
+      text = 'Saldo annullato · cambio modello';
+      bg = AppColors.cancelledBg;
+      fg = AppColors.cancelledText;
     } else if (b.paid) {
       text = switch (b.paymentMethod) {
         'contanti' => '💵 Pagata con Contanti',

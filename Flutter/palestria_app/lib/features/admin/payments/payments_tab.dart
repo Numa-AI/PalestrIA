@@ -165,6 +165,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
 
     for (final b in bookings) {
       if (b.paid ||
+          b.isBillingVoided ||
           b.status == 'cancelled' ||
           b.status == 'cancellation_requested') {
         continue;

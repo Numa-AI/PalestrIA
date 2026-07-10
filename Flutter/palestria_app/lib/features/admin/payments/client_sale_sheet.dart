@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/admin_repository.dart';
+import '../../../core/data/client_billing_models.dart';
 import '../../../core/data/client_operations.dart';
 import '../../../core/theme/tokens.dart';
 
@@ -45,6 +47,8 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
   late DateTime _periodStart;
   late DateTime _periodEnd;
   bool _autoRenew = false;
+  String _billingPeriod = 'monthly';
+  Map<String, dynamic>? _catalog;
   bool _saving = false;
   late String _operationKey;
 
@@ -58,20 +62,55 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
     _periodEnd = DateTime(now.year, now.month + 1, now.day);
     _operationKey = ClientOperationsRepository.operationKey(_kind.name);
     _applyDefaults();
+    _loadCatalog();
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final row = await ref
+          .read(supabaseProvider)
+          .from('billing_settings')
+          .select(
+            'default_model,default_membership_period,package_label,package_sessions,'
+            'package_price,membership_monthly_price,membership_quarterly_price,'
+            'membership_annual_price',
+          )
+          .maybeSingle();
+      if (!mounted || row == null) return;
+      setState(() {
+        _catalog = row;
+        if (_kind == ClientSaleKind.membership) {
+          _billingPeriod = effectiveBillingModel(row);
+          if (!isMembershipBillingModel(_billingPeriod)) {
+            _billingPeriod = 'monthly';
+          }
+        }
+        _applyDefaults();
+      });
+    } catch (_) {}
   }
 
   void _applyDefaults() {
     switch (_kind) {
       case ClientSaleKind.package:
-        _label.text = 'Pacchetto 10 lezioni';
-        _count.text = '10';
+        _label.text = (_catalog?['package_label'] as String?) ?? 'Pacchetto 10 lezioni';
+        _count.text = ((_catalog?['package_sessions'] as num?) ?? 10).toString();
+        _price.text = ((_catalog?['package_price'] as num?) ?? 0).toStringAsFixed(2);
       case ClientSaleKind.membership:
-        _label.text = 'Abbonamento mensile';
+        _applyMembershipPeriod();
         _count.clear();
       case ClientSaleKind.adjustment:
         _label.clear();
         _count.clear();
     }
+  }
+
+  void _applyMembershipPeriod() {
+    final months = billingPeriodMonths(_billingPeriod);
+    _label.text = 'Abbonamento · $months ${months == 1 ? 'mese' : 'mesi'}';
+    _periodEnd = membershipPeriodEnd(_periodStart, _billingPeriod);
+    final value = (_catalog?[billingPeriodPriceColumn(_billingPeriod)] as num?) ?? 0;
+    _price.text = value.toStringAsFixed(2);
   }
 
   @override
@@ -157,6 +196,24 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
                     ),
                   ],
                   if (_kind == ClientSaleKind.membership) ...[
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(_billingPeriod),
+                      initialValue: _billingPeriod,
+                      decoration: _decoration(
+                        'Pacchetto abbonamento',
+                        Icons.date_range_outlined,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'monthly', child: Text('1 mese')),
+                        DropdownMenuItem(value: 'quarterly', child: Text('3 mesi')),
+                        DropdownMenuItem(value: 'annual', child: Text('12 mesi')),
+                      ],
+                      onChanged: (value) => setState(() {
+                        _billingPeriod = value ?? 'monthly';
+                        _applyMembershipPeriod();
+                      }),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
                     Row(
                       children: [
                         Expanded(
@@ -346,7 +403,7 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
       ButtonSegment(
         value: ClientSaleKind.membership,
         icon: Icon(Icons.calendar_month_outlined),
-        label: Text('Mensile'),
+        label: Text('Abbonamento'),
       ),
       ButtonSegment(
         value: ClientSaleKind.adjustment,
@@ -430,6 +487,9 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
         _expires = value;
       } else if (start) {
         _periodStart = value;
+        if (_kind == ClientSaleKind.membership) {
+          _periodEnd = membershipPeriodEnd(value, _billingPeriod);
+        }
       } else {
         _periodEnd = value;
       }
@@ -490,6 +550,7 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
             lessonsQuota: quota,
             method: _method,
             autoRenew: _autoRenew,
+            billingPeriod: _billingPeriod,
             note: _note.text.trim(),
             idempotencyKey: _operationKey,
           );

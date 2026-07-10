@@ -466,6 +466,11 @@ class _AdminBookingsTabState extends ConsumerState<AdminBookingsTab> {
                       dense: true,
                     ),
                   )
+                else if (b.isBillingVoided)
+                  const Text(
+                    'Saldo annullato · cambio modello',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.subtle),
+                  )
                 else if (b.paid)
                   const Text(
                     'Pagato',

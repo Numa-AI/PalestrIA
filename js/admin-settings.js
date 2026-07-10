@@ -431,6 +431,21 @@ async function saveCompanySettings() {
 // ════════════════════════════════════════════════════════════════════════════
 // 4 — PAGAMENTI CLIENTE (billing_settings + listino slot_types)
 // ════════════════════════════════════════════════════════════════════════════
+let _settLoadedBillingModel = 'pay_per_session';
+
+function _settSelectPaymentModel(model) {
+    document.querySelectorAll('.sett-model-opt').forEach(el => {
+        el.classList.toggle('active', el.querySelector('input')?.value === model);
+    });
+    const sections = {
+        pay_per_session: 'pay', package: 'package', monthly: 'membership',
+        free: 'free'
+    };
+    document.querySelectorAll('[data-billing-section]').forEach(el => {
+        el.style.display = el.dataset.billingSection === sections[model] ? '' : 'none';
+    });
+}
+
 async function _settRenderPayments(body) {
     body.innerHTML = `<div class="sett-loading">⏳ Caricamento configurazione pagamenti…</div>`;
 
@@ -448,7 +463,9 @@ async function _settRenderPayments(body) {
         console.warn('[Settings] payments load error:', e);
     }
 
-    const model     = (billing && billing.default_model) || 'pay_per_session';
+    const baseModel = (billing && billing.default_model) || 'pay_per_session';
+    const model     = baseModel;
+    _settLoadedBillingModel = model;
     const threshold = (billing && billing.block_unpaid_threshold) || 0;
     const blockMemb = billing ? !!billing.block_if_membership_expired : true;
     const blockPkg  = billing ? !!billing.block_if_no_package : true;
@@ -457,10 +474,17 @@ async function _settRenderPayments(body) {
 
     const MODELS = [
         ['pay_per_session', '🎟️ A entrata',   'Il cliente paga ogni singola lezione.'],
-        ['monthly',         '📆 Mensile',      'Abbonamento mensile a tariffa fissa.'],
         ['package',         '🎫 Pacchetto',    'Carnet di ingressi prepagato (decremento automatico).'],
+        ['monthly',         '📆 Abbonamento', 'Un solo modello con pacchetti da 1, 3 o 12 mesi.'],
         ['free',            '🎁 Gratuito',     'Nessun pagamento richiesto.'],
     ];
+
+    const packageLabel = (billing && billing.package_label) || 'Pacchetto 10 ingressi';
+    const packageSessions = Number((billing && billing.package_sessions) || 10);
+    const packagePrice = Number((billing && billing.package_price) || 0);
+    const monthlyPrice = Number((billing && billing.membership_monthly_price) || 0);
+    const quarterlyPrice = Number((billing && billing.membership_quarterly_price) || 0);
+    const annualPrice = Number((billing && billing.membership_annual_price) || 0);
 
     const pricesCache = OrgSettings.get('billing_client.prices', {}) || {};
     const priceRows = slotTypes.map(st => {
@@ -515,26 +539,26 @@ async function _settRenderPayments(body) {
                 <span class="sett-card-icon sett-card-icon--green">💳</span>
                 <div>
                     <h4 class="sett-card-title">Modello di pagamento predefinito</h4>
-                    <p class="sett-card-desc">Modalità applicata di default ai nuovi clienti (sovrascrivibile per-cliente).</p>
+                    <p class="sett-card-desc">Modalità economica predefinita dello studio. Il cambio coinvolge tutti i clienti e richiede tre conferme di sicurezza.</p>
                 </div>
             </div>
             <div class="sett-model-grid">
                 ${MODELS.map(([v, lbl, desc]) => `
                     <label class="sett-model-opt ${v === model ? 'active' : ''}">
                         <input type="radio" name="payDefaultModel" value="${v}" ${v === model ? 'checked' : ''}
-                               onchange="document.querySelectorAll('.sett-model-opt').forEach(e=>e.classList.remove('active'));this.closest('.sett-model-opt').classList.add('active')">
+                               onchange="_settSelectPaymentModel(this.value)">
                         <span class="sett-model-title">${lbl}</span>
                         <span class="sett-model-desc">${desc}</span>
                     </label>`).join('')}
             </div>
         </div>
 
-        <div class="sett-card">
+        <div class="sett-card" data-billing-section="pay">
             <div class="sett-card-header sett-card-header--top">
-                <span class="sett-card-icon sett-card-icon--red">🚫</span>
+                <span class="sett-card-icon sett-card-icon--blue">💶</span>
                 <div>
-                    <h4 class="sett-card-title">Blocco prenotazioni per pagamenti</h4>
-                    <p class="sett-card-desc">Condizioni che impediscono al cliente di prenotare.</p>
+                    <h4 class="sett-card-title">A entrata · listino per lezione</h4>
+                    <p class="sett-card-desc">Ogni prenotazione congela il prezzo del relativo tipo di slot. Nel profilo cliente il credito mostra quanto è già dovuto e quanto maturerà dalle lezioni future.</p>
                 </div>
             </div>
             <div class="sett-form-grid">
@@ -542,61 +566,46 @@ async function _settRenderPayments(body) {
                     <label class="sett-input-label">Soglia debito massimo (€, 0 = nessun blocco)</label>
                     <input type="number" min="0" step="0.01" id="payThreshold" class="sett-text-input" value="${Number(threshold).toFixed(2)}">
                 </div>
-                <div class="sett-field">
-                    <label class="sett-input-label">Giorni di tolleranza (grace)</label>
-                    <input type="number" min="0" step="1" id="payGraceDays" class="sett-text-input" value="${graceDays}">
+            </div>
+            <div class="sett-price-list">${priceRows || '<p class="sett-card-desc">Nessun tipo di slot configurato. Aggiungili da Gestione Orari → Tipi slot.</p>'}</div>
+        </div>
+
+        <div class="sett-card" data-billing-section="package">
+            <div class="sett-card-header sett-card-header--top">
+                <span class="sett-card-icon sett-card-icon--green">🎫</span>
+                <div>
+                    <h4 class="sett-card-title">Pacchetto · listino</h4>
+                    <p class="sett-card-desc">Un solo prezzo di riferimento per il carnet. Nessun credito a lezione viene mostrato nel profilo cliente.</p>
                 </div>
             </div>
+            <div class="sett-form-grid">
+                <div class="sett-field"><label class="sett-input-label">Nome pacchetto</label><input id="payPackageLabel" class="sett-text-input" maxlength="120" value="${_escAttr(packageLabel)}"></div>
+                <div class="sett-field"><label class="sett-input-label">Ingressi inclusi</label><input type="number" min="1" step="1" id="payPackageSessions" class="sett-text-input" value="${packageSessions}"></div>
+                <div class="sett-field"><label class="sett-input-label">Prezzo pacchetto (€)</label><input type="number" min="0" step="0.01" id="payPackagePrice" class="sett-text-input" value="${packagePrice.toFixed(2)}"></div>
+            </div>
             <div class="sett-toggle-list">
-                <div class="sett-toggle-row">
-                    <div class="sett-toggle-text">
-                        <strong>Abbonamento scaduto</strong>
-                        <span>Blocca se l'abbonamento mensile è scaduto.</span>
-                    </div>
-                    <label class="settings-toggle-wrap">
-                        <input type="checkbox" id="payBlockMemb" ${blockMemb ? 'checked' : ''}>
-                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                    </label>
-                </div>
-                <div class="sett-toggle-row">
-                    <div class="sett-toggle-text">
-                        <strong>Pacchetto esaurito</strong>
-                        <span>Blocca se il carnet di ingressi è terminato.</span>
-                    </div>
-                    <label class="settings-toggle-wrap">
-                        <input type="checkbox" id="payBlockPkg" ${blockPkg ? 'checked' : ''}>
-                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                    </label>
-                </div>
-                <div class="sett-toggle-row">
-                    <div class="sett-toggle-text">
-                        <strong>Decremento automatico pacchetto</strong>
-                        <span>Scala un ingresso dal pacchetto ad ogni prenotazione.</span>
-                    </div>
-                    <label class="settings-toggle-wrap">
-                        <input type="checkbox" id="payAutoDecrement" ${autoDec ? 'checked' : ''}>
-                        <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-                    </label>
-                </div>
+                <div class="sett-toggle-row"><div class="sett-toggle-text"><strong>Blocca senza pacchetto</strong><span>Impedisce la prenotazione se il carnet è assente o esaurito.</span></div><label class="settings-toggle-wrap"><input type="checkbox" id="payBlockPkg" ${blockPkg ? 'checked' : ''}><span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span></label></div>
+                <div class="sett-toggle-row"><div class="sett-toggle-text"><strong>Decremento automatico</strong><span>Scala un ingresso dal pacchetto a ogni prenotazione.</span></div><label class="settings-toggle-wrap"><input type="checkbox" id="payAutoDecrement" ${autoDec ? 'checked' : ''}><span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span></label></div>
             </div>
         </div>
 
-        <div class="sett-card">
-            <div class="sett-card-header sett-card-header--top">
-                <span class="sett-card-icon sett-card-icon--blue">💶</span>
-                <div>
-                    <h4 class="sett-card-title">Listino prezzi per tipo di slot</h4>
-                    <p class="sett-card-desc">Prezzo cliente autoritativo per ciascun tipo di lezione (sincronizzato col display pubblico).</p>
-                </div>
+        <div class="sett-card" data-billing-section="membership">
+            <div class="sett-card-header sett-card-header--top"><span class="sett-card-icon sett-card-icon--green">📅</span><div><h4 class="sett-card-title">Abbonamento · pacchetti per durata</h4><p class="sett-card-desc">Un solo modello con tre pacchetti: 1 mese, 3 mesi o 12 mesi. Nel profilo cliente compare la copertura attiva, non un credito a lezione.</p></div></div>
+            <div class="sett-form-grid">
+                <div class="sett-field"><label class="sett-input-label">Pacchetto 1 mese (€)</label><input type="number" min="0" step="0.01" id="payMonthlyPrice" class="sett-text-input" value="${monthlyPrice.toFixed(2)}"></div>
+                <div class="sett-field"><label class="sett-input-label">Pacchetto 3 mesi (€)</label><input type="number" min="0" step="0.01" id="payQuarterlyPrice" class="sett-text-input" value="${quarterlyPrice.toFixed(2)}"></div>
+                <div class="sett-field"><label class="sett-input-label">Pacchetto 12 mesi (€)</label><input type="number" min="0" step="0.01" id="payAnnualPrice" class="sett-text-input" value="${annualPrice.toFixed(2)}"></div>
+                <div class="sett-field"><label class="sett-input-label">Giorni di tolleranza</label><input type="number" min="0" step="1" id="payGraceDays" class="sett-text-input" value="${graceDays}"></div>
             </div>
-            <div class="sett-price-list">
-                ${priceRows || '<p class="sett-card-desc">Nessun tipo di slot configurato. Aggiungili da Gestione Orari → Tipi slot.</p>'}
-            </div>
+            <div class="sett-toggle-list"><div class="sett-toggle-row"><div class="sett-toggle-text"><strong>Blocca abbonamento scaduto</strong><span>Impedisce la prenotazione senza una copertura valida.</span></div><label class="settings-toggle-wrap"><input type="checkbox" id="payBlockMemb" ${blockMemb ? 'checked' : ''}><span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span></label></div></div>
         </div>
+
+        <div data-billing-section="free"></div>
 
         <div class="sett-btn-row">
             <button class="sett-action-btn sett-action-btn--green" onclick="savePaymentsSettings()">💾 Salva pagamenti</button>
         </div>`;
+    _settSelectPaymentModel(model);
 }
 
 // ── Stripe Connect: collega / scollega il conto Stripe del trainer ───────────
@@ -635,52 +644,59 @@ async function savePaymentsSettings() {
     const modelEl = document.querySelector('input[name="payDefaultModel"]:checked');
     const model = modelEl ? modelEl.value : 'pay_per_session';
 
-    const billingRow = {
-        org_id: orgId,
-        default_model: model,
-        block_unpaid_threshold: parseFloat(_settVal('payThreshold')) || 0,
-        block_if_membership_expired: _settChecked('payBlockMemb'),
-        block_if_no_package: _settChecked('payBlockPkg'),
-        grace_days: parseInt(_settVal('payGraceDays'), 10) || 0,
-        package_auto_decrement: _settChecked('payAutoDecrement'),
-        updated_at: new Date().toISOString(),
-    };
-
     try {
-        // 1) billing_settings (RLS admin): modello, soglie e flag.
-        const { error: bErr } = await _queryWithTimeout(
-            supabaseClient.from('billing_settings').upsert(billingRow, { onConflict: 'org_id' })
-        );
-        if (bErr) throw bErr;
-
-        // 2) listino prezzi: aggiorna slot_types.default_price (prezzo autoritativo)
-        //    + org_settings 'billing_client.prices' (display pubblico).
-        //    Tutti gli update in PARALLELO con raccolta errori: niente più stop a
-        //    metà loop che lasciava il DB parzialmente aggiornato.
         const priceInputs = Array.from(document.querySelectorAll('.sett-price-input'));
         const pricesMap = {};
-        const updates = priceInputs.map(inp => {
-            const id  = inp.dataset.slotId;
+        priceInputs.forEach(inp => {
             const key = inp.dataset.slotKey;
             const val = parseFloat(inp.value) || 0;
             if (key) pricesMap[key] = val;
-            return _queryWithTimeout(
-                supabaseClient.from('slot_types').update({ default_price: val }).eq('id', id).eq('org_id', orgId)
-            ).then(res => res, err => ({ error: err }));
         });
-        const results = await Promise.all(updates);
-        const priceErrors = results.filter(r => r && r.error);
 
-        // Allinea il display pubblico al valore impostato in ogni caso (è la fonte
-        // mostrata ai clienti; gli slot_types andati a buon fine combaciano).
-        await OrgSettings.set('billing_client.prices', pricesMap);
-
-        if (priceErrors.length) {
-            console.error('[Settings] payments price errors:', priceErrors);
-            showToast(`Salvato, ma ${priceErrors.length} prezzo/i non aggiornati`, 'error');
-        } else {
-            showToast('✅ Pagamenti salvati', 'success');
+        let impact = { model_changed: false };
+        if (model !== _settLoadedBillingModel) {
+            const { data, error } = await _queryWithTimeout(
+                supabaseClient.rpc('get_billing_model_change_impact', { p_model: model })
+            );
+            if (error) throw error;
+            impact = data || impact;
+            const names = {
+                pay_per_session: 'A entrata', package: 'Pacchetto', monthly: 'Abbonamento',
+                quarterly: 'Abbonamento (3 mesi)', annual: 'Abbonamento (12 mesi)', free: 'Gratuito'
+            };
+            if (!await showConfirm(`1/3 · Cambio modello\n\nStai passando da “${names[_settLoadedBillingModel] || _settLoadedBillingModel}” a “${names[model] || model}”. Questa operazione modifica il modello predefinito di tutti i clienti.`)) return;
+            if (!await showConfirm(`2/3 · Stati operativi da annullare\n\nSaranno annullati: ${impact.open_session_balances || 0} saldi/crediti a lezione, ${impact.active_packages || 0} pacchetti, ${impact.active_memberships || 0} abbonamenti e ${impact.client_overrides || 0} override cliente.`)) return;
+            if (!await showConfirm('3/3 · Conferma definitiva\n\nPagamenti già registrati, incassi e statistiche storiche resteranno invariati. Confermi il cambio del modello?')) return;
         }
+
+        const params = {
+            p_model: model,
+            p_block_unpaid_threshold: parseFloat(_settVal('payThreshold')) || 0,
+            p_block_if_membership_expired: _settChecked('payBlockMemb'),
+            p_block_if_no_package: _settChecked('payBlockPkg'),
+            p_grace_days: parseInt(_settVal('payGraceDays'), 10) || 0,
+            p_package_auto_decrement: _settChecked('payAutoDecrement'),
+            p_package_label: _settVal('payPackageLabel').trim() || 'Pacchetto 10 ingressi',
+            p_package_sessions: parseInt(_settVal('payPackageSessions'), 10) || 10,
+            p_package_price: parseFloat(_settVal('payPackagePrice')) || 0,
+            p_monthly_price: parseFloat(_settVal('payMonthlyPrice')) || 0,
+            p_quarterly_price: parseFloat(_settVal('payQuarterlyPrice')) || 0,
+            p_annual_price: parseFloat(_settVal('payAnnualPrice')) || 0,
+            p_slot_prices: pricesMap,
+            p_expected_current_model: _settLoadedBillingModel,
+            p_confirm_1: model !== _settLoadedBillingModel,
+            p_confirm_2: model !== _settLoadedBillingModel,
+            p_confirm_3: model !== _settLoadedBillingModel,
+        };
+        const { data, error } = await _queryWithTimeout(
+            supabaseClient.rpc('admin_save_default_billing_model', params), 30000
+        );
+        if (error) throw error;
+        _settLoadedBillingModel = model;
+        if (typeof OrgSettings !== 'undefined') await OrgSettings.load(true);
+        if (data && data.model_changed) {
+            showToast(`✅ Modello aggiornato · ${data.voided_session_balances || 0} saldi, ${data.cancelled_packages || 0} pacchetti e ${data.cancelled_memberships || 0} abbonamenti annullati`, 'success', 6500);
+        } else showToast('✅ Pagamenti salvati', 'success');
     } catch (e) {
         console.error('[Settings] payments save error:', e);
         showToast('Errore salvataggio pagamenti', 'error');

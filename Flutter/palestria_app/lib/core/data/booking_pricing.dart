@@ -22,6 +22,7 @@ double bookingPrice(
   OrgSettingsService? settings,
   OrgScheduleConfig? config,
 ) {
+  if (b.isBillingVoided) return 0;
   final custom = b.customPrice;
   if (custom != null && !custom.isNaN) return custom;
 

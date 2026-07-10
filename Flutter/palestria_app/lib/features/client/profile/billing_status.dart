@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/data/booking_pricing.dart';
+import '../../../core/data/client_billing_models.dart';
 import '../../../core/data/schedule_config.dart';
 import '../../../core/org/org_settings_service.dart';
 import '../booking/booking_providers.dart';
@@ -34,18 +35,20 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
   final results = await Future.wait<dynamic>([
     client
         .from('billing_settings')
-        .select('default_model')
+        .select('default_model,default_membership_period')
         .eq('org_id', orgId)
         .maybeSingle(),
     client
         .from('client_billing_profiles')
-        .select('model_override')
+        .select('model_override,membership_period_override')
         .eq('org_id', orgId)
         .eq('user_id', userId)
         .maybeSingle(),
     client
         .from('client_memberships')
-        .select('plan_label, period_end, lessons_quota, lessons_used, status')
+        .select(
+          'plan_label, billing_period, period_end, lessons_quota, lessons_used, status',
+        )
         .eq('org_id', orgId)
         .eq('user_id', userId)
         .eq('status', 'active')
@@ -60,10 +63,10 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
         .eq('status', 'active'),
   ]).timeout(const Duration(seconds: 12));
 
-  final defaultModel =
-      (results[0]?['default_model'] as String?) ?? 'pay_per_session';
-  final override = results[1]?['model_override'] as String?;
-  final model = override ?? defaultModel;
+  final model = effectiveBillingModel(
+    (results[0] as Map?)?.cast<String, dynamic>(),
+    (results[1] as Map?)?.cast<String, dynamic>(),
+  );
 
   switch (model) {
     case 'free':
@@ -75,6 +78,8 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
       );
 
     case 'monthly':
+    case 'quarterly':
+    case 'annual':
       final rows = results[2] as List;
       final m = rows.isEmpty ? null : rows.first as Map<String, dynamic>;
       final active =
@@ -85,11 +90,11 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
             m['period_end'] as String,
           ).isBefore(DateTime.now().subtract(const Duration(days: 1)));
       if (!active) {
-        return const ClientBillingStatus(
+        return ClientBillingStatus(
           icon: '📅',
           title: 'Abbonamento non attivo',
           detail:
-              'Contatta il trainer per attivare o rinnovare l\'abbonamento mensile.',
+              'Contatta il trainer per attivare un pacchetto da 1, 3 o 12 mesi.',
           tone: 'warn',
         );
       }
@@ -99,10 +104,13 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
       final quota = (m['lessons_quota'] as num?)?.toInt();
       final used = (m['lessons_used'] as num?)?.toInt() ?? 0;
       final label = m['plan_label'] as String?;
+      final period = billingPeriodLabel(
+        (m['billing_period'] as String?) ?? 'monthly',
+      );
       return ClientBillingStatus(
         icon: '📅',
         title:
-            'Abbonamento attivo${label == null || label.isEmpty ? '' : ' · $label'}',
+            'Abbonamento $period attivo${label == null || label.isEmpty ? '' : ' · $label'}',
         detail: quota == null
             ? 'Valido fino al $endStr · lezioni illimitate'
             : 'Valido fino al $endStr · $used/$quota lezioni usate',
@@ -137,33 +145,36 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
       final settings = await ref.watch(orgSettingsProvider.future);
       final config = await ref.watch(scheduleConfigProvider.future);
       final now = DateTime.now();
-      double debt = 0;
-      int unpaidCount = 0;
+      double due = 0;
+      double future = 0;
+      int creditCount = 0;
       for (final b in bookings) {
-        if (b.paid || b.status == 'cancelled') continue;
-        if (lessonStart(b.date, b.time).isAfter(now)) continue;
+        if (b.paid || b.isBillingVoided || b.status == 'cancelled') continue;
         // Stesso calcolo di statistiche/registro (bookingPrice, 4 livelli di
         // fallback) così l'importo "Da saldare" del cliente combacia con quello
         // che il trainer vede/incassa, invece dei soli custom_price + listino.
-        debt += bookingPrice(b, settings, config);
-        unpaidCount++;
+        final amount = bookingPrice(b, settings, config);
+        if (lessonStart(b.date, b.time).isAfter(now)) {
+          future += amount;
+        } else {
+          due += amount;
+        }
+        creditCount++;
       }
-      if (unpaidCount > 0) {
-        final debtStr = debt == debt.roundToDouble()
-            ? debt.toStringAsFixed(0)
-            : debt.toStringAsFixed(2).replaceAll('.', ',');
+      final credit = due + future;
+      if (creditCount > 0 && credit > 0) {
+        String euro(double value) => value.toStringAsFixed(2).replaceAll('.', ',');
         return ClientBillingStatus(
           icon: '💳',
-          title: 'Da saldare: €$debtStr',
-          detail:
-              '$unpaidCount lezion${unpaidCount == 1 ? 'e' : 'i'} non ancora pagat${unpaidCount == 1 ? 'a' : 'e'}.',
-          tone: 'warn',
+          title: 'Credito lezioni da saldare: €${euro(credit)}',
+          detail: 'Già maturato €${euro(due)} · lezioni future €${euro(future)}.',
+          tone: due > 0 ? 'warn' : 'neutral',
         );
       }
       return const ClientBillingStatus(
         icon: '✅',
-        title: 'Pagamenti in regola',
-        detail: 'Paghi ogni lezione singolarmente.',
+        title: 'Credito lezioni: €0,00',
+        detail: 'Paghi ogni lezione secondo il listino del relativo slot.',
         tone: 'ok',
       );
   }

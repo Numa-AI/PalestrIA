@@ -266,6 +266,7 @@ class _ClientCardState extends ConsumerState<ClientCard> {
     double unpaid = 0;
     for (final b in c.bookings) {
       if (b.paid ||
+          b.isBillingVoided ||
           b.status == 'cancelled' ||
           b.status == 'cancellation_requested') {
         continue;
@@ -497,6 +498,10 @@ class _ClientCardState extends ConsumerState<ClientCard> {
     Color fg;
     if (b.status == 'cancelled') {
       text = '✕ Annullata';
+      bg = AppColors.cancelledBg;
+      fg = AppColors.cancelledText;
+    } else if (b.isBillingVoided) {
+      text = 'Saldo annullato · cambio modello';
       bg = AppColors.cancelledBg;
       fg = AppColors.cancelledText;
     } else if (b.status == 'cancellation_requested') {
