@@ -14,22 +14,29 @@ Future<bool?> showClientSaleSheet(
   WidgetRef ref, {
   AdminClient? client,
   ClientSaleKind initialKind = ClientSaleKind.package,
+  bool lockKind = false,
 }) => showModalBottomSheet<bool>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
   backgroundColor: Colors.transparent,
   builder: (_) =>
-      _ClientSaleSheet(initialClient: client, initialKind: initialKind),
+      _ClientSaleSheet(
+        initialClient: client,
+        initialKind: initialKind,
+        lockKind: lockKind,
+      ),
 );
 
 class _ClientSaleSheet extends ConsumerStatefulWidget {
   const _ClientSaleSheet({
     required this.initialClient,
     required this.initialKind,
+    required this.lockKind,
   });
   final AdminClient? initialClient;
   final ClientSaleKind initialKind;
+  final bool lockKind;
 
   @override
   ConsumerState<_ClientSaleSheet> createState() => _ClientSaleSheetState();
@@ -150,7 +157,10 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _kindSelector(),
+                  if (widget.lockKind)
+                    _lockedKindHeader()
+                  else
+                    _kindSelector(),
                   const SizedBox(height: AppSpacing.lg),
                   DropdownButtonFormField<String>(
                     initialValue: _client?.userId,
@@ -419,6 +429,49 @@ class _ClientSaleSheetState extends ConsumerState<_ClientSaleSheet> {
       _applyDefaults();
     }),
   );
+
+  Widget _lockedKindHeader() {
+    final (icon, title, detail) = switch (_kind) {
+      ClientSaleKind.package => (
+        Icons.confirmation_number_outlined,
+        'Vendita pacchetto',
+        'Carnet di ingressi secondo il listino configurato.',
+      ),
+      ClientSaleKind.membership => (
+        Icons.calendar_month_outlined,
+        'Vendita abbonamento',
+        'Scegli un pacchetto da 1, 3 oppure 12 mesi.',
+      ),
+      ClientSaleKind.adjustment => (
+        Icons.tune,
+        'Rettifica contabile',
+        'Registra una correzione motivata nel ledger.',
+      ),
+    };
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7E2F2)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF7C3AED)),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(detail, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   InputDecoration _decoration(String label, IconData icon) => InputDecoration(
     labelText: label,

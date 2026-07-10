@@ -558,7 +558,7 @@ async function _settRenderPayments(body) {
                 <span class="sett-card-icon sett-card-icon--blue">💶</span>
                 <div>
                     <h4 class="sett-card-title">A entrata · listino per lezione</h4>
-                    <p class="sett-card-desc">Ogni prenotazione congela il prezzo del relativo tipo di slot. Nel profilo cliente il credito mostra quanto è già dovuto e quanto maturerà dalle lezioni future.</p>
+                    <p class="sett-card-desc">Ogni prenotazione congela il prezzo del relativo slot. Il conto cliente viene scalato automaticamente all'ora di inizio: positivo = credito, negativo = debito. Le lezioni future restano una previsione separata.</p>
                 </div>
             </div>
             <div class="sett-form-grid">

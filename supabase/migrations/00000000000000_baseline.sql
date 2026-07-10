@@ -140,6 +140,7 @@ create table bookings (
     payment_method              text,
     paid_at                     timestamptz,
     custom_price                numeric(10,2),
+    billing_model_snapshot      text check (billing_model_snapshot is null or billing_model_snapshot in ('pay_per_session','package','monthly','free')),
     billing_voided_at           timestamptz,
     billing_void_reason         text,
     -- Tracciano QUALE pacchetto/abbonamento è stato consumato da questa prenotazione,
@@ -333,7 +334,7 @@ create table payments (
     method               text not null
                          check (method in ('contanti','contanti-report','carta','iban','stripe','gratuito')),
     kind                 text not null
-                         check (kind in ('session','membership','package_purchase','penalty_mora','adjustment')),
+                         check (kind in ('session','membership','package_purchase','penalty_mora','adjustment','account_credit')),
     booking_id           uuid references bookings(id) on delete set null,
     membership_id        uuid references client_memberships(id) on delete set null,
     package_id           uuid references client_packages(id) on delete set null,
@@ -347,6 +348,31 @@ create index payments_org_created_idx on payments (org_id, created_at);
 create index payments_org_email_idx   on payments (org_id, client_email);
 -- idempotenza: un booking-sessione non genera due righe 'session'
 create unique index payments_booking_session_uidx on payments (booking_id) where kind = 'session';
+
+-- CONTO CLIENTE A ENTRATA: append-only, positivo=credito e negativo=debito.
+-- Gli addebiti lezione vengono inseriti server-side all'orario di inizio.
+create table client_balance_entries (
+    id              uuid primary key default gen_random_uuid(),
+    org_id          uuid not null references organizations(id) on delete cascade,
+    user_id         uuid not null references profiles(id) on delete cascade,
+    booking_id      uuid references bookings(id) on delete set null,
+    payment_id      uuid references payments(id) on delete set null,
+    kind            text not null check (kind in ('lesson_charge','lesson_reversal','booking_payment',
+                        'lesson_waiver','waiver_reversal','manual_credit','manual_debt','manual_payment','model_reset')),
+    amount          numeric(12,2) not null,
+    note            text,
+    effective_at    timestamptz not null default now(),
+    created_at      timestamptz not null default now(),
+    created_by      uuid references auth.users(id) on delete set null,
+    idempotency_key text not null,
+    unique (org_id,idempotency_key)
+);
+create index client_balance_entries_org_user_idx
+    on client_balance_entries (org_id,user_id,effective_at desc);
+create unique index client_balance_entries_payment_uidx
+    on client_balance_entries(payment_id) where payment_id is not null;
+create unique index client_balance_entries_booking_charge_uidx
+    on client_balance_entries(booking_id) where kind='lesson_charge' and booking_id is not null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- BLOCCO 6 — BILLING-SaaS (il trainer paga la piattaforma)
@@ -554,6 +580,7 @@ alter table client_billing_profiles enable row level security;
 alter table client_memberships     enable row level security;
 alter table client_packages        enable row level security;
 alter table payments               enable row level security;
+alter table client_balance_entries enable row level security;
 alter table plans                  enable row level security;
 alter table subscriptions          enable row level security;
 alter table subscription_events    enable row level security;
@@ -673,6 +700,10 @@ create policy payments_select on payments
 create policy payments_admin on payments
     for all to authenticated
     using (is_org_admin(org_id)) with check (is_org_admin(org_id));
+
+create policy client_balance_entries_select on client_balance_entries
+    for select to authenticated
+    using (org_id = current_org_id() and (user_id = auth.uid() or is_org_admin(org_id)));
 
 -- plans: catalogo pubblico in lettura (serve in pagina pricing/upgrade)
 create policy plans_read on plans for select to authenticated using (true);

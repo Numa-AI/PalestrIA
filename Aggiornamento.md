@@ -10,6 +10,33 @@ una *Parte tecnica* autosufficiente (file, identificatori, prima/dopo, deploy).
 ---
 
 <!-- Le prossime voci vanno qui, in cima. -->
+## 2026-07-10 - Conto credito/debito scalato all'inizio della lezione
+
+**Problema/feature.** Nel modello a entrata il riepilogo sommava prenotazioni non pagate e lezioni future nel browser. Un anticipo non era un vero credito spendibile, un debito manuale non era rappresentabile e il saldo poteva cambiare prima dell'effettivo inizio. Ora ogni cliente ha un conto economico append-only: importi positivi sono credito del cliente, importi negativi sono debito; il prezzo congelato della lezione viene addebitato esclusivamente quando scatta l'orario di inizio nella timezone dello studio.
+
+### Parte tecnica
+
+- Migration `00000000000040_client_balance_at_lesson_start.sql` (schema finale anche nella baseline):
+  - nuova `client_balance_entries(org_id,user_id,booking_id,payment_id,kind,amount,effective_at,idempotency_key,...)`, RLS own/admin/staff in lettura e nessuna scrittura diretta; indici unici su idempotenza, pagamento e addebito booking;
+  - `bookings.billing_model_snapshot` congela il modello insieme a `custom_price`; solo gli snapshot `pay_per_session` producono addebiti;
+  - `process_due_session_balance_entries(org,limit)` inserisce `lesson_charge=-prezzo` quando `(date + ora_inizio) AT TIME ZONE organizations.timezone <= now()`. È idempotente ed eseguita ogni minuto dal job pg_cron `palestria-charge-lessons-at-start`; le RPC di riepilogo la richiamano anche on-demand;
+  - trigger `mirror_payment_to_client_balance` converte incassi lezione/top-up in credito; `gratuito` crea una rinuncia non fatturata legata alla lezione; cancellazione/eliminazione dopo l'inizio crea `lesson_reversal`, e storna anche l'eventuale rinuncia gratuita;
+  - RPC `admin_record_client_balance_operation` gestisce atomicamente `payment`, `credit`, `debt`, valida modello/tenant/importo/metodo, usa advisory lock + chiave idempotente e scrive in `payments(kind='account_credit')` solo per denaro realmente incassato;
+  - `get_client_balance_overview`, `get_my_client_billing_status` e `get_client_financial_summary` espongono `balance`, `credit`, `debt` e previsione future separata. Il superamento soglia usa il debito reale, non la somma lato client;
+  - il trigger sul cambio `billing_settings.default_model` chiude ogni saldo non zero con `model_reset`; la migration 39 annulla ora tutte le posizioni a lezione operative, comprese quelle prepagate. `payments` e statistiche storiche restano invariati;
+  - `tests/rls/cross_tenant.sql` verifica che due clienti vedano solo i propri movimenti di conto.
+- PWA: `js/admin-payments.js` usa il riepilogo server per “Da incassare” e presenta **Incassa saldo / Aggiungi credito / Aggiungi debito**; `js/admin-clients.js`, calendario admin e `prenotazioni.html` mostrano il conto firmato e le future separatamente. `js/admin-settings.js` documenta lo scatto all'ora di inizio.
+- Flutter: `client_balance_sheet.dart` replica le tre operazioni; `payments_tab.dart` legge `get_client_balance_overview`; `client_operations.dart`, pannello trainer e `billing_status.dart` espongono credito/debito server-authoritative.
+- Metodi/statistiche: un credito omaggio usa `method='gratuito'` senza riga di fatturato; un versamento reale usa `payments.kind='account_credit'` e quindi resta correttamente nelle statistiche di incasso.
+- QA: `flutter analyze` senza problemi, test Flutter 9/9, controlli sintattici JS e `git diff --check` puliti. Il DB locale non era disponibile, quindi resta obbligatoria la QA autenticata post-`db push` sui casi temporali.
+- Cache busting: `sw.js` `palestria-v594` → `palestria-v595`; `admin.js?v=122`, `admin-settings.js?v=13`, `admin-payments.js?v=26`, `admin-clients.js?v=22`.
+
+### Deploy
+
+1. Applicare in ordine le migration 39 e 40 con `supabase db push`.
+2. Verificare che `cron.job` contenga `palestria-charge-lessons-at-start` e che una lezione di prova generi un solo `lesson_charge` all'inizio.
+3. Pubblicare PWA/cache v595 e ricostruire Flutter; eseguire i casi anticipo, debito, incasso, cancellazione e cambio modello su due organizzazioni.
+
 ## 2026-07-10 - Modello di pagamento predefinito separato e cambio sicuro
 
 **Problema/feature.** La configurazione mostrava sempre insieme modello, blocchi e listino slot, anche quando non erano pertinenti. Mancavano i pacchetti abbonamento da 1/3/12 mesi, un listino dedicato, il credito derivato delle lezioni a entrata e una transizione sicura tra modelli. Un cambio diretto poteva inoltre lasciare attivi pacchetti, membership e override incompatibili. Il modello è unico (**Abbonamento**): mensile/trimestrale/annuale sono soltanto durate commerciali, non tipi di pagamento distinti.
@@ -26,10 +53,10 @@ una *Parte tecnica* autosufficiente (file, identificatori, prima/dopo, deploy).
   - trigger `guard_default_billing_model_transition` blocca i vecchi frontend che provano un `UPDATE` diretto; `guard_voided_booking_payment` impedisce di incassare una posizione annullata;
   - `get_client_financial_summary()` espone per l'entrata `unpaid` (maturato), `scheduled` (futuro) e `credit` (totale); per pacchetto/gratuito/abbonamenti i valori credito sono zero;
   - `admin_record_membership_payment(..., p_billing_period)` registra mensile, trimestrale o annuale e mantiene la periodicità nell'override cliente.
-- PWA: `js/admin-settings.js` separa quattro scelte (**A entrata / Pacchetto / Abbonamento / Gratuito**) e mostra solo la card pertinente; Abbonamento contiene i tre pacchetti 1/3/12 mesi. Il cambio di tipo esegue tre `showConfirm`; `js/admin-payments.js` calcola automaticamente le tre durate. `prenotazioni.html` e `js/admin-clients.js` mostrano il credito a entrata come maturato + futuro.
-- Flutter: nuovo contratto puro `client_billing_models.dart` con quattro tipi; `settings_payments.dart` replica sezioni e tre `AlertDialog`; `client_sale_sheet.dart` gestisce pacchetti abbonamento da 1/3/12 mesi; profilo cliente e pannello trainer distinguono credito a entrata da copertura abbonamento.
+- PWA: `js/admin-settings.js` separa quattro scelte (**A entrata / Pacchetto / Abbonamento / Gratuito**) e mostra solo la card pertinente; Abbonamento contiene i tre pacchetti 1/3/12 mesi. Il cambio di tipo esegue tre `showConfirm`. In `js/admin-payments.js`, il FAB Nuova operazione è model-aware: Entrata seleziona cliente e lezioni aperte anche future; Pacchetto apre direttamente la vendita carnet; Abbonamento apre direttamente il form bloccato sui pacchetti 1/3/12 mesi; Gratuito rifiuta operazioni economiche. `prenotazioni.html` e `js/admin-clients.js` mostrano il credito a entrata come maturato + futuro.
+- Flutter: nuovo contratto puro `client_billing_models.dart` con quattro tipi; `settings_payments.dart` replica sezioni e tre `AlertDialog`; `PaymentsTab` cambia icona, etichetta e flusso di Nuova operazione in base al modello; `client_sale_sheet.dart` supporta `lockKind` per impedire il passaggio a un tipo incompatibile e gestisce i pacchetti abbonamento 1/3/12 mesi. Per Entrata viene mostrato il selettore dei saldi-lezione, per Gratuito il pulsante è disabilitato.
 - Test: `flutter analyze lib test` pulito; `flutter test --no-pub` 9/9; nuovo `client_billing_models_test.dart`; `node --check` sui quattro asset JS e compilazione dei tre script inline di `prenotazioni.html`; `git diff --check` pulito. QA visiva locale admin non eseguita perché la sessione browser localhost non era autenticata.
-- Cache busting PWA finale: `sw.js` `palestria-v591` → `palestria-v593`; `data.js?v=102`, `admin-settings.js?v=12`, `admin-payments.js?v=24`, `admin-clients.js?v=21`.
+- Cache busting PWA finale: `sw.js` `palestria-v591` → `palestria-v594`; `data.js?v=102`, `admin-settings.js?v=12`, `admin-payments.js?v=25`, `admin-clients.js?v=21`.
 
 ### Deploy
 

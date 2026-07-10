@@ -9,13 +9,14 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-07-10.
 ## Modello di pagamento predefinito - PWA + Flutter (2026-07-10)
 
 - [x] Separati i quattro modelli **A entrata / Pacchetto / Abbonamento / Gratuito**: mensile, trimestrale e annuale sono pacchetti di durata dell'unico modello Abbonamento, non tipi distinti. Ogni UI mostra solo i controlli pertinenti; Gratuito non mostra listini.
-- [x] A entrata: prezzo della singola lezione congelato dal listino dello slot al momento della prenotazione; profilo cliente e pannello trainer mostrano credito totale, quota maturata e quota delle lezioni future.
+- [x] A entrata: prezzo congelato alla prenotazione e conto append-only firmato (`+` credito / `-` debito). L'addebito viene creato server-side solo all'ora di inizio, una volta sola; anticipi, incassi, crediti/debiti manuali, cancellazioni e cambi modello generano movimenti compensativi senza riscrivere lo storico. Le lezioni future restano una previsione separata.
 - [x] Pacchetto: listino dedicato nome + ingressi + prezzo, senza credito cliente; vendita PWA/Flutter precompilata dal listino.
 - [x] Abbonamento: unico tipo con tre pacchetti a listino da **1 / 3 / 12 mesi**, periodicità persistita e nessun credito cliente. Cambiare durata non annulla gli stati globali.
+- [x] Admin → Pagamenti → **Nuova operazione** model-aware su PWA e Flutter: Entrata offre **Incassa saldo / Aggiungi credito / Aggiungi debito** sul conto cliente; Pacchetto vende solo carnet; Abbonamento vende solo pacchetti 1/3/12 mesi; Gratuito non consente operazioni economiche.
 - [x] Cambio modello: tre conferme consecutive con impatto reale; RPC transazionale annulla saldi operativi aperti, pacchetti, membership e override, ma conserva integralmente `payments` e statistiche storiche. Le vecchie app non possono bypassare il flusso con update diretto.
-- [x] QA automatica: `flutter analyze lib test` pulito; Flutter test 9/9; `node --check` e script inline PWA puliti; `git diff --check` pulito. Cache-bust finale `palestria-v593`.
-- [ ] **DEPLOY**: `supabase db push` (migration `00000000000039_default_billing_models.sql`) **prima** degli asset PWA; poi pubblicare PWA e ricostruire AAB/APK Flutter.
-- [ ] **QA AUTENTICATA/PRODUZIONE**: testare i quattro modelli, i pacchetti abbonamento 1/3/12 mesi e i tre alert su PWA desktop/mobile e Android; verificare vendita da listino, saldo maturato/futuro, annullamenti e ledger storico; aggiungere scenario SQL cross-tenant sulla nuova RPC. Il browser locale ha raggiunto il login ma non disponeva di una sessione localhost autenticata.
+- [x] QA automatica: `flutter analyze` pulito; Flutter test 9/9; `node --check` e `git diff --check` puliti; scenario RLS cross-tenant esteso a `client_balance_entries`. Cache-bust finale `palestria-v595`.
+- [ ] **DEPLOY**: `supabase db push` (migration `00000000000039_default_billing_models.sql` + `00000000000040_client_balance_at_lesson_start.sql`) **prima** degli asset PWA; poi pubblicare PWA e ricostruire AAB/APK Flutter.
+- [ ] **QA AUTENTICATA/PRODUZIONE**: testare i quattro modelli, i pacchetti abbonamento 1/3/12 mesi e i tre alert su PWA desktop/mobile e Android; per Entrata verificare anticipo → credito, scatto automatico all'ora esatta, debito, incasso parziale/eccedente, credito/debito manuale, cancellazione dopo l'inizio e reset al cambio modello. Il browser locale non disponeva di una sessione localhost autenticata e Docker/Supabase locale non era avviato.
 
 ---
 

@@ -75,10 +75,10 @@ class ClientFinancialPanel extends ConsumerWidget {
             Expanded(
               child: data.model == 'pay_per_session'
                   ? _metric(
-                      'Credito lezioni',
-                      '€${_money(data.credit)}',
+                      data.debt > 0 ? 'Debito cliente' : 'Credito cliente',
+                      '€${_money(data.debt > 0 ? data.debt : data.credit)}',
                       Icons.pending_actions_outlined,
-                      data.unpaid > 0 ? AppColors.dangerDark : AppColors.subtle,
+                      data.debt > 0 ? AppColors.dangerDark : AppColors.green600,
                     )
                   : _metric(
                       'Modello',

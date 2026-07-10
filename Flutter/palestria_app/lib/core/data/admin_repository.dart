@@ -340,7 +340,7 @@ class PaymentRow {
   final String id;
   final double amount;
 
-  /// session | membership | package_purchase | penalty_mora | adjustment
+  /// session | membership | package_purchase | penalty_mora | adjustment | account_credit
   final String kind;
 
   /// contanti | contanti-report | carta | iban | stripe | gratuito
@@ -369,6 +369,7 @@ class PaymentRow {
     'package_purchase': 'Pacchetto',
     'penalty_mora': 'Mora',
     'adjustment': 'Rettifica',
+    'account_credit': 'Versamento credito',
   };
 
   static const methodLabels = {

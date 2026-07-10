@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/normalize.dart';
 import '../../../core/data/admin_repository.dart';
 import '../../../core/data/booking_pricing.dart';
@@ -10,8 +11,65 @@ import '../../../core/org/org_settings_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/theme/ui_kit.dart';
 import '../../client/booking/booking_providers.dart';
+import 'client_balance_sheet.dart';
 import 'client_sale_sheet.dart';
 import 'pay_debt_sheet.dart';
+
+final adminPaymentsDefaultModelProvider = FutureProvider<String>((ref) async {
+  final org = await ref.watch(orgContextProvider.future);
+  if (org.orgId == null) return 'pay_per_session';
+  final row = await ref
+      .read(supabaseProvider)
+      .from('billing_settings')
+      .select('default_model')
+      .eq('org_id', org.orgId!)
+      .maybeSingle();
+  return (row?['default_model'] as String?) ?? 'pay_per_session';
+});
+
+class ClientBalanceAccount {
+  const ClientBalanceAccount({
+    required this.userId,
+    required this.name,
+    required this.balance,
+    required this.debt,
+    required this.credit,
+    this.email,
+    this.whatsapp,
+  });
+
+  final String userId;
+  final String name;
+  final String? email;
+  final String? whatsapp;
+  final double balance;
+  final double debt;
+  final double credit;
+
+  factory ClientBalanceAccount.fromRow(Map<String, dynamic> row) =>
+      ClientBalanceAccount(
+        userId: row['user_id'] as String,
+        name: (row['name'] as String?) ?? 'Cliente',
+        email: row['email'] as String?,
+        whatsapp: row['whatsapp'] as String?,
+        balance: (row['balance'] as num?)?.toDouble() ?? 0,
+        debt: (row['debt'] as num?)?.toDouble() ?? 0,
+        credit: (row['credit'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+final adminClientBalancesProvider = FutureProvider<List<ClientBalanceAccount>>((
+  ref,
+) async {
+  final result = await ref
+      .read(supabaseProvider)
+      .rpc('get_client_balance_overview')
+      .timeout(const Duration(seconds: 20));
+  return [
+    for (final row in result as List)
+      ClientBalanceAccount.fromRow((row as Map).cast<String, dynamic>()),
+  ];
+});
 
 /// Formattatore € unico del modulo Pagamenti: virgola decimale italiana
 /// (es. "12,50"), niente decimali quando l'importo è intero. Condiviso con
@@ -55,9 +113,15 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
   Widget build(BuildContext context) {
     final bookingsAsync = ref.watch(adminBookingsProvider);
     final paymentsAsync = ref.watch(monthPaymentsProvider);
-    final config =
-        ref.watch(scheduleConfigProvider).value ?? OrgScheduleConfig.empty();
-
+    final balancesAsync = ref.watch(adminClientBalancesProvider);
+    final modelAsync = ref.watch(adminPaymentsDefaultModelProvider);
+    final billingModel = modelAsync.value ?? 'pay_per_session';
+    final (operationIcon, operationLabel) = switch (billingModel) {
+      'package' => (Icons.confirmation_number_outlined, 'Vendi pacchetto'),
+      'monthly' => (Icons.calendar_month_outlined, 'Vendi abbonamento'),
+      'free' => (Icons.money_off_outlined, 'Modello gratuito'),
+      _ => (Icons.account_balance_wallet_outlined, 'Conto cliente'),
+    };
     return bookingsAsync.when(
       loading: () => const AppLoading(),
       error: (e, _) => AppErrorRetry(
@@ -65,8 +129,9 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
         onRetry: () => ref.invalidate(adminBookingsProvider),
       ),
       data: (bookings) {
-        final debtors = _computeDebtors(bookings);
-        final totalUnpaid = debtors.fold<double>(0, (s, d) => s + d.total);
+        final accounts = balancesAsync.value ?? const <ClientBalanceAccount>[];
+        final debtors = accounts.where((account) => account.debt > 0).toList();
+        final totalUnpaid = debtors.fold<double>(0, (s, d) => s + d.debt);
         final payments = paymentsAsync.value ?? const <PaymentRow>[];
         final monthRevenue = payments.fold<double>(0, (s, p) => s + p.amount);
 
@@ -74,6 +139,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
           onRefresh: () async {
             ref.invalidate(adminBookingsProvider);
             ref.invalidate(monthPaymentsProvider);
+            ref.invalidate(adminClientBalancesProvider);
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
@@ -87,15 +153,11 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                 children: [
                   const Expanded(child: Text('Pagamenti', style: AppText.pageTitle)),
                   FilledButton.icon(
-                    onPressed: () async {
-                      final done = await showClientSaleSheet(context, ref);
-                      if (done == true) {
-                        ref.invalidate(adminBookingsProvider);
-                        ref.invalidate(monthPaymentsProvider);
-                      }
-                    },
-                    icon: const Icon(Icons.add_card, size: 18),
-                    label: const Text('Nuova operazione'),
+                    onPressed: modelAsync.isLoading || billingModel == 'free'
+                        ? null
+                        : () => _newOperation(billingModel, bookings),
+                    icon: Icon(operationIcon, size: 18),
+                    label: Text(operationLabel),
                   ),
                 ],
               ),
@@ -136,7 +198,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
-              if (_showDebtors) _debtorsList(config, debtors),
+              if (_showDebtors) _balanceDebtorsList(debtors),
               if (_showRecent) _recentList(payments),
             ],
           ),
@@ -145,7 +207,12 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
     );
   }
 
-  List<DebtorContact> _computeDebtors(List<Booking> bookings) {
+  // Compatibilità con il popup calendario legacy; la tab usa il conto server.
+  // ignore: unused_element
+  List<DebtorContact> _computeDebtors(
+    List<Booking> bookings, {
+    bool includeFuture = false,
+  }) {
     final now = DateTime.now();
     // Stesso prezzo del server (admin_pay_bookings = custom ?? default tipo) e
     // di analytics/registro: senza questo, i pay-per-session senza custom_price
@@ -170,7 +237,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
           b.status == 'cancellation_requested') {
         continue;
       }
-      if (lessonStart(b.date, b.time).isAfter(now)) continue; // solo passate
+      if (!includeFuture && lessonStart(b.date, b.time).isAfter(now)) continue;
       final price = bookingPrice(b, settings, config);
       final k = keyOf(b.email, b.whatsapp);
       final existing = byKey[k];
@@ -268,6 +335,68 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
     );
   }
 
+  Widget _balanceDebtorsList(List<ClientBalanceAccount> debtors) {
+    if (debtors.isEmpty) {
+      return const AppEmptyState(
+        compact: true,
+        icon: Icons.celebration_outlined,
+        title: 'Nessun cliente con pagamenti in sospeso! 🎉',
+      );
+    }
+    return Column(
+      children: [
+        for (final account in debtors)
+          AppCard(
+            margin: const EdgeInsets.only(bottom: AppSpacing.md),
+            leftBarColor: AppColors.danger,
+            borderColor: AppColors.borderGray,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        account.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        account.whatsapp ?? account.email ?? '—',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                      Text(
+                        'Debito conto: €${formatEuro(account.debt)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.danger,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () => _recordBalance(
+                    ClientBalanceOperation.payment,
+                    userId: account.userId,
+                    amount: account.debt,
+                  ),
+                  child: const Text('Incassa'),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Compatibilità con showPayDebtSheet finché i call-site calendario non migrano.
+  // ignore: unused_element
   Widget _debtorsList(OrgScheduleConfig config, List<DebtorContact> debtors) {
     if (debtors.isEmpty) {
       return const AppEmptyState(
@@ -457,6 +586,86 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
     if (paid == true) {
       ref.invalidate(adminBookingsProvider);
       ref.invalidate(monthPaymentsProvider);
+    }
+  }
+
+  Future<void> _newOperation(String model, List<Booking> bookings) async {
+    if (model == 'package' || model == 'monthly') {
+      final done = await showClientSaleSheet(
+        context,
+        ref,
+        initialKind: model == 'package'
+            ? ClientSaleKind.package
+            : ClientSaleKind.membership,
+        lockKind: true,
+      );
+      if (done == true) {
+        ref.invalidate(adminBookingsProvider);
+        ref.invalidate(monthPaymentsProvider);
+      }
+      return;
+    }
+
+    final operation = await showModalBottomSheet<ClientBalanceOperation>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Lezioni a entrata',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.payments_outlined)),
+              title: const Text('Incassa saldo'),
+              subtitle: const Text('Riduce il debito o crea credito residuo'),
+              onTap: () => Navigator.pop(ctx, ClientBalanceOperation.payment),
+            ),
+            ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.add_card_outlined)),
+              title: const Text('Aggiungi credito'),
+              subtitle: const Text('Versamento anticipato o credito omaggio'),
+              onTap: () => Navigator.pop(ctx, ClientBalanceOperation.credit),
+            ),
+            ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.remove_circle_outline)),
+              title: const Text('Aggiungi debito'),
+              subtitle: const Text('Addebito manuale extra sul conto'),
+              onTap: () => Navigator.pop(ctx, ClientBalanceOperation.debt),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (operation != null && mounted) await _recordBalance(operation);
+  }
+
+  Future<void> _recordBalance(
+    ClientBalanceOperation operation, {
+    String? userId,
+    double? amount,
+  }) async {
+    final done = await showClientBalanceSheet(
+      context,
+      operation: operation,
+      initialUserId: userId,
+      initialAmount: amount,
+    );
+    if (done == true) {
+      ref.invalidate(adminClientBalancesProvider);
+      ref.invalidate(monthPaymentsProvider);
+      ref.invalidate(adminBookingsProvider);
     }
   }
 

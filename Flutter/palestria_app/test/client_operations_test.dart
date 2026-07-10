@@ -48,7 +48,14 @@ void main() {
         },
       ],
       'payments': const [],
-      'totals': {'collected': 240, 'unpaid': 36, 'unpaid_count': 2},
+      'totals': {
+        'collected': 240,
+        'balance': -36,
+        'debt': 36,
+        'credit': 0,
+        'unpaid': 36,
+        'unpaid_count': 2,
+      },
       'health': {
         'archived': false,
         'medical_cert_expired': true,
@@ -65,6 +72,8 @@ void main() {
     expect(summary.activePackage?.progress, closeTo(.3, .001));
     expect(summary.memberships.single.lessonsQuota, 8);
     expect(summary.collected, 240);
+    expect(summary.balance, -36);
+    expect(summary.debt, 36);
     expect(summary.unpaidCount, 2);
     expect(summary.health.hasBlockingIssue, isTrue);
     expect(summary.health.hasWarning, isTrue);

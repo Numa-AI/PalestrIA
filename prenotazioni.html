@@ -755,11 +755,12 @@
             const fmtDate = (d) => { if (!d) return ''; const p = String(d).slice(0,10).split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : d; };
             const esc = (typeof _escHtml === 'function') ? _escHtml : (s) => s;
             try {
-                const [bsRes, cbpRes, memRes, pkgRes] = await Promise.all([
+                const [bsRes, cbpRes, memRes, pkgRes, accountRes] = await Promise.all([
                     orgId ? supabaseClient.from('billing_settings').select('default_model,default_membership_period').eq('org_id', orgId).maybeSingle() : Promise.resolve({ data: null }),
                     orgId ? supabaseClient.from('client_billing_profiles').select('model_override,membership_period_override').eq('org_id', orgId).eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
                     supabaseClient.from('client_memberships').select('plan_label, billing_period, period_end, lessons_quota, lessons_used, status').eq('user_id', user.id).eq('status', 'active').order('period_end', { ascending: false }).limit(1).maybeSingle(),
                     supabaseClient.from('client_packages').select('label, remaining_sessions, status').eq('user_id', user.id).eq('status', 'active'),
+                    supabaseClient.rpc('get_my_client_billing_status'),
                 ]);
                 const baseModel = (cbpRes.data && cbpRes.data.model_override) || (bsRes.data && bsRes.data.default_model) || 'pay_per_session';
                 const model = baseModel;
@@ -788,19 +789,21 @@
                     if (remaining > 0) { tone = 'ok'; title = `Pacchetto: ${remaining} ingress${remaining === 1 ? 'o' : 'i'} rimast${remaining === 1 ? 'o' : 'i'}`; detail = 'Gli ingressi si scalano automaticamente a ogni prenotazione.'; }
                     else { tone = 'warn'; title = 'Pacchetto esaurito'; detail = 'Contatta il trainer per acquistare un nuovo pacchetto.'; }
                 } else {
-                    // A entrata: credito/saldo derivato da ogni lezione, col prezzo
-                    // congelato alla prenotazione. Distingue maturato e futuro.
-                    const ub = (typeof getUserBookings === 'function') ? getUserBookings() : { past: [], upcoming: [] };
-                    const due = (ub.past || []).filter(b => !b.paid && !b.billingVoidedAt && b.status !== 'cancelled');
-                    const future = (ub.upcoming || []).filter(b => !b.paid && !b.billingVoidedAt && b.status !== 'cancelled');
-                    const dueAmount = due.reduce((s, b) => s + ((typeof getBookingPrice === 'function' ? getBookingPrice(b) : 0) || 0), 0);
-                    const futureAmount = future.reduce((s, b) => s + ((typeof getBookingPrice === 'function' ? getBookingPrice(b) : 0) || 0), 0);
-                    const credit = dueAmount + futureAmount;
-                    if (credit > 0) {
-                        icon = '💳'; tone = dueAmount > 0 ? 'warn' : 'neutral';
-                        title = `Credito lezioni da saldare: ${sym}${credit.toFixed(2)}`;
-                        detail = `Già maturato ${sym}${dueAmount.toFixed(2)} · lezioni future ${sym}${futureAmount.toFixed(2)}.`;
-                    } else { icon = '✅'; tone = 'ok'; title = `Credito lezioni: ${sym}0,00`; detail = 'Paghi ogni lezione singolarmente secondo il listino dello slot.'; }
+                    const account = accountRes.data || {};
+                    const balance = Number(account.balance || 0);
+                    const debt = Number(account.debt || 0);
+                    const credit = Number(account.credit || 0);
+                    const futureAmount = Number(account.scheduled || 0);
+                    if (debt > 0) {
+                        icon = '💳'; tone = 'warn'; title = `Debito da saldare: ${sym}${debt.toFixed(2)}`;
+                        detail = `Saldo conto ${sym}${balance.toFixed(2)} · lezioni future ${sym}${futureAmount.toFixed(2)}.`;
+                    } else if (credit > 0) {
+                        icon = '💰'; tone = 'ok'; title = `Credito disponibile: ${sym}${credit.toFixed(2)}`;
+                        detail = `Verrà scalato automaticamente all'inizio delle lezioni · future ${sym}${futureAmount.toFixed(2)}.`;
+                    } else {
+                        icon = '✅'; tone = 'neutral'; title = `Saldo conto: ${sym}0,00`;
+                        detail = `Lezioni future previste: ${sym}${futureAmount.toFixed(2)}. L'addebito avviene all'ora di inizio.`;
+                    }
                 }
 
                 const toneStyle = tone === 'warn'

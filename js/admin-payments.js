@@ -33,6 +33,7 @@ const PAYMENT_KIND_LABELS = {
     'package_purchase': 'Pacchetto',
     'penalty_mora':     'Mora',
     'adjustment':       'Rettifica',
+    'account_credit':   'Versamento credito',
 };
 
 let debtorsListVisible  = false;
@@ -41,6 +42,7 @@ let recentListVisible   = false;
 // Guard render: scarta risposte RPC non più correnti (tab switch rapidi).
 let _paymentsReqCounter = 0;
 let _recentPayments     = [];   // cache ultima fetch payments (cappata a 50, solo per la lista UI)
+let _clientBalances     = [];   // conto firmato: positivo=credito, negativo=debito
 // KPI mese corrente: aggregati lato server sull'INTERO mese (non sulla lista cappata).
 // null finché non caricati → il paint mostra "—" invece di un valore sottostimato.
 let _monthRevenue       = null; // somma amount del mese corrente
@@ -66,6 +68,10 @@ function bookingHasPassed(booking) {
 function getUnpaidAmountForContact(whatsapp, email) {
     const normWhatsapp = normalizePhone(whatsapp);
     const emailLow = (email || '').toLowerCase();
+    const account = _clientBalances.find(row =>
+        (emailLow && String(row.email || '').toLowerCase() === emailLow) ||
+        (normWhatsapp && normalizePhone(row.whatsapp) === normWhatsapp));
+    if (account) return Math.round(Number(account.debt || 0) * 100) / 100;
     let totalUnpaid = 0;
     BookingStorage.getAllBookings().forEach(booking => {
         const phoneMatch = normWhatsapp && normalizePhone(booking.whatsapp) === normWhatsapp;
@@ -78,9 +84,18 @@ function getUnpaidAmountForContact(whatsapp, email) {
     return Math.round(totalUnpaid * 100) / 100;
 }
 
+async function refreshClientBalances() {
+    if (typeof supabaseClient === 'undefined') return _clientBalances;
+    const { data, error } = await _rpcWithTimeout(
+        supabaseClient.rpc('get_client_balance_overview'), 15000);
+    if (error) throw error;
+    _clientBalances = data || [];
+    return _clientBalances;
+}
+
 // Raggruppa le prenotazioni passate non pagate per contatto (telefono OR email).
 // Ritorna [{ name, whatsapp, email, unpaidBookings:[{...b, price}], totalAmount }]
-function _getUnpaidContacts() {
+function _getUnpaidContacts({ includeFuture = false } = {}) {
     const allBookings = BookingStorage.getAllBookings();
     const map = {};
     const phoneIdx = {};
@@ -99,7 +114,7 @@ function _getUnpaidContacts() {
     }
 
     allBookings.forEach(booking => {
-        if (!booking.paid && !booking.billingVoidedAt && bookingHasPassed(booking)
+        if (!booking.paid && !booking.billingVoidedAt && (includeFuture || bookingHasPassed(booking))
             && booking.status !== 'cancelled' && booking.status !== 'cancellation_requested') {
             const normPhone = normalizePhone(booking.whatsapp);
             let key = _findKey(normPhone, booking.email);
@@ -142,7 +157,7 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
             // (b) KPI mese: aggregazione lato server sull'INTERO mese (H5 bug A) →
             //     conteggio esatto via head+count e somma su una query separata filtrata
             //     sul periodo, indipendente dal limite della lista.
-            const [recentRes, monthCountRes, monthSumRes] = await Promise.all([
+            const [recentRes, monthCountRes, monthSumRes, balancesRes] = await Promise.all([
                 _rpcWithTimeout(
                     supabaseClient.from('payments')
                         .select('id, created_at, client_email, amount, currency, method, kind, note, period_start, period_end')
@@ -162,6 +177,7 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
                         .gte('created_at', monthStartIso),
                     15000
                 ),
+                _rpcWithTimeout(supabaseClient.rpc('get_client_balance_overview'), 15000),
             ]);
             if (reqId !== _paymentsReqCounter) return; // render più recente → scarto
 
@@ -176,6 +192,8 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
             if (!monthSumRes?.error) {
                 _monthRevenue = (monthSumRes?.data || []).reduce((s, p) => s + Number(p.amount || 0), 0);
             }
+            if (balancesRes?.error) console.warn('[Payments] fetch saldi cliente:', balancesRes.error.message);
+            else _clientBalances = balancesRes?.data || [];
 
             _paintPaymentsTab({ preserveUiState: true });
         } catch (e) {
@@ -185,8 +203,8 @@ async function renderPaymentsTab(_diagSource = 'unknown') {
 }
 
 function _paintPaymentsTab({ preserveUiState }) {
-    const contacts = _getUnpaidContacts();
-    const totalUnpaid = contacts.reduce((s, c) => s + c.totalAmount, 0);
+    const contacts = _clientBalances.filter(c => Number(c.debt || 0) > 0);
+    const totalUnpaid = contacts.reduce((s, c) => s + Number(c.debt || 0), 0);
 
     // Incasso e conteggio del mese corrente: aggregati lato server sull'INTERO mese
     // (H5 bug A). NON derivati dalla lista cappata a 50 (sottostimerebbe). Finché non
@@ -227,7 +245,7 @@ function _paintPaymentsTab({ preserveUiState }) {
         debtorsList.innerHTML = '<div class="empty-slot">Nessun cliente con pagamenti in sospeso! 🎉</div>';
     } else {
         debtorsList.innerHTML = '';
-        contacts.forEach((c, i) => debtorsList.appendChild(createDebtorCard(c, `main-${i}`)));
+        contacts.forEach((c, i) => debtorsList.appendChild(createBalanceDebtorCard(c, `main-${i}`)));
     }
 
     // Lista "Pagamenti recenti" (ledger)
@@ -269,6 +287,34 @@ function _createPaymentRow(p) {
 }
 
 // Card cliente "non in regola" — apre il popup di saldo al click.
+// Card costruita dal conto server-authoritative. Non somma piu le prenotazioni
+// nel browser: credito, debito e addebiti all'inizio lezione arrivano dal ledger.
+function createBalanceDebtorCard(account, cardId) {
+    const card = document.createElement('div');
+    card.className = 'debtor-card';
+    card.id = `debtor-card-${cardId}`;
+    const debt = Number(account.debt || 0);
+    const client = {
+        userId: account.user_id,
+        name: account.name || 'Cliente',
+        email: account.email || '',
+        whatsapp: account.whatsapp || '',
+    };
+    card.innerHTML = `
+        <div class="debtor-card-header" style="cursor:default">
+            <div class="debtor-info">
+                <div class="debtor-name">${_escHtml(client.name)}</div>
+                <div class="debtor-contact"><span>📱 ${_escHtml(client.whatsapp || client.email || '—')}</span></div>
+            </div>
+            <div class="debtor-amount">Da incassare: €${debt.toFixed(2)}</div>
+            <button class="debt-popup-pay-btn" style="width:auto;margin-left:.75rem"
+                aria-label="Incassa saldo">Incassa</button>
+        </div>`;
+    card.querySelector('button').addEventListener('click', () =>
+        _openBalanceOperationModal('payment', client, debt));
+    return card;
+}
+
 function createDebtorCard(contact, cardId) {
     const card = document.createElement('div');
     card.className = 'debtor-card';
@@ -570,38 +616,203 @@ function closeDebtPopup() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Action sheet FAB: "Vendi pacchetto" / "Registra abbonamento"
+// FAB "Nuova operazione": il flusso dipende dal modello predefinito.
 // ═══════════════════════════════════════════════════════════════════════════════
-function openPaymentsActionSheet() {
+async function openPaymentsActionSheet() {
+    let model = 'pay_per_session';
+    try {
+        const { data, error } = await _queryWithTimeout(
+            supabaseClient.from('billing_settings').select('default_model').eq('org_id', window._orgId).maybeSingle(),
+            12000
+        );
+        if (error) throw error;
+        model = (data && data.default_model) || model;
+    } catch (e) {
+        console.warn('[Payments] modello non disponibile:', e && e.message);
+        showToast('Impossibile leggere il modello di pagamento. Riprova.', 'error');
+        return;
+    }
+
+    if (model === 'package') { openSellPackagePopup(); return; }
+    if (model === 'monthly') { openMembershipPopup(); return; }
+    if (model === 'free') {
+        if (typeof showAlert === 'function') {
+            await showAlert('Il modello Gratuito non prevede nuove operazioni economiche.', { type: 'info' });
+        } else showToast('Il modello Gratuito non prevede operazioni economiche.', 'info');
+        return;
+    }
+    _openSessionPaymentSheet();
+}
+
+function _openLegacySessionPaymentSheet() {
+    const contacts = _getUnpaidContacts({ includeFuture: true });
+    if (!contacts.length) {
+        showToast('Non ci sono lezioni da saldare, né passate né future.', 'info');
+        return;
+    }
+    if (contacts.length === 1) {
+        const c = contacts[0];
+        openDebtPopup(c.whatsapp || '', c.email || '', c.name || '');
+        return;
+    }
     const old = document.getElementById('paymentsSheetOverlay');
     if (old) old.remove();
     const overlay = document.createElement('div');
     overlay.id = 'paymentsSheetOverlay';
     overlay.className = 'payments-sheet-overlay';
     overlay.innerHTML = `
-        <div class="payments-sheet" role="dialog" aria-label="Registra incasso">
+        <div class="payments-sheet" role="dialog" aria-label="Incassa lezioni">
             <div class="payments-sheet-handle"></div>
-            <div class="payments-sheet-title">Registra incasso</div>
-            <div class="payments-sheet-options">
-                <button class="payments-sheet-btn payments-sheet-btn--credit" onclick="closePaymentsActionSheet();openSellPackagePopup()">
-                    <div class="payments-sheet-btn-icon payments-sheet-btn-icon--credit">🎟️</div>
-                    <div class="payments-sheet-btn-text">
-                        <span class="payments-sheet-btn-title">Vendi pacchetto</span>
-                        <span class="payments-sheet-btn-desc">Carnet di lezioni prepagate</span>
-                    </div>
-                </button>
-                <button class="payments-sheet-btn payments-sheet-btn--debt" onclick="closePaymentsActionSheet();openMembershipPopup()">
-                    <div class="payments-sheet-btn-icon payments-sheet-btn-icon--debt">📅</div>
-                    <div class="payments-sheet-btn-text">
-                        <span class="payments-sheet-btn-title">Registra abbonamento</span>
-                        <span class="payments-sheet-btn-desc">Quota mensile / periodo</span>
-                    </div>
-                </button>
-            </div>
+            <div class="payments-sheet-title">Incassa lezioni a entrata</div>
+            <div class="payments-sheet-options" id="sessionPaymentContacts"></div>
         </div>`;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closePaymentsActionSheet(); });
     document.body.appendChild(overlay);
+    const list = overlay.querySelector('#sessionPaymentContacts');
+    contacts.forEach(contact => {
+        const button = document.createElement('button');
+        button.className = 'payments-sheet-btn payments-sheet-btn--debt';
+        button.innerHTML = `
+            <div class="payments-sheet-btn-icon payments-sheet-btn-icon--debt">💶</div>
+            <div class="payments-sheet-btn-text">
+                <span class="payments-sheet-btn-title">${_escHtml(contact.name || 'Cliente')}</span>
+                <span class="payments-sheet-btn-desc">${contact.unpaidBookings.length} lezion${contact.unpaidBookings.length === 1 ? 'e' : 'i'} · €${Number(contact.totalAmount).toFixed(2)}</span>
+            </div>`;
+        button.addEventListener('click', () => {
+            closePaymentsActionSheet();
+            openDebtPopup(contact.whatsapp || '', contact.email || '', contact.name || '');
+        });
+        list.appendChild(button);
+    });
     requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
+function _openSessionPaymentSheet() {
+    const old = document.getElementById('paymentsSheetOverlay');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'paymentsSheetOverlay';
+    overlay.className = 'payments-sheet-overlay';
+    overlay.innerHTML = `
+        <div class="payments-sheet" role="dialog" aria-label="Operazione conto cliente">
+            <div class="payments-sheet-handle"></div>
+            <div class="payments-sheet-title">Lezioni a entrata</div>
+            <div class="payments-sheet-options">
+                <button class="payments-sheet-btn payments-sheet-btn--debt" data-operation="payment">
+                    <div class="payments-sheet-btn-icon payments-sheet-btn-icon--debt">💶</div>
+                    <div class="payments-sheet-btn-text"><span class="payments-sheet-btn-title">Incassa saldo</span><span class="payments-sheet-btn-desc">Riduce il debito o crea credito residuo</span></div>
+                </button>
+                <button class="payments-sheet-btn" data-operation="credit">
+                    <div class="payments-sheet-btn-icon">➕</div>
+                    <div class="payments-sheet-btn-text"><span class="payments-sheet-btn-title">Aggiungi credito</span><span class="payments-sheet-btn-desc">Versamento anticipato o credito omaggio</span></div>
+                </button>
+                <button class="payments-sheet-btn payments-sheet-btn--debt" data-operation="debt">
+                    <div class="payments-sheet-btn-icon payments-sheet-btn-icon--debt">➖</div>
+                    <div class="payments-sheet-btn-text"><span class="payments-sheet-btn-title">Aggiungi debito</span><span class="payments-sheet-btn-desc">Addebito manuale extra sul conto cliente</span></div>
+                </button>
+            </div>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) closePaymentsActionSheet(); });
+    document.body.appendChild(overlay);
+    overlay.querySelectorAll('[data-operation]').forEach(button => button.addEventListener('click', () => {
+        const operation = button.dataset.operation;
+        closePaymentsActionSheet();
+        _openBalanceClientPicker(operation);
+    }));
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
+function _registeredBalanceClients(operation) {
+    return UserStorage.getAll().filter(u => u.userId && !u.archivedAt).map(u => {
+        const account = _clientBalances.find(b => b.user_id === u.userId);
+        return { ...u, debt: Number(account?.debt || 0), credit: Number(account?.credit || 0) };
+    }).filter(u => operation !== 'payment' || u.debt > 0)
+      .sort((a, b) => operation === 'payment' ? b.debt - a.debt : (a.name || '').localeCompare(b.name || ''));
+}
+
+function _openBalanceClientPicker(operation) {
+    const clients = _registeredBalanceClients(operation);
+    if (!clients.length) {
+        showToast(operation === 'payment' ? 'Nessun cliente ha un debito da incassare.' : 'Nessun cliente registrato disponibile.', 'info');
+        return;
+    }
+    if (clients.length === 1) {
+        _openBalanceOperationModal(operation, clients[0], operation === 'payment' ? clients[0].debt : null);
+        return;
+    }
+    const overlay = document.createElement('div');
+    overlay.id = 'paymentsSheetOverlay';
+    overlay.className = 'payments-sheet-overlay';
+    overlay.innerHTML = `<div class="payments-sheet" role="dialog" aria-label="Scegli cliente">
+        <div class="payments-sheet-handle"></div><div class="payments-sheet-title">Scegli il cliente</div>
+        <div class="payments-sheet-options" id="balanceClientOptions"></div></div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) closePaymentsActionSheet(); });
+    document.body.appendChild(overlay);
+    const list = overlay.querySelector('#balanceClientOptions');
+    clients.forEach(client => {
+        const button = document.createElement('button');
+        button.className = 'payments-sheet-btn';
+        button.innerHTML = `<div class="payments-sheet-btn-icon">👤</div><div class="payments-sheet-btn-text">
+            <span class="payments-sheet-btn-title">${_escHtml(client.name || 'Cliente')}</span>
+            <span class="payments-sheet-btn-desc">${operation === 'payment' ? `Debito €${client.debt.toFixed(2)}` : _escHtml(client.email || client.whatsapp || '')}</span></div>`;
+        button.addEventListener('click', () => {
+            closePaymentsActionSheet();
+            _openBalanceOperationModal(operation, client, operation === 'payment' ? client.debt : null);
+        });
+        list.appendChild(button);
+    });
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
+function _openBalanceOperationModal(operation, client, defaultAmount = null) {
+    document.getElementById('balanceOperationOverlay')?.remove();
+    const labels = { payment: 'Incassa saldo', credit: 'Aggiungi credito', debt: 'Aggiungi debito' };
+    const overlay = document.createElement('div');
+    overlay.id = 'balanceOperationOverlay';
+    overlay.dataset.operationKey = `pwa:balance:${operation}:${Date.now()}:${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`;
+    overlay.className = 'debt-popup-overlay open';
+    overlay.innerHTML = `<div class="debt-popup-modal manual-entry-modal open" onclick="event.stopPropagation()" style="max-width:440px">
+        <div class="debt-popup-header"><div><h3>${labels[operation]}</h3><p>${_escHtml(client.name || 'Cliente')}</p></div>
+            <button class="debt-popup-close" type="button">✕</button></div>
+        <div class="manual-entry-form">
+            <label class="manual-entry-field"><span class="debt-field-label">Importo (€)</span>
+                <input id="balanceOperationAmount" type="number" min="0.01" max="1000000" step="0.01" value="${defaultAmount ? Number(defaultAmount).toFixed(2) : ''}" inputmode="decimal"></label>
+            ${operation !== 'debt' ? `<label class="manual-entry-field"><span class="debt-field-label">Metodo</span><select id="balanceOperationMethod">
+                <option value="contanti">Contanti</option><option value="contanti-report">Contanti con Report</option><option value="carta">Carta</option>
+                <option value="iban">Bonifico</option><option value="stripe">Stripe</option><option value="gratuito">Credito omaggio (non fatturato)</option></select></label>` : ''}
+            <label class="manual-entry-field"><span class="debt-field-label">Nota</span><input id="balanceOperationNote" maxlength="500" placeholder="Motivo dell'operazione"></label>
+            <button id="balanceOperationSubmit" class="debt-popup-pay-btn" type="button">Conferma</button>
+        </div></div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('.debt-popup-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#balanceOperationSubmit').addEventListener('click', () =>
+        _submitBalanceOperation(operation, client, overlay));
+    document.body.appendChild(overlay);
+    overlay.querySelector('#balanceOperationAmount').focus();
+}
+
+async function _submitBalanceOperation(operation, client, overlay) {
+    const button = overlay.querySelector('#balanceOperationSubmit');
+    const amount = Number(overlay.querySelector('#balanceOperationAmount').value);
+    const note = overlay.querySelector('#balanceOperationNote').value.trim();
+    const method = overlay.querySelector('#balanceOperationMethod')?.value || null;
+    if (!Number.isFinite(amount) || amount <= 0) { showToast('Inserisci un importo valido.', 'error'); return; }
+    button.disabled = true; button.textContent = 'Salvataggio…';
+    try {
+        const key = overlay.dataset.operationKey;
+        const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_record_client_balance_operation', {
+            p_user_id: client.userId, p_operation: operation, p_amount: amount,
+            p_method: method, p_note: note || null, p_idempotency_key: key,
+        }), 20000);
+        if (error) throw error;
+        overlay.remove();
+        showToast(`${operation === 'debt' ? 'Debito' : 'Credito'} registrato. Saldo: €${Number(data?.balance || 0).toFixed(2)}`, 'success');
+        await renderPaymentsTab('balanceOperation');
+    } catch (e) {
+        console.error('[BalanceOperation]', e);
+        showToast('Operazione non registrata: ' + (e.message || 'errore'), 'error');
+        button.disabled = false; button.textContent = 'Conferma';
+    }
 }
 
 function closePaymentsActionSheet() {

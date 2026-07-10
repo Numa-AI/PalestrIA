@@ -125,6 +125,8 @@ class ClientFinancialSummary {
     this.customPrice,
     this.notes,
     this.collected = 0,
+    this.balance = 0,
+    this.debt = 0,
     this.unpaid = 0,
     this.unpaidCount = 0,
     this.scheduled = 0,
@@ -139,6 +141,8 @@ class ClientFinancialSummary {
   final List<PaymentRow> payments;
   final ClientFinancialHealth health;
   final double collected;
+  final double balance;
+  final double debt;
   final double unpaid;
   final int unpaidCount;
   final double scheduled;
@@ -184,6 +188,8 @@ class ClientFinancialSummary {
       ],
       health: ClientFinancialHealth.fromJson(health),
       collected: (totals['collected'] as num?)?.toDouble() ?? 0,
+      balance: (totals['balance'] as num?)?.toDouble() ?? 0,
+      debt: (totals['debt'] as num?)?.toDouble() ?? 0,
       unpaid: (totals['unpaid'] as num?)?.toDouble() ?? 0,
       unpaidCount: (totals['unpaid_count'] as num?)?.toInt() ?? 0,
       scheduled: (totals['scheduled'] as num?)?.toDouble() ?? 0,
@@ -285,6 +291,32 @@ class ClientOperationsRepository {
           },
         )
         .timeout(const Duration(seconds: 20));
+  }
+
+  Future<double> recordBalanceOperation({
+    required String userId,
+    required String operation,
+    required double amount,
+    String? method,
+    String? note,
+    String? idempotencyKey,
+  }) async {
+    final result = await _client
+        .rpc(
+          'admin_record_client_balance_operation',
+          params: {
+            'p_user_id': userId,
+            'p_operation': operation,
+            'p_amount': amount,
+            'p_method': method,
+            'p_note': note,
+            'p_idempotency_key':
+                idempotencyKey ?? operationKey('balance-$operation'),
+          },
+        )
+        .timeout(const Duration(seconds: 20));
+    final row = (result as Map).cast<String, dynamic>();
+    return (row['balance'] as num?)?.toDouble() ?? 0;
   }
 
   Future<String> recordAdjustment({

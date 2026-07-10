@@ -189,6 +189,12 @@ begin
     insert into payments (org_id, client_user_id, client_email, amount, method, kind)
         values (v_org_b, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'rls-b@test.dev', 50, 'carta', 'session');
 
+    -- conto cliente firmato: una riga per org, mai scrivibile direttamente dai client.
+    insert into client_balance_entries(org_id,user_id,kind,amount,idempotency_key)
+        values(v_org_a,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','manual_credit',10,'rls-a-balance');
+    insert into client_balance_entries(org_id,user_id,kind,amount,idempotency_key)
+        values(v_org_b,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','manual_debt',-7,'rls-b-balance');
+
     -- client_packages: 1 carnet per org (total/remaining NOT NULL).
     insert into client_packages (org_id, user_id, label, total_sessions, remaining_sessions)
         values (v_org_a, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Carnet A', 10, 10);
@@ -293,6 +299,12 @@ begin;
         end if;
         if v_other <> 0 then
             raise exception 'A->B LEAK: il membro A vede % payments della org B', v_other;
+        end if;
+
+        select count(*) into v_own from client_balance_entries;
+        select count(*) into v_other from client_balance_entries where org_id=v_org_b;
+        if v_own < 1 or v_other <> 0 then
+            raise exception 'A->B LEAK conto cliente: own %, other %',v_own,v_other;
         end if;
 
         -- client_packages
@@ -507,6 +519,12 @@ begin;
         end if;
         if v_other <> 0 then
             raise exception 'B->A LEAK: il membro B vede % payments della org A', v_other;
+        end if;
+
+        select count(*) into v_own from client_balance_entries;
+        select count(*) into v_other from client_balance_entries where org_id=v_org_a;
+        if v_own < 1 or v_other <> 0 then
+            raise exception 'B->A LEAK conto cliente: own %, other %',v_own,v_other;
         end if;
 
         select count(*) into v_own   from client_packages;

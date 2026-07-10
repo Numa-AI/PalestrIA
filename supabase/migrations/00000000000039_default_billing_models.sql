@@ -121,7 +121,7 @@ begin
     'current_model',v_current,
     'target_model',v_target,
     'model_changed',v_current<>v_target,
-    'open_session_balances',(select count(*) from bookings where org_id=v_org and not paid
+    'open_session_balances',(select count(*) from bookings where org_id=v_org
       and billing_voided_at is null and status in ('confirmed','cancellation_requested')),
     'active_packages',(select count(*) from client_packages where org_id=v_org and status='active'),
     'active_memberships',(select count(*) from client_memberships where org_id=v_org and status='active'),
@@ -189,7 +189,7 @@ begin
 
   if v_changed then
     update bookings set billing_voided_at=now(),billing_void_reason='default_model_changed'
-      where org_id=v_org and not paid and billing_voided_at is null
+      where org_id=v_org and billing_voided_at is null
         and status in ('confirmed','cancellation_requested');
     get diagnostics v_open=row_count;
     update client_packages set status='cancelled' where org_id=v_org and status='active';

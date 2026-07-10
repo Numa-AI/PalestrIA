@@ -1,11 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
-import '../../../core/data/booking_pricing.dart';
 import '../../../core/data/client_billing_models.dart';
 import '../../../core/data/schedule_config.dart';
-import '../../../core/org/org_settings_service.dart';
-import '../booking/booking_providers.dart';
 
 /// Stato pagamenti del cliente (§7.3 spec-client) — card riepilogo.
 class ClientBillingStatus {
@@ -61,6 +58,7 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
         .eq('org_id', orgId)
         .eq('user_id', userId)
         .eq('status', 'active'),
+    client.rpc('get_my_client_billing_status'),
   ]).timeout(const Duration(seconds: 12));
 
   final model = effectiveBillingModel(
@@ -141,41 +139,33 @@ final clientBillingStatusProvider = FutureProvider<ClientBillingStatus?>((
       );
 
     default: // pay_per_session
-      final bookings = await ref.watch(ownBookingsProvider.future);
-      final settings = await ref.watch(orgSettingsProvider.future);
-      final config = await ref.watch(scheduleConfigProvider.future);
-      final now = DateTime.now();
-      double due = 0;
-      double future = 0;
-      int creditCount = 0;
-      for (final b in bookings) {
-        if (b.paid || b.isBillingVoided || b.status == 'cancelled') continue;
-        // Stesso calcolo di statistiche/registro (bookingPrice, 4 livelli di
-        // fallback) così l'importo "Da saldare" del cliente combacia con quello
-        // che il trainer vede/incassa, invece dei soli custom_price + listino.
-        final amount = bookingPrice(b, settings, config);
-        if (lessonStart(b.date, b.time).isAfter(now)) {
-          future += amount;
-        } else {
-          due += amount;
-        }
-        creditCount++;
-      }
-      final credit = due + future;
-      if (creditCount > 0 && credit > 0) {
-        String euro(double value) => value.toStringAsFixed(2).replaceAll('.', ',');
+      final account = (results[4] as Map).cast<String, dynamic>();
+      final balance = (account['balance'] as num?)?.toDouble() ?? 0;
+      final debt = (account['debt'] as num?)?.toDouble() ?? 0;
+      final credit = (account['credit'] as num?)?.toDouble() ?? 0;
+      final future = (account['scheduled'] as num?)?.toDouble() ?? 0;
+      String euro(double value) => value.toStringAsFixed(2).replaceAll('.', ',');
+      if (debt > 0) {
         return ClientBillingStatus(
           icon: '💳',
-          title: 'Credito lezioni da saldare: €${euro(credit)}',
-          detail: 'Già maturato €${euro(due)} · lezioni future €${euro(future)}.',
-          tone: due > 0 ? 'warn' : 'neutral',
+          title: 'Debito da saldare: €${euro(debt)}',
+          detail: 'Saldo conto €${euro(balance)} · lezioni future €${euro(future)}.',
+          tone: 'warn',
         );
       }
-      return const ClientBillingStatus(
+      if (credit > 0) {
+        return ClientBillingStatus(
+          icon: '💰',
+          title: 'Credito disponibile: €${euro(credit)}',
+          detail: 'Verrà scalato automaticamente all’inizio delle lezioni · future €${euro(future)}.',
+          tone: 'ok',
+        );
+      }
+      return ClientBillingStatus(
         icon: '✅',
-        title: 'Credito lezioni: €0,00',
-        detail: 'Paghi ogni lezione secondo il listino del relativo slot.',
-        tone: 'ok',
+        title: 'Saldo conto: €0,00',
+        detail: 'Lezioni future previste: €${euro(future)}. L’addebito avviene all’ora di inizio.',
+        tone: 'neutral',
       );
   }
 });

@@ -297,7 +297,12 @@ function switchTab(tabName) {
     // (mostra il contenuto/spinner) e poi esegue il lavoro pesante senza congelare la UI.
     const loader = {
         analytics: () => requestAnimationFrame(() => requestAnimationFrame(() => loadDashboardData())),
-        bookings:  () => { renderAdminCalendar(); },
+        bookings:  () => {
+            if (typeof refreshClientBalances === 'function') {
+                refreshClientBalances().catch(e => console.warn('[Calendar] saldi cliente:', e?.message || e))
+                    .finally(() => renderAdminCalendar());
+            } else renderAdminCalendar();
+        },
         payments:  () => renderPaymentsTab('switchTab'),
         clients:   () => renderClientsTab(),
         schedule:  () => renderScheduleManager(),
@@ -314,4 +319,3 @@ function switchTab(tabName) {
     }[tabName];
     if (loader) setTimeout(loader, 0);
 }
-
