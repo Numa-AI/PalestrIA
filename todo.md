@@ -10,7 +10,7 @@ Cose ancora da fare per portare il SaaS in produzione. Aggiornato: 2026-07-14.
 
 Review multi-agente (workflow dinamici: 19 scan per area + verificatori adversariali; 45/45 finding batch-1 CONFERMATI) su tutto il codebase. **Applicati** (commit da fare): rimozione dead code + fix confermati, **−1287/+278 righe su 39 file**, `node --check` pulito, cache-bust **`palestria-v598`** con `?v=` bumpati su 12 HTML. Dettaglio portabile in [Aggiornamento.md](Aggiornamento.md).
 
-- [ ] **DEPLOY PWA**: push su `origin/main` degli asset puliti (v598). Nessuna migration/edge toccata.
+- [x] **DEPLOY PWA FATTO** (2026-07-14): commit **efc37cf** pushato su `origin/main` da `saas-main` (assieme ai 4 commit billing 50bbbe8→84c33a7 che erano rimasti locali) → GitHub Pages ridispiega (cache `palestria-v598`). Inclusa migration 45 (già applicata sul remoto il 10/07). Nessuna edge da rideployare.
 - [ ] **Bug edge da sistemare (segnalati, NON applicati)**:
   - `generate-monthly-report`: chiama `generate_monthly_scorecard` e legge `profiles.report_tone_preference` che NON esistono nello schema SaaS → ogni invocazione fallisce (già tracciato più sotto come "Report AI da portare al SaaS"; il fix client `REPORT_FN_URL` intanto è stato applicato).
   - `send-reminders`/`notify-slot-available`/`send-admin-message`: non validano lo statusCode HTTP degli invii push (nessuna pulizia subscription morte lì); `notify-admin-*` ce l'hanno → uniformare.
