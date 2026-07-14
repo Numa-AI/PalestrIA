@@ -95,50 +95,6 @@ async function refreshClientBalances() {
     return _clientBalances;
 }
 
-// Raggruppa le prenotazioni passate non pagate per contatto (telefono OR email).
-// Ritorna [{ name, whatsapp, email, unpaidBookings:[{...b, price}], totalAmount }]
-function _getUnpaidContacts({ includeFuture = false } = {}) {
-    const allBookings = BookingStorage.getAllBookings();
-    const map = {};
-    const phoneIdx = {};
-    const emailIdx = {};
-
-    function _findKey(normPhone, email) {
-        if (normPhone && phoneIdx[normPhone]) return phoneIdx[normPhone];
-        const el = email ? email.toLowerCase() : '';
-        if (el && emailIdx[el]) return emailIdx[el];
-        return null;
-    }
-    function _registerKey(key, normPhone, email) {
-        if (normPhone) phoneIdx[normPhone] = key;
-        const el = email ? email.toLowerCase() : '';
-        if (el) emailIdx[el] = key;
-    }
-
-    allBookings.forEach(booking => {
-        if (!booking.paid && !booking.billingVoidedAt && (includeFuture || bookingHasPassed(booking))
-            && booking.status !== 'cancelled' && booking.status !== 'cancellation_requested') {
-            const normPhone = normalizePhone(booking.whatsapp);
-            let key = _findKey(normPhone, booking.email);
-            if (!key) {
-                key = normPhone || (booking.email || '').toLowerCase() || booking.id;
-                map[key] = {
-                    name: booking.name, whatsapp: booking.whatsapp, email: booking.email,
-                    unpaidBookings: [], totalAmount: 0,
-                };
-                _registerKey(key, normPhone, booking.email);
-            }
-            const price = getBookingPrice(booking);
-            map[key].unpaidBookings.push({ ...booking, price });
-            map[key].totalAmount = Math.round((map[key].totalAmount + price) * 100) / 100;
-        }
-    });
-
-    return Object.values(map)
-        .filter(c => c.totalAmount > 0)
-        .sort((a, b) => b.totalAmount - a.totalAmount);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Render del tab
 // ─────────────────────────────────────────────────────────────────────────────
@@ -222,13 +178,10 @@ function _paintPaymentsTab({ preserveUiState }) {
     const monthRevenueLabel = _monthRevenue == null
         ? '—'
         : `€${Math.round(_monthRevenue * 100) / 100}`;
-    const monthCountLabel = _monthCount == null ? '—' : _monthCount;
 
     // Stat cards (gli ID esistono già in admin.html)
     sensitiveSet('totalUnpaid', `€${Math.round(totalUnpaid * 100) / 100}`);
-    sensitiveSet('totalDebtors', contacts.length);
     sensitiveSet('totalCreditAmount', monthRevenueLabel);
-    sensitiveSet('totalCreditors', monthCountLabel);
 
     const debtorsList = document.getElementById('debtorsList');
     const recentList  = document.getElementById('creditsList');
@@ -237,7 +190,6 @@ function _paintPaymentsTab({ preserveUiState }) {
     if (debtTitle) debtTitle.textContent = isMembership ? 'Da rinnovare' : 'Da Incassare';
 
     if (!preserveUiState) {
-        clearSearch();
         debtorsListVisible = false;
         recentListVisible  = false;
         debtorsList.style.display = 'none';
@@ -347,46 +299,6 @@ function createBalanceDebtorCard(account, cardId) {
     return card;
 }
 
-function createDebtorCard(contact, cardId) {
-    const card = document.createElement('div');
-    card.className = 'debtor-card';
-    card.id = `debtor-card-${cardId}`;
-
-    const safeW = _escAttr(contact.whatsapp || '');
-    const safeE = _escAttr(contact.email || '');
-    const safeN = _escAttr(contact.name || '');
-
-    const items = contact.unpaidBookings.map(b => `
-        <div class="debtor-booking-item">
-            <div class="debtor-booking-details">
-                📅 ${b.date} &nbsp;·&nbsp; 🕐 ${b.time} &nbsp;·&nbsp; ${SLOT_NAMES[b.slotType] || b.slotType}
-            </div>
-            <div class="debtor-booking-price">€${b.price}</div>
-        </div>`).join('');
-
-    card.innerHTML = `
-        <div class="debtor-card-header" onclick="toggleDebtorCard('debtor-card-${cardId}')">
-            <div class="debtor-info">
-                <div class="debtor-name">${_escHtml(contact.name)}</div>
-                <div class="debtor-contact"><span>📱 ${_escHtml(contact.whatsapp || '—')}</span></div>
-            </div>
-            <div class="debtor-amount">Da incassare: €${contact.totalAmount}</div>
-            <div class="debtor-toggle">▼</div>
-        </div>
-        <div class="debtor-card-body">
-            <div class="debtor-bookings">${items}</div>
-            <button class="debt-popup-pay-btn" style="margin:0.75rem;"
-                onclick="event.stopPropagation();openDebtPopup('${safeW}','${safeE}','${safeN}')">
-                ✓ Segna come pagato
-            </button>
-        </div>`;
-    return card;
-}
-
-function toggleDebtorCard(cardId) {
-    document.getElementById(cardId)?.classList.toggle('open');
-}
-
 function toggleDebtorsList() {
     if (_sensitiveHidden) return;
     debtorsListVisible = !debtorsListVisible;
@@ -428,20 +340,11 @@ function _collapseDebtorsList() {
     if (dh) dh.textContent = 'Dettagli ▼';
 }
 
-function clearSearch() {
-    const resultsContainer = document.getElementById('debtorSearchResults');
-    if (resultsContainer) resultsContainer.style.display = 'none';
-    const stats = document.querySelector('.payments-stats');
-    if (stats) stats.style.display = '';
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Popup "Segna come pagato" — salda le prenotazioni non pagate di un contatto
 // via RPC admin_pay_bookings(ids, method, now). Riusa il markup #debtPopup* di
 // admin.html (campo importo nascosto: il prezzo lo decide il server).
 // ═══════════════════════════════════════════════════════════════════════════════
-let currentDebtContact = null;
-
 function openDebtPopup(whatsapp, email, name) {
     const normWhatsapp = normalizePhone(whatsapp);
     const emailLow = (email || '').toLowerCase();
@@ -455,8 +358,6 @@ function openDebtPopup(whatsapp, email, name) {
         .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
 
     if (unpaid.length === 0) { showToast('Nessuna prenotazione da saldare', 'info'); return; }
-
-    currentDebtContact = { whatsapp, email, name, unpaid };
 
     document.getElementById('debtPopupName').textContent = name;
     const pastCount   = unpaid.filter(b => bookingHasPassed(b)).length;
@@ -644,7 +545,6 @@ function closeDebtPopup() {
     document.getElementById('debtPopupOverlay').classList.remove('open');
     document.getElementById('debtPopupModal').classList.remove('open');
     document.body.style.overflow = '';
-    currentDebtContact = null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -674,49 +574,6 @@ async function openPaymentsActionSheet() {
         return;
     }
     _openSessionPaymentSheet();
-}
-
-function _openLegacySessionPaymentSheet() {
-    const contacts = _getUnpaidContacts({ includeFuture: true });
-    if (!contacts.length) {
-        showToast('Non ci sono lezioni da saldare, né passate né future.', 'info');
-        return;
-    }
-    if (contacts.length === 1) {
-        const c = contacts[0];
-        openDebtPopup(c.whatsapp || '', c.email || '', c.name || '');
-        return;
-    }
-    const old = document.getElementById('paymentsSheetOverlay');
-    if (old) old.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'paymentsSheetOverlay';
-    overlay.className = 'payments-sheet-overlay';
-    overlay.innerHTML = `
-        <div class="payments-sheet" role="dialog" aria-label="Incassa lezioni">
-            <div class="payments-sheet-handle"></div>
-            <div class="payments-sheet-title">Incassa lezioni a entrata</div>
-            <div class="payments-sheet-options" id="sessionPaymentContacts"></div>
-        </div>`;
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closePaymentsActionSheet(); });
-    document.body.appendChild(overlay);
-    const list = overlay.querySelector('#sessionPaymentContacts');
-    contacts.forEach(contact => {
-        const button = document.createElement('button');
-        button.className = 'payments-sheet-btn payments-sheet-btn--debt';
-        button.innerHTML = `
-            <div class="payments-sheet-btn-icon payments-sheet-btn-icon--debt">💶</div>
-            <div class="payments-sheet-btn-text">
-                <span class="payments-sheet-btn-title">${_escHtml(contact.name || 'Cliente')}</span>
-                <span class="payments-sheet-btn-desc">${contact.unpaidBookings.length} lezion${contact.unpaidBookings.length === 1 ? 'e' : 'i'} · €${Number(contact.totalAmount).toFixed(2)}</span>
-            </div>`;
-        button.addEventListener('click', () => {
-            closePaymentsActionSheet();
-            openDebtPopup(contact.whatsapp || '', contact.email || '', contact.name || '');
-        });
-        list.appendChild(button);
-    });
-    requestAnimationFrame(() => overlay.classList.add('visible'));
 }
 
 function _openSessionPaymentSheet() {

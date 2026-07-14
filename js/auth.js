@@ -394,16 +394,10 @@ window.ensureValidSession = ensureValidSession;
         var leftSec = session.expires_at - Math.floor(Date.now() / 1000);
         if (leftSec > REFRESH_BEFORE_SEC) return; // ancora lontano dalla scadenza
         if (leftSec > FORCE_BELOW_SEC) {
-            // Rimanda se il trainer sta scrivendo o una pagina segnala "occupato".
+            // Rimanda se il trainer sta scrivendo in un campo.
             var ae = document.activeElement;
             var typing = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
-            var occupied = false;
-            try {
-                if (Array.isArray(window._authBusyChecks)) {
-                    occupied = window._authBusyChecks.some(function (fn) { try { return !!fn(); } catch (_) { return false; } });
-                }
-            } catch (_) {}
-            if (typing || occupied) { console.log('[Auth] refresh proattivo rimandato (occupato), left=' + leftSec + 's'); return; }
+            if (typing) { console.log('[Auth] refresh proattivo rimandato (occupato), left=' + leftSec + 's'); return; }
         }
         if (typeof window._manualTokenRefresh !== 'function') return;
         _busy = true;
@@ -889,16 +883,6 @@ async function updateUserProfile(currentEmail, updates, newPassword) {
     }
 
     return { ok: true, emailPendingConfirmation };
-}
-
-// ── Lookup per email (usato nell'OAuth callback) ──────────────────────────────
-async function getUserByEmail(email) {
-    const { data } = await supabaseClient
-        .from('profiles')
-        .select('id, name, email, whatsapp')
-        .eq('email', email.toLowerCase())
-        .single();
-    return data || null;
 }
 
 // ── Le mie prenotazioni ───────────────────────────────────────────────────────

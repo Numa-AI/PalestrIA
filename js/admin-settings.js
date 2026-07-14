@@ -147,26 +147,12 @@ async function _settSave(key, value, okMsg) {
 // Applicazione del branding a runtime. La fonte di verità è la globale
 // OrgSettings.applyBranding() (js/org-settings.js), che gestisce nome studio
 // ([data-org-name]), logo (img[data-org-logo]), favicon, colore primario (+ dark
-// derivata e <meta theme-color>) e titolo/nome PWA. Qui ci limitiamo a invocarla,
-// con un fallback minimo per logo/favicon/colore nel caso (improbabile) in cui
-// fosse caricata una versione più vecchia della funzione globale.
+// derivata e <meta theme-color>) e titolo/nome PWA. org-settings.js è caricato
+// PRIMA di questo file in admin.html (e il cache-busting §6 tiene coerenti gli
+// asset), quindi la funzione globale è sempre presente: niente fallback duplicato.
 function _settApplyBrandingExtras() {
     try {
-        if (window.OrgSettings && typeof OrgSettings.applyBranding === 'function') {
-            OrgSettings.applyBranding();
-            return;
-        }
-        // Fallback difensivo (versione legacy di applyBranding senza logo/favicon).
-        const logo    = OrgSettings.getString('branding.logo_url', '');
-        const favicon = OrgSettings.getString('branding.favicon_url', '');
-        const color   = OrgSettings.getString('branding.primary_color', '');
-        if (logo) document.querySelectorAll('img[data-org-logo]').forEach(img => { img.src = logo; });
-        if (favicon) { const fav = document.querySelector('link[rel="icon"]'); if (fav) fav.href = favicon; }
-        if (color && /^#[0-9a-fA-F]{6}$/.test(color)) {
-            document.documentElement.style.setProperty('--primary-purple', color);
-            const themeMeta = document.querySelector('meta[name="theme-color"]');
-            if (themeMeta) themeMeta.content = color;
-        }
+        OrgSettings.applyBranding();
     } catch (e) {
         console.warn('[Settings] applyBrandingExtras error:', e);
     }
@@ -239,12 +225,15 @@ async function saveBrandingSettings() {
     const color   = (_settVal('brandPrimaryColorHex') || _settVal('brandPrimaryColor')).trim();
 
     try {
-        await OrgSettings.set('branding.studio_name', name);
-        await OrgSettings.set('branding.pwa_name', pwaName);
-        await OrgSettings.set('branding.logo_url', logo);
-        await OrgSettings.set('branding.favicon_url', favicon);
-        await OrgSettings.set('branding.primary_color', color);
-        await OrgSettings.set('branding.home_duration', _settVal('brandHomeDuration').trim());
+        // Chiavi indipendenti → scritture in parallelo (prima 6 RPC seriali)
+        await Promise.all([
+            OrgSettings.set('branding.studio_name', name),
+            OrgSettings.set('branding.pwa_name', pwaName),
+            OrgSettings.set('branding.logo_url', logo),
+            OrgSettings.set('branding.favicon_url', favicon),
+            OrgSettings.set('branding.primary_color', color),
+            OrgSettings.set('branding.home_duration', _settVal('brandHomeDuration').trim()),
+        ]);
         // Applica subito il branding (nome, logo, favicon, colore, titolo) a runtime.
         _settApplyBrandingExtras();
         showToast('✅ Branding salvato', 'success');
@@ -310,11 +299,14 @@ function _settRenderLocale(body) {
 async function saveLocaleSettings() {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
     try {
-        await OrgSettings.set('locale.timezone', _settVal('locTimezone'));
-        await OrgSettings.set('locale.currency', _settVal('locCurrency'));
-        await OrgSettings.set('locale.language', _settVal('locLanguage'));
-        await OrgSettings.set('locale.date_format', _settVal('locDateFormat'));
-        await OrgSettings.set('locale.first_day_of_week', parseInt(_settVal('locFirstDay'), 10));
+        // Chiavi indipendenti → scritture in parallelo (prima 5 RPC seriali)
+        await Promise.all([
+            OrgSettings.set('locale.timezone', _settVal('locTimezone')),
+            OrgSettings.set('locale.currency', _settVal('locCurrency')),
+            OrgSettings.set('locale.language', _settVal('locLanguage')),
+            OrgSettings.set('locale.date_format', _settVal('locDateFormat')),
+            OrgSettings.set('locale.first_day_of_week', parseInt(_settVal('locFirstDay'), 10)),
+        ]);
         showToast('✅ Localizzazione salvata', 'success');
     } catch (e) {
         console.error('[Settings] locale save error:', e);
@@ -334,6 +326,7 @@ function _settRenderCompany(body) {
     const sdi     = OrgSettings.getString('company.sdi_code', '');
     const prefix  = OrgSettings.getString('company.invoice_prefix', '');
     const maps    = OrgSettings.getString('company.maps_url', '');
+    const access  = OrgSettings.getString('company.access_code', '');
 
     body.innerHTML = `
         <div class="sett-card">
@@ -396,6 +389,10 @@ function _settRenderCompany(body) {
                     <label class="sett-input-label">Link Google Maps (mostrato nella home)</label>
                     <input type="url" id="coMapsUrl" class="sett-text-input" value="${_escHtml(maps)}" placeholder="Es. https://maps.app.goo.gl/...">
                 </div>
+                <div class="sett-field sett-field--wide">
+                    <label class="sett-input-label">Codice accesso studio (mostrato ai clienti in "Le mie prenotazioni"; vuoto = nascosto)</label>
+                    <input type="text" id="coAccessCode" class="sett-text-input" value="${_escHtml(access)}" placeholder="Es. 4729 + ▲">
+                </div>
             </div>
             <div class="sett-btn-row">
                 <button class="sett-action-btn sett-action-btn--green" onclick="saveCompanySettings()">💾 Salva dati azienda</button>
@@ -413,14 +410,18 @@ async function saveCompanySettings() {
         paese:     _settVal('coAddrPaese').trim(),
     };
     try {
-        await OrgSettings.set('company.legal_name', _settVal('coLegalName').trim());
-        await OrgSettings.set('company.vat_number', _settVal('coVatNumber').trim());
-        await OrgSettings.set('company.tax_code', _settVal('coTaxCode').trim());
-        await OrgSettings.set('company.pec', _settVal('coPec').trim());
-        await OrgSettings.set('company.sdi_code', _settVal('coSdiCode').trim().toUpperCase());
-        await OrgSettings.set('company.invoice_prefix', _settVal('coInvoicePrefix').trim());
-        await OrgSettings.set('company.address', address);
-        await OrgSettings.set('company.maps_url', _settVal('coMapsUrl').trim());
+        // Chiavi indipendenti → scritture in parallelo (prima 9 RPC seriali = 9x latenza)
+        await Promise.all([
+            OrgSettings.set('company.legal_name', _settVal('coLegalName').trim()),
+            OrgSettings.set('company.vat_number', _settVal('coVatNumber').trim()),
+            OrgSettings.set('company.tax_code', _settVal('coTaxCode').trim()),
+            OrgSettings.set('company.pec', _settVal('coPec').trim()),
+            OrgSettings.set('company.sdi_code', _settVal('coSdiCode').trim().toUpperCase()),
+            OrgSettings.set('company.invoice_prefix', _settVal('coInvoicePrefix').trim()),
+            OrgSettings.set('company.address', address),
+            OrgSettings.set('company.maps_url', _settVal('coMapsUrl').trim()),
+            OrgSettings.set('company.access_code', _settVal('coAccessCode').trim()),
+        ]);
         showToast('✅ Dati azienda salvati', 'success');
     } catch (e) {
         console.error('[Settings] company save error:', e);
@@ -495,7 +496,7 @@ async function _settRenderPayments(body) {
                 <div class="sett-price-input-wrap">
                     <span class="sett-price-cur">€</span>
                     <input type="number" min="0" step="0.01" class="sett-price-input"
-                           data-slot-id="${st.id}" data-slot-key="${_escHtml(st.key)}"
+                           data-slot-key="${_escHtml(st.key)}"
                            value="${Number(price).toFixed(2)}">
                 </div>
             </div>`;
@@ -915,11 +916,14 @@ function _settRenderPolicy(body) {
 async function savePolicySettings() {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
     try {
-        await OrgSettings.set('booking.policy.free_cancel_hours', parseInt(_settVal('polFreeHours'), 10) || 0);
-        await OrgSettings.set('booking.policy.penalty_pct', parseInt(_settVal('polPenalty'), 10) || 0);
-        await OrgSettings.set('booking.policy.max_advance_days', parseInt(_settVal('polMaxAdvance'), 10) || 0);
-        await OrgSettings.set('booking.policy.requires_account', _settChecked('polRequiresAccount'));
-        await OrgSettings.set('booking.policy.cancel_mode', _settVal('polCancelMode'));
+        // Chiavi indipendenti → scritture in parallelo (prima 5 RPC seriali)
+        await Promise.all([
+            OrgSettings.set('booking.policy.free_cancel_hours', parseInt(_settVal('polFreeHours'), 10) || 0),
+            OrgSettings.set('booking.policy.penalty_pct', parseInt(_settVal('polPenalty'), 10) || 0),
+            OrgSettings.set('booking.policy.max_advance_days', parseInt(_settVal('polMaxAdvance'), 10) || 0),
+            OrgSettings.set('booking.policy.requires_account', _settChecked('polRequiresAccount')),
+            OrgSettings.set('booking.policy.cancel_mode', _settVal('polCancelMode')),
+        ]);
         showToast('✅ Policy salvata', 'success');
     } catch (e) {
         console.error('[Settings] policy save error:', e);
@@ -1025,15 +1029,18 @@ function _settRenderNotif(body) {
 async function saveNotifSettings() {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
     try {
-        await OrgSettings.set('notif.booking_confirmation', _settChecked('notifConfirmation'));
-        await OrgSettings.set('notif.reminder_enabled', _settChecked('notifReminderEnabled'));
-        await OrgSettings.set('notif.reminder_hours', parseInt(_settVal('notifReminderHours'), 10) || 24);
-        await OrgSettings.set('notif.admin_new_booking', _settChecked('notifAdminNew'));
-        await OrgSettings.set('notif.channels', {
-            push:     _settChecked('notifChanPush'),
-            email:    _settChecked('notifChanEmail'),
-            whatsapp: _settChecked('notifChanWhatsapp'),
-        });
+        // Chiavi indipendenti → scritture in parallelo (prima 5 RPC seriali)
+        await Promise.all([
+            OrgSettings.set('notif.booking_confirmation', _settChecked('notifConfirmation')),
+            OrgSettings.set('notif.reminder_enabled', _settChecked('notifReminderEnabled')),
+            OrgSettings.set('notif.reminder_hours', parseInt(_settVal('notifReminderHours'), 10) || 24),
+            OrgSettings.set('notif.admin_new_booking', _settChecked('notifAdminNew')),
+            OrgSettings.set('notif.channels', {
+                push:     _settChecked('notifChanPush'),
+                email:    _settChecked('notifChanEmail'),
+                whatsapp: _settChecked('notifChanWhatsapp'),
+            }),
+        ]);
         showToast('✅ Notifiche salvate', 'success');
     } catch (e) {
         console.error('[Settings] notif save error:', e);
@@ -1251,9 +1258,12 @@ function _settRenderGdpr(body) {
 async function saveGdprSettings() {
     if (!_settIsAdmin()) { showToast('Permesso negato', 'error'); return; }
     try {
-        await OrgSettings.set('gdpr.privacy_url', _settVal('gdprPrivacyUrl').trim());
-        await OrgSettings.set('gdpr.terms_url', _settVal('gdprTermsUrl').trim());
-        await OrgSettings.set('gdpr.data_retention_days', parseInt(_settVal('gdprRetention'), 10) || 0);
+        // Chiavi indipendenti → scritture in parallelo (prima 3 RPC seriali)
+        await Promise.all([
+            OrgSettings.set('gdpr.privacy_url', _settVal('gdprPrivacyUrl').trim()),
+            OrgSettings.set('gdpr.terms_url', _settVal('gdprTermsUrl').trim()),
+            OrgSettings.set('gdpr.data_retention_days', parseInt(_settVal('gdprRetention'), 10) || 0),
+        ]);
         showToast('✅ GDPR salvato', 'success');
     } catch (e) {
         console.error('[Settings] gdpr save error:', e);
@@ -1539,7 +1549,22 @@ async function clearAllOrgData() {
         const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('admin_clear_all_data'), 30000);
         if (error) throw error;
         if (data && data.success === false) throw new Error(data.error || 'Errore');
+        // Marker org-scoped per la propagazione cross-device (letto da
+        // syncAppSettingsFromSupabase in data.js, che svuota le cache remote).
+        const now = new Date().toISOString();
+        try {
+            await supabaseClient.rpc('upsert_org_setting', { p_key: 'data_cleared_at', p_value: { ts: now } });
+        } catch (e2) { console.error('[Settings] clear data - marker error:', e2); }
+        localStorage.setItem('dataLastCleared', now);
+        // Svuota anche le cache locali di QUESTO device (il marker copre gli altri)
+        try {
+            BookingStorage._cache = [];
+            BookingStorage.invalidateDelta();
+            UserStorage._cache = [];
+            localStorage.removeItem('scheduleOverrides');
+        } catch (_) {}
         showToast('✅ Dati organizzazione cancellati', 'success');
+        setTimeout(() => location.reload(), 1200);
     } catch (e) {
         console.error('[Settings] clear data error:', e);
         showToast('Errore cancellazione dati', 'error');

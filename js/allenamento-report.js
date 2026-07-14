@@ -9,7 +9,10 @@
 let _reportCache = null;        // array di report caricati dal DB
 let _reportLoading = false;
 
-const REPORT_FN_URL = 'https://qlbdblkkuxqqrodqojjf.supabase.co/functions/v1/generate-monthly-report';
+// Derivato da SUPABASE_URL (supabase-client.js, caricato prima in ogni pagina):
+// niente project-ref hardcoded — quello vecchio puntava a un progetto dismesso
+// e la generazione report falliva sempre con 401.
+const REPORT_FN_URL = `${SUPABASE_URL}/functions/v1/generate-monthly-report`;
 
 // ═════════════════════════════════════════════════════════════════════
 // HELPER: scroll lock del body quando un modal è aperto

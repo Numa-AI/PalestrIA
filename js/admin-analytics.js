@@ -32,7 +32,6 @@
  */
 let adminWeekOffset = 0;
 let selectedAdminDay = null;
-let _adminInitialScrollDone = false;
 
 // Analytics filter state
 let currentFilter = 'this-month';
@@ -831,16 +830,21 @@ function renderFatturatoDetail(panel) {
 
     const periodStart = from.getTime();
     const totalDays   = Math.max(1, Math.ceil((to.getTime() - periodStart) / 86400000));
-    // Media settimanale basata sui giorni programmati in gestione orari
+    // Giorni programmati (gestione orari) e giorni futuri senza slot del periodo —
+    // calcolati UNA volta e riusati da weeklyAvg, avgRevPerSchedDay e
+    // scheduleEstimate (prima: 3 loop identici + una seconda getScheduleOverrides).
     const overrides = BookingStorage.getScheduleOverrides();
-    let _weekSchedDays = 0;
+    let periodSchedDays = 0;
+    let futureUnschedDays = 0;
     for (let dd = 0; dd < totalDays; dd++) {
         const day = new Date(from.getTime() + dd * 86400000);
         const ds = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        if (overrides[ds] && overrides[ds].length > 0) _weekSchedDays++;
+        if (overrides[ds] && overrides[ds].length > 0) periodSchedDays++;
+        else if (day >= pastCutoff) futureUnschedDays++;
     }
-    const weeklyAvg = _weekSchedDays > 0
-        ? Math.round((pastRevenue + futureRevenue) / _weekSchedDays * 7)
+    // Media settimanale basata sui giorni programmati in gestione orari
+    const weeklyAvg = periodSchedDays > 0
+        ? Math.round((pastRevenue + futureRevenue) / periodSchedDays * 7)
         : 0;
 
     // ── Bar chart: ultimi 12 mesi + successivo ───────────────────────────────
@@ -918,14 +922,9 @@ function renderFatturatoDetail(panel) {
     }
 
     // ── Forecast chart: actual (past) + confirmed future as cumulative ────────
-    // Calcolo media ricavo/giorno programmato per la linea verde stima
-    let _fcSchedDays = 0;
-    for (let dd = 0; dd < totalDays; dd++) {
-        const day = new Date(from.getTime() + dd * 86400000);
-        const ds = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        if (overrides[ds] && overrides[ds].length > 0) _fcSchedDays++;
-    }
-    const avgRevPerSchedDay = (!isReale && _fcSchedDays > 0) ? (pastRevenue + futureRevenue) / _fcSchedDays : 0;
+    // Media ricavo/giorno programmato per la linea verde stima (periodSchedDays
+    // calcolato una volta sopra)
+    const avgRevPerSchedDay = (!isReale && periodSchedDays > 0) ? (pastRevenue + futureRevenue) / periodSchedDays : 0;
 
     const useWeekly  = totalDays > 60;
     const groupDays  = useWeekly ? 7 : 1;
@@ -1044,25 +1043,10 @@ function renderFatturatoDetail(panel) {
     const pieColors = ['#22c55e', '#f59e0b', '#e63946'];
 
     // ── Stima futura: solo giorni futuri senza slot programmati ────────────
-    // Conta i giorni futuri (da oggi in poi) nel periodo che NON hanno slot.
-    // Media ricavo/giorno calcolata su TUTTI i giorni programmati (passati+futuri).
-    const schedOverrides = BookingStorage.getScheduleOverrides();
-    const periodTotalDays = Math.ceil((to - from) / 86400000);
-    let periodScheduledDays = 0;
-    let futureUnscheduledDays = 0;
-    for (let dd = 0; dd < periodTotalDays; dd++) {
-        const day = new Date(from.getTime() + dd * 86400000);
-        const ds = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        const hasSlots = schedOverrides[ds] && schedOverrides[ds].length > 0;
-        if (hasSlots) {
-            periodScheduledDays++;
-        } else if (day >= pastCutoff) {
-            futureUnscheduledDays++;
-        }
-    }
+    // periodSchedDays/futureUnschedDays calcolati una volta a inizio funzione.
     const knownPeriodRev = pastRevenue + futureRevenue;
-    const scheduleEstimate = (periodScheduledDays > 0 && futureUnscheduledDays > 0)
-        ? knownPeriodRev + Math.round(knownPeriodRev / periodScheduledDays * futureUnscheduledDays)
+    const scheduleEstimate = (periodSchedDays > 0 && futureUnschedDays > 0)
+        ? knownPeriodRev + Math.round(knownPeriodRev / periodSchedDays * futureUnschedDays)
         : knownPeriodRev;
 
     // ── Fatturato per tipo di pagamento (solo Reale) ───────────────────────
@@ -1226,29 +1210,23 @@ function renderPrenotazioniDetail(panel) {
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalDays  = Math.max(1, Math.ceil((to - from) / 86400000));
-    // Media settimanale basata su giorni con slot programmati
-    let _pSchedDays = 0;
+    // Giorni programmati + giorni futuri senza slot in un unico loop (riusati da
+    // media settimanale e stima futura — prima erano due scansioni identiche).
+    let periodScheduledDays = 0, futureUnscheduledDays = 0;
     for (let dd = 0; dd < totalDays; dd++) {
         const day = new Date(from.getTime() + dd * 86400000);
         const ds = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        if (overrides[ds] && overrides[ds].length > 0) _pSchedDays++;
+        if (overrides[ds] && overrides[ds].length > 0) periodScheduledDays++;
+        else if (day >= today) futureUnscheduledDays++;
     }
-    const weeklyAvg = _pSchedDays > 0
-        ? (periodBookings.length / _pSchedDays * 7).toFixed(1)
+    const weeklyAvg = periodScheduledDays > 0
+        ? (periodBookings.length / periodScheduledDays * 7).toFixed(1)
         : (periodBookings.length / totalDays * 7).toFixed(1);
     const cancelRate = cancelledInPeriod.length > 0
         ? Math.round(cancelledInPeriod.length / (periodBookings.length + cancelledInPeriod.length) * 100)
         : 0;
 
     // Stima futura: basata su giorni futuri senza slot
-    let periodScheduledDays = 0, futureUnscheduledDays = 0;
-    for (let dd = 0; dd < totalDays; dd++) {
-        const day = new Date(from.getTime() + dd * 86400000);
-        const ds = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-        const hasSlots = overrides[ds] && overrides[ds].length > 0;
-        if (hasSlots) periodScheduledDays++;
-        else if (day >= today) futureUnscheduledDays++;
-    }
     const knownCount = periodBookings.length;
     const scheduleEstimate = (periodScheduledDays > 0 && futureUnscheduledDays > 0)
         ? knownCount + Math.round(knownCount / periodScheduledDays * futureUnscheduledDays)
@@ -1713,10 +1691,7 @@ function renderClientiDetail(panel) {
     `;
 }
 
-let _certModalEmail    = null;
-let _certModalWhatsapp = null;
-let _certModalName2    = null;
-let _certModalBadgeEl  = null;
+// Stato dei modali scadenza (cert/assic): vive nelle closure di _makeExpiryModal.
 
 // ── Raw gym_users helpers (con tutti i campi, inclusi cert) ──────────────────
 function _getUsersFull() {
@@ -1876,173 +1851,148 @@ function _findUserIdx(users, email, whatsapp) {
     return -1;
 }
 
-function openCertModal(badgeEl, email, whatsapp, name) {
-    _certModalEmail    = email;
-    _certModalWhatsapp = whatsapp;
-    _certModalName2    = name;
-    _certModalBadgeEl  = badgeEl;
+// ── Modali scadenza (Certificato medico / Assicurazione) ─────────────────────
+// I due modali sono identici salvo campi, id DOM, testi e stile del badge:
+// un'unica factory genera open/close/save; le differenze stanno nella config.
+const _EXPIRY_BADGE_GREEN = 'background:#f0fdf4;border-color:#bbf7d0;color:#166534;border-left:3px solid #16a34a';
+const _EXPIRY_BADGE_AMBER = 'background:#fffbeb;border-color:#fde68a;color:#92400e;border-left:3px solid #f59e0b';
 
-    const users = _getUsersFull();
-    const idx   = _findUserIdx(users, email, whatsapp);
-    const existing = idx !== -1 ? (users[idx].certificatoMedicoScadenza || '') : '';
+function _makeExpiryModal(cfg) {
+    // cfg: { localField, historyField, remoteField, ids:{name,date,overlay,modal},
+    //        errorToast, successToast, renderBadge(el, val) }
+    const st = { email: null, whatsapp: null, name: null, badgeEl: null };
 
-    document.getElementById('certModalName').textContent = name;
-    document.getElementById('certModalDate').value = existing;
-    document.getElementById('certModalOverlay').style.display = 'block';
-    document.getElementById('certModal').style.display = 'flex';
-    setTimeout(() => document.getElementById('certModalDate').focus(), 50);
-}
+    function open(badgeEl, email, whatsapp, name) {
+        st.email = email; st.whatsapp = whatsapp; st.name = name; st.badgeEl = badgeEl;
 
-function closeCertModal() {
-    document.getElementById('certModalOverlay').style.display = 'none';
-    document.getElementById('certModal').style.display = 'none';
-    _certModalEmail = _certModalWhatsapp = _certModalName2 = _certModalBadgeEl = null;
-}
+        const users = _getUsersFull();
+        const idx   = _findUserIdx(users, email, whatsapp);
+        const existing = idx !== -1 ? (users[idx][cfg.localField] || '') : '';
 
-function saveCertDate() {
-    const val = document.getElementById('certModalDate').value;
+        document.getElementById(cfg.ids.name).textContent = name;
+        document.getElementById(cfg.ids.date).value = existing;
+        document.getElementById(cfg.ids.overlay).style.display = 'block';
+        document.getElementById(cfg.ids.modal).style.display = 'flex';
+        setTimeout(() => document.getElementById(cfg.ids.date).focus(), 50);
+    }
 
-    const users = _getUsersFull();
-    let idx = _findUserIdx(users, _certModalEmail, _certModalWhatsapp);
+    function close() {
+        document.getElementById(cfg.ids.overlay).style.display = 'none';
+        document.getElementById(cfg.ids.modal).style.display = 'none';
+        st.email = st.whatsapp = st.name = st.badgeEl = null;
+    }
 
-    if (idx === -1) {
-        users.push({
-            name: _certModalName2 || '',
-            email: _certModalEmail || null,
-            whatsapp: _certModalWhatsapp || null,
-            createdAt: new Date().toISOString(),
-            certificatoMedicoScadenza: val || null,
-            certificatoMedicoHistory: [{ scadenza: val || null, aggiornatoIl: new Date().toISOString() }]
-        });
-    } else {
-        const oldCert = users[idx].certificatoMedicoScadenza || '';
-        if (val !== oldCert) {
-            users[idx].certificatoMedicoScadenza = val || null;
-            if (!users[idx].certificatoMedicoHistory) users[idx].certificatoMedicoHistory = [];
-            users[idx].certificatoMedicoHistory.push({ scadenza: val || null, aggiornatoIl: new Date().toISOString() });
+    async function save() {
+        const val = document.getElementById(cfg.ids.date).value;
+        const users = _getUsersFull();
+        const idx = _findUserIdx(users, st.email, st.whatsapp);
+
+        if (idx === -1) {
+            users.push({
+                name: st.name || '',
+                email: st.email || null,
+                whatsapp: st.whatsapp || null,
+                createdAt: new Date().toISOString(),
+                [cfg.localField]: val || null,
+                [cfg.historyField]: [{ scadenza: val || null, aggiornatoIl: new Date().toISOString() }]
+            });
+        } else {
+            const old = users[idx][cfg.localField] || '';
+            if (val !== old) {
+                users[idx][cfg.localField] = val || null;
+                if (!users[idx][cfg.historyField]) users[idx][cfg.historyField] = [];
+                users[idx][cfg.historyField].push({ scadenza: val || null, aggiornatoIl: new Date().toISOString() });
+            }
         }
-    }
-    _saveUsers(users);
-    _updateSupabaseProfile(_certModalEmail, _certModalWhatsapp, { medical_cert_expiry: val || null });
+        _saveUsers(users);
+        // Scrittura server-first: su errore il modal resta aperto e NIENTE toast di
+        // successo (prima l'esito era ignorato e il fallimento passava inosservato).
+        const res = await _updateSupabaseProfile(st.email, st.whatsapp, { [cfg.remoteField]: val || null });
+        if (!res.ok) {
+            showToast(cfg.errorToast, 'error');
+            return;
+        }
 
-    // Aggiorna sessione se è il cliente loggato
-    const session = getCurrentUser();
-    if (session && (
-        (_certModalEmail    && session.email?.toLowerCase()    === _certModalEmail.toLowerCase()) ||
-        (_certModalWhatsapp && normalizePhone(session.whatsapp) === normalizePhone(_certModalWhatsapp))
-    )) {
-        loginUser({ ...session, certificatoMedicoScadenza: val || null });
+        // Aggiorna sessione se è il cliente loggato
+        const session = getCurrentUser();
+        if (session && (
+            (st.email    && session.email?.toLowerCase()    === st.email.toLowerCase()) ||
+            (st.whatsapp && normalizePhone(session.whatsapp) === normalizePhone(st.whatsapp))
+        )) {
+            loginUser({ ...session, [cfg.localField]: val || null });
+        }
+
+        // Aggiorna il badge in-place
+        if (st.badgeEl) cfg.renderBadge(st.badgeEl, val);
+
+        close();
+        showToast(cfg.successToast, 'success');
     }
 
-    // Aggiorna il badge in-place
-    if (_certModalBadgeEl) {
+    return { open, close, save };
+}
+
+const _certModal = _makeExpiryModal({
+    localField: 'certificatoMedicoScadenza',
+    historyField: 'certificatoMedicoHistory',
+    remoteField: 'medical_cert_expiry',
+    ids: { name: 'certModalName', date: 'certModalDate', overlay: 'certModalOverlay', modal: 'certModal' },
+    errorToast: '⚠️ Salvataggio certificato non riuscito. Riprova.',
+    successToast: 'Certificato medico aggiornato.',
+    renderBadge(el, val) {
         const today = _localDateStr();
         if (!val) {
-            _certModalBadgeEl.textContent = '🏥 Imposta Cert. Med';
-            _certModalBadgeEl.removeAttribute('style');
+            el.textContent = '🏥 Imposta Cert. Med';
+            el.removeAttribute('style');
         } else if (val < today) {
             const [y, m, d] = val.split('-');
-            _certModalBadgeEl.textContent = `🏥 Cert. scaduto il ${d}/${m}/${y}`;
-            _certModalBadgeEl.removeAttribute('style');
+            el.textContent = `🏥 Cert. scaduto il ${d}/${m}/${y}`;
+            el.removeAttribute('style');
         } else {
             const [y, m, d] = val.split('-');
-            _certModalBadgeEl.textContent = `🏥 Cert. Med valido fino al ${d}/${m}/${y}`;
-            _certModalBadgeEl.style.cssText = 'background:#f0fdf4;border-color:#bbf7d0;color:#166534;border-left:3px solid #16a34a';
+            el.textContent = `🏥 Cert. Med valido fino al ${d}/${m}/${y}`;
+            el.style.cssText = _EXPIRY_BADGE_GREEN;
         }
-    }
+    },
+});
 
-    closeCertModal();
-    showToast('Certificato medico aggiornato.', 'success');
-}
-
-let _assicModalEmail    = null;
-let _assicModalWhatsapp = null;
-let _assicModalName2    = null;
-let _assicModalBadgeEl  = null;
-
-function openAssicModal(badgeEl, email, whatsapp, name) {
-    _assicModalEmail    = email;
-    _assicModalWhatsapp = whatsapp;
-    _assicModalName2    = name;
-    _assicModalBadgeEl  = badgeEl;
-
-    const users = _getUsersFull();
-    const idx   = _findUserIdx(users, email, whatsapp);
-    const existing = idx !== -1 ? (users[idx].assicurazioneScadenza || '') : '';
-
-    document.getElementById('assicModalName').textContent = name;
-    document.getElementById('assicModalDate').value = existing;
-    document.getElementById('assicModalOverlay').style.display = 'block';
-    document.getElementById('assicModal').style.display = 'flex';
-    setTimeout(() => document.getElementById('assicModalDate').focus(), 50);
-}
-
-function closeAssicModal() {
-    document.getElementById('assicModalOverlay').style.display = 'none';
-    document.getElementById('assicModal').style.display = 'none';
-    _assicModalEmail = _assicModalWhatsapp = _assicModalName2 = _assicModalBadgeEl = null;
-}
-
-function saveAssicDate() {
-    const val = document.getElementById('assicModalDate').value;
-    const users = _getUsersFull();
-    let idx = _findUserIdx(users, _assicModalEmail, _assicModalWhatsapp);
-
-    if (idx === -1) {
-        users.push({
-            name: _assicModalName2 || '',
-            email: _assicModalEmail || null,
-            whatsapp: _assicModalWhatsapp || null,
-            createdAt: new Date().toISOString(),
-            assicurazioneScadenza: val || null,
-            assicurazioneHistory: [{ scadenza: val || null, aggiornatoIl: new Date().toISOString() }]
-        });
-    } else {
-        const oldAssic = users[idx].assicurazioneScadenza || '';
-        if (val !== oldAssic) {
-            users[idx].assicurazioneScadenza = val || null;
-            if (!users[idx].assicurazioneHistory) users[idx].assicurazioneHistory = [];
-            users[idx].assicurazioneHistory.push({ scadenza: val || null, aggiornatoIl: new Date().toISOString() });
-        }
-    }
-    _saveUsers(users);
-    _updateSupabaseProfile(_assicModalEmail, _assicModalWhatsapp, { insurance_expiry: val || null });
-
-    // Aggiorna sessione se è il cliente loggato
-    const session = getCurrentUser();
-    if (session && (
-        (_assicModalEmail    && session.email?.toLowerCase()    === _assicModalEmail.toLowerCase()) ||
-        (_assicModalWhatsapp && normalizePhone(session.whatsapp) === normalizePhone(_assicModalWhatsapp))
-    )) {
-        loginUser({ ...session, assicurazioneScadenza: val || null });
-    }
-
-    // Aggiorna il badge in-place
-    if (_assicModalBadgeEl) {
+const _assicModal = _makeExpiryModal({
+    localField: 'assicurazioneScadenza',
+    historyField: 'assicurazioneHistory',
+    remoteField: 'insurance_expiry',
+    ids: { name: 'assicModalName', date: 'assicModalDate', overlay: 'assicModalOverlay', modal: 'assicModal' },
+    errorToast: '⚠️ Salvataggio assicurazione non riuscito. Riprova.',
+    successToast: 'Assicurazione aggiornata.',
+    renderBadge(el, val) {
         const today = _localDateStr();
         const t30 = new Date(); t30.setDate(t30.getDate() + 30);
         const today30 = _localDateStr(t30);
         if (!val) {
-            _assicModalBadgeEl.textContent = '📋 Imposta scadenza Assicurazione';
-            _assicModalBadgeEl.style.cssText = 'background:#fef3c7;border-color:#fde68a;color:#92400e;border-left:3px solid #f59e0b';
+            el.textContent = '📋 Imposta scadenza Assicurazione';
+            el.style.cssText = 'background:#fef3c7;border-color:#fde68a;color:#92400e;border-left:3px solid #f59e0b';
         } else if (val < today) {
             const [y, m, d] = val.split('-');
-            _assicModalBadgeEl.textContent = `📋 Assic. scaduta il ${d}/${m}/${y}`;
-            _assicModalBadgeEl.removeAttribute('style');
+            el.textContent = `📋 Assic. scaduta il ${d}/${m}/${y}`;
+            el.removeAttribute('style');
         } else if (val <= today30) {
             const [y, m, d] = val.split('-');
-            _assicModalBadgeEl.textContent = `⏳ Assic. scade il ${d}/${m}/${y}`;
-            _assicModalBadgeEl.style.cssText = 'background:#fffbeb;border-color:#fde68a;color:#92400e;border-left:3px solid #f59e0b';
+            el.textContent = `⏳ Assic. scade il ${d}/${m}/${y}`;
+            el.style.cssText = _EXPIRY_BADGE_AMBER;
         } else {
             const [y, m, d] = val.split('-');
-            _assicModalBadgeEl.textContent = `📋 Assic. valida fino al ${d}/${m}/${y}`;
-            _assicModalBadgeEl.style.cssText = 'background:#f0fdf4;border-color:#bbf7d0;color:#166534;border-left:3px solid #16a34a';
+            el.textContent = `📋 Assic. valida fino al ${d}/${m}/${y}`;
+            el.style.cssText = _EXPIRY_BADGE_GREEN;
         }
-    }
+    },
+});
 
-    closeAssicModal();
-    showToast('Assicurazione aggiornata.', 'success');
-}
+// API globali (usate negli onclick di admin-calendar.js / admin-clients.js / admin.html)
+function openCertModal(badgeEl, email, whatsapp, name) { _certModal.open(badgeEl, email, whatsapp, name); }
+function closeCertModal() { _certModal.close(); }
+function saveCertDate() { return _certModal.save(); }
+function openAssicModal(badgeEl, email, whatsapp, name) { _assicModal.open(badgeEl, email, whatsapp, name); }
+function closeAssicModal() { _assicModal.close(); }
+function saveAssicDate() { return _assicModal.save(); }
 
 function renderOccupancyDetail(panel) {
     const allBookings = (_statsBookings ?? _excludeAdminBookings(BookingStorage.getAllBookings())).filter(b => b.status !== 'cancelled');
@@ -2063,6 +2013,15 @@ function renderOccupancyDetail(panel) {
     };
 
     // ── Calcola capacità e prenotazioni per tipo per ogni mese (ultimi 12 + successivo) ──
+    // Bucketing in UNA passata su allBookings (b.date è già 'YYYY-MM-DD' → mese =
+    // slice(0,7)): prima erano 3 filter × 13 mesi con una new Date per booking a passata.
+    const countsByMonth = {};
+    for (const b of allBookings) {
+        const mk = (b.date || '').slice(0, 7);
+        if (!mk) continue;
+        const bucket = countsByMonth[mk] || (countsByMonth[mk] = {});
+        bucket[b.slotType] = (bucket[b.slotType] || 0) + 1;
+    }
     const trendLabels = [], ptTrend = [], sgTrend = [], gcTrend = [], trendHighlight = [];
     for (let i = 11; i >= -1; i--) {
         const mFrom = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -2080,9 +2039,11 @@ function renderOccupancyDetail(panel) {
             });
             c.setDate(c.getDate() + 1);
         }
-        const ptB = allBookings.filter(b => { const d = new Date(b.date+'T00:00:00'); return b.slotType==='personal-training' && d>=mFrom && d<=mTo; }).length;
-        const sgB = allBookings.filter(b => { const d = new Date(b.date+'T00:00:00'); return b.slotType==='small-group'        && d>=mFrom && d<=mTo; }).length;
-        const gcB = allBookings.filter(b => { const d = new Date(b.date+'T00:00:00'); return b.slotType==='group-class'        && d>=mFrom && d<=mTo; }).length;
+        const mKey = `${mFrom.getFullYear()}-${String(mFrom.getMonth() + 1).padStart(2, '0')}`;
+        const mCounts = countsByMonth[mKey] || {};
+        const ptB = mCounts['personal-training'] || 0;
+        const sgB = mCounts['small-group'] || 0;
+        const gcB = mCounts['group-class'] || 0;
         ptTrend.push(ptCap > 0 ? Math.min(100, Math.round(ptB / ptCap * 100)) : 0);
         sgTrend.push(sgCap > 0 ? Math.min(100, Math.round(sgB / sgCap * 100)) : 0);
         gcTrend.push(gcCap > 0 ? Math.min(100, Math.round(gcB / gcCap * 100)) : 0);
@@ -2248,8 +2209,91 @@ function dismissWeeklyReport() {
     if (banner) banner.style.display = 'none';
 }
 
+// ── Generazione report fiscale XLSX (condivisa da report settimanale e completo) ──
+// Scarica dal ledger `payments` i movimenti tracciati fiscalmente nel range
+// (fromStr/toStr null = intero archivio), costruisce il foglio e salva il file.
+// Ritorna il numero di righe esportate.
+async function _generateFiscalXlsx(fromStr, toStr, filename) {
+    // Sync anagrafiche fresche prima del report (codice fiscale / indirizzo)
+    await UserStorage.syncUsersFromSupabase();
+
+    // Pagamenti report fiscale: dal ledger payments, metodi tracciati fiscalmente.
+    const REPORT_METHODS = new Set(['carta', 'iban', 'stripe', 'contanti-report']);
+    const METHOD_LABEL_REPORT = { carta: 'Carta', iban: 'Bonifico', stripe: 'Stripe', 'contanti-report': 'Contanti con Report' };
+    const KIND_LABEL = {
+        session:          'Sessione',
+        membership:       'Abbonamento',
+        package_purchase: 'Pacchetto',
+        penalty_mora:     'Mora',
+        adjustment:       'Rettifica'
+    };
+
+    // Fetch diretto del ledger nel range (RLS filtra org_id)
+    const payments = (await _fetchPayments(fromStr, toStr)) || [];
+
+    // User map per lookup codice fiscale / indirizzo
+    const userMap = {};
+    UserStorage.getAll().forEach(u => { if (u.email) userMap[u.email.toLowerCase()] = u; });
+
+    function splitName(fullName) {
+        if (!fullName) return { nome: '', cognome: '' };
+        const parts = (fullName || '').trim().split(/\s+/);
+        if (parts.length <= 1) return { nome: parts[0] || '', cognome: '' };
+        return { nome: parts[0], cognome: parts.slice(1).join(' ') };
+    }
+
+    function fmtDateTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return isNaN(d) ? iso : d.toLocaleString('it-IT');
+    }
+
+    // Build rows dal ledger
+    const rows = [];
+    payments
+        .filter(p => REPORT_METHODS.has(p.method) && p.amount > 0)
+        .forEach(p => {
+            const user = userMap[(p.email || '').toLowerCase()];
+            const { nome, cognome } = splitName(user?.name || p.email || '');
+            const addr = [user?.indirizzoVia, user?.indirizzoPaese, user?.indirizzoCap].filter(Boolean).join(', ');
+            rows.push({
+                nome, cognome,
+                cf: user?.codiceFiscale || '',
+                indirizzo: addr,
+                data: fmtDateTime(p.date),
+                sortKey: p.date || '',
+                tipo: KIND_LABEL[p.kind] || p.kind || '',
+                metodo: METHOD_LABEL_REPORT[p.method] || p.method,
+                importo: p.amount
+            });
+        });
+
+    // Sort by date ascending
+    rows.sort((a, b) => (a.sortKey || '').localeCompare(b.sortKey || ''));
+
+    // Build XLSX
+    const sheetData = [
+        ['Nome', 'Cognome', 'Codice Fiscale', 'Indirizzo', 'Data e Ora Pagamento', 'Tipo di Pagamento', 'Metodo Pagamento', 'Importo (€)'],
+        ...rows.map(r => [r.nome, r.cognome, r.cf, r.indirizzo, r.data, r.tipo, r.metodo, r.importo])
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws['!cols'] = [
+        { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 12 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Pagamenti Report Fiscale');
+    XLSX.writeFile(wb, filename);
+    return rows.length;
+}
+
+// Prefisso file per-org (multi-tenant): slug dello studio, niente brand hardcoded
+function _orgFilePrefix() {
+    return window._orgSlug ? String(window._orgSlug).replace(/[^\w-]/g, '') + '_' : '';
+}
+
 async function downloadWeeklyReport() {
-    const { from, to, label } = _getPreviousWeekRange();
+    const { from, to } = _getPreviousWeekRange();
     const pad = n => String(n).padStart(2, '0');
     const localDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const fromStr = localDate(from);
@@ -2261,89 +2305,15 @@ async function downloadWeeklyReport() {
     if (btn) { btn.innerHTML = '⏳ Generazione...'; btn.disabled = true; }
 
     try {
-        // Sync fresh data from Supabase before generating the report
-        await UserStorage.syncUsersFromSupabase();
-
-        // Pagamenti report fiscale: dal ledger payments, metodi tracciati fiscalmente.
-        const REPORT_METHODS = new Set(['carta', 'iban', 'stripe', 'contanti-report']);
-        const METHOD_LABEL_REPORT = { carta: 'Carta', iban: 'Bonifico', stripe: 'Stripe', 'contanti-report': 'Contanti con Report' };
-        const KIND_LABEL = {
-            session:          'Sessione',
-            membership:       'Abbonamento',
-            package_purchase: 'Pacchetto',
-            penalty_mora:     'Mora',
-            adjustment:       'Rettifica'
-        };
-
-        // Fetch diretto del ledger nel range (RLS filtra org_id)
-        const payments = (await _fetchPayments(fromStr, toStr)) || [];
-
-        // Build user map for codice_fiscale lookup
-        const allUsers = UserStorage.getAll();
-        const userMap = {};
-        allUsers.forEach(u => {
-            if (u.email) userMap[u.email.toLowerCase()] = u;
-        });
-
-        function splitName(fullName) {
-            if (!fullName) return { nome: '', cognome: '' };
-            const parts = (fullName || '').trim().split(/\s+/);
-            if (parts.length <= 1) return { nome: parts[0] || '', cognome: '' };
-            return { nome: parts[0], cognome: parts.slice(1).join(' ') };
-        }
-
-        function fmtDateTime(iso) {
-            if (!iso) return '';
-            const d = new Date(iso);
-            return isNaN(d) ? iso : d.toLocaleString('it-IT');
-        }
-
-        // Build rows dal ledger
-        const rows = [];
-        payments
-            .filter(p => REPORT_METHODS.has(p.method) && p.amount > 0)
-            .forEach(p => {
-                const user = userMap[(p.email || '').toLowerCase()];
-                const { nome, cognome } = splitName(user?.name || p.email || '');
-                const addr = [user?.indirizzoVia, user?.indirizzoPaese, user?.indirizzoCap].filter(Boolean).join(', ');
-                rows.push({
-                    nome,
-                    cognome,
-                    cf: user?.codiceFiscale || '',
-                    indirizzo: addr,
-                    data: fmtDateTime(p.date),
-                    sortKey: p.date || '',
-                    tipo: KIND_LABEL[p.kind] || p.kind || '',
-                    metodo: METHOD_LABEL_REPORT[p.method] || p.method,
-                    importo: p.amount
-                });
-            });
-
-        // Sort by date ascending
-        rows.sort((a, b) => (a.sortKey || '').localeCompare(b.sortKey || ''));
-
-        // Build XLSX
-        const sheetData = [
-            ['Nome', 'Cognome', 'Codice Fiscale', 'Indirizzo', 'Data e Ora Pagamento', 'Tipo di Pagamento', 'Metodo Pagamento', 'Importo (€)'],
-            ...rows.map(r => [r.nome, r.cognome, r.cf, r.indirizzo, r.data, r.tipo, r.metodo, r.importo])
-        ];
-
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet(sheetData);
-        ws['!cols'] = [
-            { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 12 }
-        ];
-        XLSX.utils.book_append_sheet(wb, ws, 'Pagamenti Report Fiscale');
-
         const fromFmt = fromStr.split('-').reverse().join('-');
         const toFmt   = toStr.split('-').reverse().join('-');
-        XLSX.writeFile(wb, `TB_Report_Fiscale_${fromFmt}_${toFmt}.xlsx`);
+        const count = await _generateFiscalXlsx(fromStr, toStr, `${_orgFilePrefix()}Report_Fiscale_${fromFmt}_${toFmt}.xlsx`);
 
         // Dismiss the banner after successful download
         dismissWeeklyReport();
 
         if (typeof showToast === 'function') {
-            showToast(`Report scaricato: ${rows.length} pagamenti fiscali`, 'success');
+            showToast(`Report scaricato: ${count} pagamenti fiscali`, 'success');
         }
     } catch (err) {
         console.error('[WeeklyReport] Error:', err);
@@ -2375,82 +2345,13 @@ async function downloadFiscalReport() {
     if (btn) { btn.innerHTML = '⏳ Generazione...'; btn.disabled = true; }
 
     try {
-        await UserStorage.syncUsersFromSupabase();
-
-        const REPORT_METHODS = new Set(['carta', 'iban', 'stripe', 'contanti-report']);
-        const METHOD_LABEL_REPORT = { carta: 'Carta', iban: 'Bonifico', stripe: 'Stripe', 'contanti-report': 'Contanti con Report' };
-        const KIND_LABEL = {
-            session:          'Sessione',
-            membership:       'Abbonamento',
-            package_purchase: 'Pacchetto',
-            penalty_mora:     'Mora',
-            adjustment:       'Rettifica'
-        };
-
-        // Fetch diretto di TUTTO il ledger (RLS filtra org_id)
-        const payments = (await _fetchPayments(null, null)) || [];
-
-        // User map for codice fiscale / address lookup
-        const allUsers = UserStorage.getAll();
-        const userMap = {};
-        allUsers.forEach(u => { if (u.email) userMap[u.email.toLowerCase()] = u; });
-
-        function splitName(fullName) {
-            if (!fullName) return { nome: '', cognome: '' };
-            const parts = (fullName || '').trim().split(/\s+/);
-            if (parts.length <= 1) return { nome: parts[0] || '', cognome: '' };
-            return { nome: parts[0], cognome: parts.slice(1).join(' ') };
-        }
-
-        function fmtDateTime(iso) {
-            if (!iso) return '';
-            const d = new Date(iso);
-            return isNaN(d) ? iso : d.toLocaleString('it-IT');
-        }
-
-        // Build rows dal ledger
-        const rows = [];
-        payments
-            .filter(p => REPORT_METHODS.has(p.method) && p.amount > 0)
-            .forEach(p => {
-                const user = userMap[(p.email || '').toLowerCase()];
-                const { nome, cognome } = splitName(user?.name || p.email || '');
-                const addr = [user?.indirizzoVia, user?.indirizzoPaese, user?.indirizzoCap].filter(Boolean).join(', ');
-                rows.push({
-                    nome, cognome,
-                    cf: user?.codiceFiscale || '',
-                    indirizzo: addr,
-                    data: fmtDateTime(p.date),
-                    sortKey: p.date || '',
-                    tipo: KIND_LABEL[p.kind] || p.kind || '',
-                    metodo: METHOD_LABEL_REPORT[p.method] || p.method,
-                    importo: p.amount
-                });
-            });
-
-        // Sort by date ascending
-        rows.sort((a, b) => (a.sortKey || '').localeCompare(b.sortKey || ''));
-
-        // Build XLSX
-        const sheetData = [
-            ['Nome', 'Cognome', 'Codice Fiscale', 'Indirizzo', 'Data e Ora Pagamento', 'Tipo di Pagamento', 'Metodo Pagamento', 'Importo (€)'],
-            ...rows.map(r => [r.nome, r.cognome, r.cf, r.indirizzo, r.data, r.tipo, r.metodo, r.importo])
-        ];
-
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet(sheetData);
-        ws['!cols'] = [
-            { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 12 }
-        ];
-        XLSX.utils.book_append_sheet(wb, ws, 'Pagamenti Report Fiscale');
-
         const today = new Date();
         const pad = n => String(n).padStart(2, '0');
         const dateFmt = `${pad(today.getDate())}-${pad(today.getMonth() + 1)}-${today.getFullYear()}`;
-        XLSX.writeFile(wb, `TB_Report_Fiscale_${dateFmt}.xlsx`);
+        const count = await _generateFiscalXlsx(null, null, `${_orgFilePrefix()}Report_Fiscale_${dateFmt}.xlsx`);
 
         if (typeof showToast === 'function') {
-            showToast(`Report fiscale scaricato: ${rows.length} pagamenti fiscali`, 'success');
+            showToast(`Report fiscale scaricato: ${count} pagamenti fiscali`, 'success');
         }
     } catch (err) {
         console.error('[FiscalReport] Error:', err);

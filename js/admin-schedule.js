@@ -10,9 +10,9 @@
 // Scrittura DIRETTA via supabaseClient.from(...): la RLS (*_admin con is_org_admin)
 // autorizza solo owner/admin della org. OGNI insert include org_id = window._orgId.
 //
-// NB: alcune funzioni "ponte" legacy (getScheduleForDate / saveScheduleForDate /
-// getScheduleWeekDates) sono ancora consumate da admin-calendar.js e admin-messaggi.js
-// (dominio Agent A): restano invariate come bridge sulla cache localStorage.
+// NB: l'unico bridge legacy sopravvissuto è getScheduleForDate, consumato da
+// admin-calendar.js e admin-messaggi.js: resta invariato come bridge sulla
+// cache localStorage (saveScheduleForDate/getScheduleWeekDates sono stati rimossi).
 // ════════════════════════════════════════════════════════════════════════════
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,16 +31,6 @@ let _schedData = {
 const _SCHED_ACTIVATION_WEEKS = 12;
 let _schedSelectedTemplateId = null;
 let _schedOverrideDate = null;       // 'YYYY-MM-DD' per l'editor override
-
-// @deprecated — fasce orarie hardcoded single-tenant. La fonte reale è ora
-// time_slots_config (per-org). Mantenuta SOLO come fallback: l'editor template
-// legacy in admin-settings.js (tab Impostazioni) vi fa ancora riferimento.
-// NON usare per nuova logica orari.
-const ALL_TIME_SLOTS = [
-    '05:20 - 06:40', '06:40 - 08:00', '08:00 - 09:20', '09:20 - 10:40',
-    '10:40 - 12:00', '12:00 - 13:20', '13:20 - 14:40', '14:40 - 16:00',
-    '16:00 - 17:20', '17:20 - 18:40', '18:40 - 20:00', '20:00 - 21:20'
-];
 
 // Nomi giorni indicizzati per weekday (0=Domenica .. 6=Sabato), come da schema DB.
 const _WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
@@ -1042,7 +1032,6 @@ async function schedSaveOverride(timeLabel, tsId) {
     const rawCap = (document.getElementById(`ovrCap-${tsId}`)?.value || '').trim();
 
     if (!stId) { _schedToast('⚠️ Seleziona un tipo di slot per l\'override.', 'error'); return; }
-    const st = _schedData.slotTypes.find(t => t.id === stId);
     // vuoto/invalido → null (= default del tipo); '0' resta uno 0 legittimo
     const capacity = rawCap === '' ? null : _schedParseInt(rawCap, null);
 
@@ -1085,10 +1074,9 @@ async function schedDeleteOverride(timeLabel) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// BRIDGE LEGACY — consumati da admin-calendar.js / admin-messaggi.js (dominio Agent A)
-// Mantengono il contratto sulla cache localStorage degli override (BookingStorage):
-// restituiscono/salvano lo schedule per-data nel vecchio formato [{time,type,...}].
-// NON rimuovere finché Agent A non migra quei call-site alle nuove RPC.
+// BRIDGE LEGACY — getScheduleForDate è consumata da admin-calendar.js e
+// admin-messaggi.js: mantiene il contratto sulla cache localStorage degli
+// override (BookingStorage) nel vecchio formato [{time,type,...}].
 // ════════════════════════════════════════════════════════════════════════════
 
 // Schedule effettivo per una data (slot configurati). Vecchio formato per il calendario.
@@ -1118,41 +1106,3 @@ function getScheduleForDate(dateFormatted, dayName) {
     }
 }
 
-// Salva lo schedule di una data nella cache localStorage (vecchio formato).
-function saveScheduleForDate(dateFormatted, dayName, slots) {
-    try {
-        const overrides = BookingStorage.getScheduleOverrides();
-        if (!slots || slots.length === 0) {
-            delete overrides[dateFormatted];
-        } else {
-            overrides[dateFormatted] = slots;
-        }
-        BookingStorage.saveScheduleOverrides(overrides, [dateFormatted]);
-    } catch (e) {
-        console.error('[Schedule] saveScheduleForDate:', e);
-    }
-}
-
-// Date della settimana (Lun→Dom) per un dato offset. Usata da bridge/calendario.
-function getScheduleWeekDates(offset = 0) {
-    const today = new Date();
-    const currentDay = today.getDay();
-    const diff = currentDay === 0 ? -6 : 1 - currentDay;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + diff + (offset * 7));
-
-    const dates = [];
-    const dayNames = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
-    for (let i = 0; i < 7; i++) {
-        const date = new Date(monday);
-        date.setDate(monday.getDate() + i);
-        dates.push({
-            date,
-            dayName: dayNames[i],
-            formatted: (typeof formatAdminDate === 'function')
-                ? formatAdminDate(date)
-                : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-        });
-    }
-    return dates;
-}

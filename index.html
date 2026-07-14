@@ -32,10 +32,10 @@
     <link rel="icon" type="image/png" href="images/logo-palestria.png">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://rwaiekhllujximrqftmp.supabase.co" crossorigin>
-    <link rel="stylesheet" href="css/style.css?v=11">
+    <link rel="stylesheet" href="css/style.css?v=12">
     <link rel="stylesheet" href="css/login.css?v=6">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=3"></script>
+<script src="js/branding-boot.js?v=4"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -92,9 +92,11 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         <span data-org-duration>80 minuti</span>
                     </div>
-                    <a href="https://maps.app.goo.gl/hJ8iM3DVdYRC5LJM7" data-org-maps class="hero-info-item hero-info-link" target="_blank" rel="noopener">
+                    <!-- Nascosto finché la org non configura il link Maps in Impostazioni →
+                         Dati azienda (niente indirizzo/link demo per i tenant nuovi). -->
+                    <a href="#" data-org-maps class="hero-info-item hero-info-link" target="_blank" rel="noopener" style="display:none">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        <span data-org-address>Via Demo 1 — Milano</span>
+                        <span data-org-address></span>
                     </a>
                 </div>
             </div>
@@ -254,15 +256,15 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/egress-debug.js?v=1"></script>
     <script src="js/supabase-client.js?v=11"></script>
-    <script src="js/org-settings.js?v=9"></script>
+    <script src="js/org-settings.js?v=10"></script>
     <script src="js/ui.js?v=4"></script>
-    <script src="js/data.js?v=102"></script>
-    <script src="js/calendar.js?v=10"></script>
-    <script src="js/booking.js?v=26"></script>
-    <script src="js/auth.js?v=37"></script>
+    <script src="js/data.js?v=103"></script>
+    <script src="js/calendar.js?v=11"></script>
+    <script src="js/booking.js?v=27"></script>
+    <script src="js/auth.js?v=38"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
-    <script src="js/maintenance.js?v=3"></script>
+    <script src="js/maintenance.js?v=4"></script>
     <script src="js/push.js?v=25"></script>
     <script>
         // Renderizza il calendario subito con i dati in localStorage (se presenti),

@@ -31,7 +31,7 @@
 
 
 // ── Privacy toggle ──────────────────────────────────────────────────────────
-const SENSITIVE_IDS = ['totalUnpaid','totalDebtors','totalCreditors','totalCreditAmount','monthlyRevenue','revenueChange'];
+const SENSITIVE_IDS = ['totalUnpaid','totalCreditAmount','monthlyRevenue','revenueChange'];
 let _sensitiveHidden = localStorage.getItem('adminSensitiveHidden') === 'true';
 
 // Scrive il valore nell'elemento e lo salva in dataset; rispetta la modalità privacy
@@ -61,7 +61,12 @@ function _applyPrivacyMask() {
         if (cl) cl.style.display = 'none';
     }
     const btn = document.getElementById('btnToggleSensitive');
-    if (btn) btn.textContent = _sensitiveHidden ? '🙈' : '👁';
+    if (btn) {
+        btn.textContent = _sensitiveHidden ? '🙈' : '👁';
+        // Stato "premuto" letto da sidebar desktop (aria-pressed), bottom sheet
+        // mobile (meta Nascosti/Visibili) e CSS .admin-tab--privacy.active
+        btn.classList.toggle('active', _sensitiveHidden);
+    }
 }
 
 function toggleSensitiveData() {
@@ -260,8 +265,10 @@ function switchTab(tabName) {
     // Persisti il tab attivo per il refresh
     try { sessionStorage.setItem('adminActiveTab', tabName); } catch {}
 
-    // Update tab buttons
+    // Update tab buttons. Il bottone privacy (#btnToggleSensitive) non è un tab:
+    // la sua .active codifica lo stato "dati nascosti" e non va azzerata qui.
     document.querySelectorAll('.admin-tab').forEach(tab => {
+        if (tab.id === 'btnToggleSensitive') return;
         tab.classList.remove('active');
         if (tab.dataset.tab === tabName) {
             tab.classList.add('active');

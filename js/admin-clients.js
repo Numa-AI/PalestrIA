@@ -7,7 +7,7 @@
  * dettaglio espandibile per cliente.
  *
  * COME FUNZIONA
- * - Stato tab: openClientIndex (card aperta), clientsSearchQuery e i flag filtro
+ * - Stato tab: openClientIndex (card aperta) e i flag filtro
  *   clientCertFilter/clientAssicFilter/clientAnagFilter/clientPrivacyFilter/clientPushFilter.
  * - Filtri: toggle*Filter() attivano un filtro per volta (_clearOtherFilters), aggiornano i
  *   pulsanti UI (_syncFilterButtons → #certFilterBtn/#assicFilterBtn/#anagFilterBtn/
@@ -31,7 +31,6 @@ let openClientIndex = null;
 const CLIENTS_PAGE_SIZE = 20;
 let clientsShown = 0;
 let _clientsFiltered = null;
-let clientsSearchQuery = '';
 let clientCertFilter  = false;
 let clientAssicFilter = false;
 let clientAnagFilter  = false;
@@ -322,11 +321,14 @@ function clearClientsSearch() {
     const searchInput = document.getElementById('clientSearchInput');
     if (searchInput) searchInput.value = '';
     closeClientsSearchDropdown();
-    // Ripristina stat cards e filtri
+    // Ripristina stat cards e filtri (chips comprese: showSingleClientCard le
+    // nasconde con style inline che vincerebbe per sempre sulla classe .open)
     const statsGrid = document.getElementById('clientsStatsGrid');
     const filterToggle = document.getElementById('clientsFilterToggle');
+    const filterChips = document.getElementById('clientsFilterChips');
     if (statsGrid) statsGrid.style.display = '';
     if (filterToggle) filterToggle.style.display = '';
+    if (filterChips) filterChips.style.display = '';
     // Nascondi lista (torna allo stato iniziale)
     const listEl = document.getElementById('clientsList');
     if (listEl) { listEl.innerHTML = ''; listEl.style.display = 'none'; }
@@ -443,20 +445,6 @@ function _updateClientsHints() {
     document.getElementById('statcard-clienti-attivi')?.classList.toggle('active', clientsListMode === 'active');
 }
 
-async function refreshClients() {
-    const btn = document.getElementById('refreshClientsBtn');
-    if (btn) { btn.textContent = '↻ Caricamento...'; btn.disabled = true; }
-    try {
-        await UserStorage.syncUsersFromSupabase();
-        renderClientsTab();
-    } catch (e) {
-        console.error('[refreshClients] error:', e);
-        if (typeof showToast === 'function') showToast('⚠️ Errore ricarica clienti. Riprova.', 'error', 4000);
-    } finally {
-        if (btn) { btn.textContent = '↻ Ricarica'; btn.disabled = false; }
-    }
-}
-
 /**
  * Refreshes only the currently open client card in-place (no full re-render).
  * Works both in "list" mode and "single card from search" mode.
@@ -514,11 +502,14 @@ function renderClientsTab() {
     const _allClients = getAllClients();
     const _activeClients = getActiveClients(_allClients);
     renderClientsSummary(_allClients, _activeClients);
-    // Ripristina stat cards e filtri (nascosti durante ricerca)
+    // Ripristina stat cards e filtri (nascosti durante ricerca), chips comprese:
+    // lo style inline 'none' di showSingleClientCard vincerebbe sulla classe .open
     const statsGrid = document.getElementById('clientsStatsGrid');
     const filterToggle = document.getElementById('clientsFilterToggle');
     const filterResult = document.getElementById('clientsFilterResult');
+    const _filterChips = document.getElementById('clientsFilterChips');
     if (filterToggle) filterToggle.style.display = '';
+    if (_filterChips) _filterChips.style.display = '';
     // Pulisci campo ricerca
     const searchInput = document.getElementById('clientSearchInput');
     if (searchInput) searchInput.value = '';
@@ -1174,7 +1165,6 @@ function openEditClientPopup(index, whatsapp, email, name) {
     const paese      = userRecord?.indirizzoPaese || '';
     const cap        = userRecord?.indirizzoCap || '';
     const docFirmato = userRecord?.documentoFirmato || false;
-    const stripeEn   = userRecord?.stripeEnabled || false;
 
     // Remove existing popup if any
     document.getElementById('editClientPopupOverlay')?.remove();
@@ -1217,13 +1207,6 @@ function openEditClientPopup(index, whatsapp, email, name) {
                         <label for="cedit-docfirmato-${index}" class="cedit-toggle-label">Documento firmato</label>
                         <label class="cedit-toggle-switch">
                             <input type="checkbox" id="cedit-docfirmato-${index}" ${docFirmato ? 'checked' : ''}>
-                            <span class="cedit-toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="cedit-toggle-row">
-                        <label for="cedit-stripe-${index}" class="cedit-toggle-label">Abilita Stripe</label>
-                        <label class="cedit-toggle-switch">
-                            <input type="checkbox" id="cedit-stripe-${index}" ${stripeEn ? 'checked' : ''}>
                             <span class="cedit-toggle-slider"></span>
                         </label>
                     </div>
@@ -1291,7 +1274,6 @@ async function _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName
         if (ef.paese !== undefined) users[userIdx].indirizzoPaese  = ef.paese || null;
         if (ef.cap !== undefined)   users[userIdx].indirizzoCap    = ef.cap || null;
         if (ef.documentoFirmato !== undefined) users[userIdx].documentoFirmato = !!ef.documentoFirmato;
-        if (ef.stripeEnabled !== undefined)    users[userIdx].stripeEnabled    = !!ef.stripeEnabled;
 
         _saveUsers(users);
 
@@ -1350,7 +1332,6 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
     const newPaese    = normalizeComune(document.getElementById(`cedit-paese-${index}`)?.value || '');
     const newCap      = (document.getElementById(`cedit-cap-${index}`)?.value || '').trim();
     const newDocFirmato = document.getElementById(`cedit-docfirmato-${index}`)?.checked || false;
-    const newStripeEn   = document.getElementById(`cedit-stripe-${index}`)?.checked || false;
     if (!newName) { showAlert('Il nome è obbligatorio.', { type:'warn' }); return; }
 
     const normOld      = normalizePhone(oldWhatsapp);
@@ -1439,7 +1420,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
         // Fase 2 — sync + profilo locale (best-effort: la rinomina è già persistita lato server)
         try {
             await BookingStorage.syncFromSupabase().catch(e => console.warn('[Clients] booking sync:', e?.message || e));
-            await _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, { cf: newCf, via: newVia, paese: newPaese, cap: newCap, documentoFirmato: newDocFirmato, stripeEnabled: newStripeEn }, true);
+            await _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, { cf: newCf, via: newVia, paese: newPaese, cap: newCap, documentoFirmato: newDocFirmato }, true);
         } catch (e) {
             console.error('[saveClientEdit] post-rename sync/UI exception:', e);
             showToast('Nome aggiornato. Aggiornamento vista non riuscito — ricarica la pagina per vederlo dappertutto.', 'error', 6000);
@@ -1464,7 +1445,7 @@ async function saveClientEdit(index, oldWhatsapp, oldEmail) {
     BookingStorage.replaceAllBookings(bookings);
 
     // Profilo locale + cert/assic + sessione
-    await _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, { cf: newCf, via: newVia, paese: newPaese, cap: newCap, documentoFirmato: newDocFirmato, stripeEnabled: newStripeEn });
+    await _saveClientEditLocalProfile(index, oldWhatsapp, oldEmail, newName, newWhatsapp, newEmail, newCert, newAssic, normOld, normNewPhone, { cf: newCf, via: newVia, paese: newPaese, cap: newCap, documentoFirmato: newDocFirmato });
     closeEditClientPopup();
 }
 

@@ -88,8 +88,9 @@
         }
         var safeMaps = safeHttpUrl(snap.maps);
         if (safeMaps) {
+            // L'elemento è nascosto di default nell'HTML: si mostra solo con URL configurato
             var mapEls = document.querySelectorAll('a[data-org-maps]');
-            for (var m = 0; m < mapEls.length; m++) mapEls[m].href = safeMaps;
+            for (var m = 0; m < mapEls.length; m++) { mapEls[m].href = safeMaps; mapEls[m].style.display = ''; }
         }
         root.setAttribute('data-branded', '1'); // rivela gli elementi nascosti in ogni caso
     }

@@ -343,7 +343,18 @@ function _importaOnSearch(val) {
     _importaSearchTimer = setTimeout(() => {
         _importaSearch = val.trim();
         _importaPage = 0;
-        _importaRenderGrid();
+        // Re-render COMPLETO (come _importaPickCat/_importaClearSearch): la bulk bar
+        // "Importa tutti N" e il bottone ✕ vivono fuori da #importaGrid e con il solo
+        // _importaRenderGrid() restavano stantii (conteggio vecchio, ✕ assente).
+        const container = document.getElementById('importaContainer');
+        if (!container) { _importaRenderGrid(); return; }
+        _renderImportaUI(container);
+        // L'innerHTML ricostruisce l'input: ripristina focus e cursore a fine testo
+        const input = document.getElementById('importaSearchInput');
+        if (input) {
+            input.focus();
+            try { input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+        }
     }, 250);
 }
 

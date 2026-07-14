@@ -607,8 +607,11 @@ function renderAdminDayView(dateInfo) {
     window._currentAdminDate = dateInfo;
     BookingStorage.processPendingCancellations();
     // Ripulisci eventuali picker orfani (modal montati su <body>) lasciati
-    // dal render precedente quando si cambia giorno.
+    // dal render precedente quando si cambia giorno. Rimuovi anche la classe
+    // 'extra-picker-open' dal body: se resta, overflow:hidden blocca lo scroll
+    // e nasconde dock/FAB (succedeva dopo bookForClient → re-render).
     document.querySelectorAll('body > .extra-picker').forEach(p => p.remove());
+    document.body.classList.remove('extra-picker-open');
     const dayView = document.getElementById('adminDayView');
     dayView.innerHTML = '';
 
@@ -907,7 +910,12 @@ async function deleteBooking(bookingId, bookingName) {
     // conversione group-class → small-group (stessa logica di cancel_booking).
     async function _cancelLocal() {
         const ok = await BookingStorage.cancelAndConvertSlot(booking.id);
-        if (!ok) return false;
+        if (!ok) {
+            // Feedback esplicito: un return silenzioso faceva credere all'admin
+            // di aver annullato mentre la prenotazione restava confermata.
+            if (typeof showToast === 'function') showToast('⚠️ Annullamento non riuscito. Riprova.', 'error', 5000);
+            return false;
+        }
         invalidateStatsCache();
         if (selectedAdminDay) renderAdminDayView(selectedAdminDay);
         if (typeof showToast === 'function') showToast('✅ Prenotazione annullata con successo.', 'success', 4000);

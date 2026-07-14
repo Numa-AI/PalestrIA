@@ -20,10 +20,6 @@
         return { icon: '', label: t };
     }
 
-    // ---- Stato filtri contestuali ------------------------------
-    // Per ogni contesto memorizziamo i filtri attivi (count per badge)
-    const filterCounts = { clients: 0, registro: 0, analytics: 0, messaggi: 0 };
-
     // ---- Bottom sheet primitives -------------------------------
     function openSheet(sheetId, backdropId) {
         const sheet = document.getElementById(sheetId);

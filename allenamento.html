@@ -27,11 +27,11 @@
     <link rel="icon" type="image/png" href="images/logo-palestria.png">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://rwaiekhllujximrqftmp.supabase.co" crossorigin>
-    <link rel="stylesheet" href="css/style.css?v=11">
+    <link rel="stylesheet" href="css/style.css?v=12">
     <link rel="stylesheet" href="css/login.css?v=6">
     <link rel="stylesheet" href="css/allenamento.css?v=59">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=3"></script>
+<script src="js/branding-boot.js?v=4"></script>
 </head>
 <body class="allenamento-body">
     <nav class="navbar">
@@ -173,8 +173,8 @@
     <script src="js/supabase-client.js?v=11"></script>
     <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=102"></script>
-    <script src="js/auth.js?v=37"></script>
+    <script src="js/data.js?v=103"></script>
+    <script src="js/auth.js?v=38"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
     <!-- chart-mini.js non serve: usa drawDarkLineChart() interno -->
@@ -4473,7 +4473,9 @@
             await _loadPdfScript('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js');
         }
 
-        const _IMG_PROXY = 'https://qlbdblkkuxqqrodqojjf.supabase.co/functions/v1/image-proxy?url=';
+        // Derivato da SUPABASE_URL (supabase-client.js): niente project-ref hardcoded
+        // (quello vecchio puntava a un progetto Supabase dismesso).
+        const _IMG_PROXY = `${SUPABASE_URL}/functions/v1/image-proxy?url=`;
 
         async function _imgToBase64(url) {
             if (!url) return null;
@@ -5229,7 +5231,7 @@
             });
         }
     </script>
-    <script src="js/allenamento-report.js?v=5"></script>
+    <script src="js/allenamento-report.js?v=6"></script>
     <script>
         // ── Mobile nav: barra singola + bottom sheet (≤768px) ──────────────
         // Proxy dei pill originali: il click su una voce dello sheet richiama

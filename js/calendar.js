@@ -15,7 +15,7 @@
  *   setupMobileStickyOffsets() (.navbar/.mobile-week-nav/.mobile-day-selector).
  * - Slot del giorno: _daySlots(date) usa l'override puntuale se presente, altrimenti il template
  *   della settimana ATTIVATA che contiene la data (getWeeklySchedule date-aware). Date helper:
- *   getWeekDates()/getWeekDatesDesktop()/formatDate(); disponibilità: dateHasAvailableSlots(),
+ *   getWeekDatesDesktop()/formatDate(); disponibilità: dateHasAvailableSlots(),
  *   weekHasSlots()/weekHasSlotsDesktop().
  * - Render slot: createSlot()/createMobileSlotCard() costruiscono le card; spotsColorClass()
  *   colora i posti residui; _hexToRgba() deriva i gradienti dal colore di slot_types; selectSlot()/
@@ -185,38 +185,6 @@ function setupCalendarControls() {
             }
         }, { passive: true });
     }
-}
-
-function getWeekDates(offset = 0) {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-
-    // Dopo le 20:30 non ci sono più lezioni disponibili oggi: parti da domani
-    const minutesNow = now.getHours() * 60 + now.getMinutes();
-    if (offset === 0 && minutesNow >= 20 * 60 + 30) {
-        today.setDate(today.getDate() + 1);
-    }
-
-    // Start from today (offset 0 = today, offset 1 = today + 7 days, etc.)
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() + offset * 7);
-
-    const allDayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    const dates = [];
-
-    for (let i = 0; i < 7; i++) {
-        const date = new Date(startDate);
-        date.setDate(startDate.getDate() + i);
-        dates.push({
-            date: date,
-            dayName: allDayNames[date.getDay()],
-            formatted: formatDate(date),
-            displayDate: `${date.getDate()}/${date.getMonth() + 1}`
-        });
-    }
-
-    return dates;
 }
 
 // Desktop: mostra Lunedì-Domenica della settimana corrente

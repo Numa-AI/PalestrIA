@@ -1586,19 +1586,6 @@ body.nav-open {
     opacity: 0.95;
 }
 
-.credit-used-notice {
-    display: inline-block;
-    background: rgba(34, 197, 94, 0.18);
-    border: 1px solid rgba(34, 197, 94, 0.4);
-    border-radius: 8px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.85rem !important;
-    font-weight: 600;
-    color: #d4f7e0 !important;
-    opacity: 1 !important;
-    margin: 0.4rem 0 0.25rem !important;
-}
-
 .cal-buttons {
     display: flex;
     gap: 0.6rem;

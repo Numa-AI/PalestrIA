@@ -23,10 +23,7 @@
     // finché è false NON sblocchiamo feature premium (fail-closed prudente lato UI).
     let _loaded = false;
 
-    // Stati di abbonamento considerati "attivi" (accesso pieno alle feature del piano).
-    const ACTIVE_STATUSES = ['trialing', 'active'];
-
-    // Carica le entitlements dal server e le mette in cache (memoria + window._entitlements).
+    // Carica le entitlements dal server e le mette in cache.
     // Idempotente: se già caricate, ritorna la cache senza richiamare la RPC.
     // In caso di errore NON marca _loaded → has() resta in stato "in caricamento"
     // (feature premium ancora bloccate lato UI). L'autorità resta comunque server-side.
@@ -43,7 +40,6 @@
             // La RPC ritorna jsonb (oggetto) oppure null se non c'è subscription per la org.
             _ent = data || null;
             _loaded = true; // esito noto: da ora has() riflette il piano reale
-            window._entitlements = _ent;
         } catch (e) {
             console.warn('[Entitlements] load() fallita:', e && e.message);
         }
@@ -69,21 +65,6 @@
         return f[flag] !== false;
     }
 
-    // Codice del piano (starter/pro/business) o null.
-    function plan() {
-        return (_ent && _ent.plan) || null;
-    }
-
-    // Stato dell'abbonamento (trialing/active/past_due/...) o null.
-    function status() {
-        return (_ent && _ent.status) || null;
-    }
-
-    // true se l'abbonamento è in uno stato attivo (trial o pagante).
-    function isActive() {
-        return ACTIVE_STATUSES.indexOf(status()) !== -1;
-    }
-
     // Numero massimo di clienti del piano (null = illimitato, anche se non caricate).
     function maxClients() {
         return (_ent && _ent.max_clients != null) ? _ent.max_clients : null;
@@ -99,13 +80,6 @@
     function atClientLimit() {
         const max = maxClients();
         return max != null && clientsCount() >= max;
-    }
-
-    // Clienti ancora aggiungibili prima del limite (null = illimitato).
-    function remainingClients() {
-        const max = maxClients();
-        if (max == null) return null;
-        return Math.max(max - clientsCount(), 0);
     }
 
     // Crea (o riusa) un badge "Disponibile nel piano superiore" associato a un elemento.
@@ -204,13 +178,9 @@
     window.Entitlements = {
         load,
         has,
-        plan,
-        status,
-        isActive,
         maxClients,
         clientsCount,
         atClientLimit,
-        remainingClients,
         applyFeatureGating
     };
 })();

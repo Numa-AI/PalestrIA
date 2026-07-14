@@ -102,11 +102,14 @@
 
     // Realtime: reagisci ai cambiamenti di org_settings della propria org
     try {
-        const orgId = (typeof window !== 'undefined') ? window._orgId : null;
         // Registrato nel registry di silent-refresh: così viene ripulito su unload e
         // soprattutto RIVIVIBILE da _reconnectDeadChannels dopo il wake da idle/sleep
         // (prima restava morto → maintenance non si aggiornava più finché non ricaricavi).
         const _maintRtFactory = function () {
+            // orgId letto DENTRO la factory: all'eval dello script initAuth (async)
+            // non ha ancora settato window._orgId — catturarlo fuori congelava per
+            // sempre il ramo senza filtro (subscribe su TUTTA org_settings).
+            const orgId = (typeof window !== 'undefined') ? window._orgId : null;
             return supabaseClient.channel('maintenance-rt')
                 .on('postgres_changes',
                     orgId

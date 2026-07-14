@@ -29,11 +29,11 @@
     <link rel="icon" type="image/png" href="images/logo-palestria.png">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://rwaiekhllujximrqftmp.supabase.co" crossorigin>
-    <link rel="stylesheet" href="css/style.css?v=11">
+    <link rel="stylesheet" href="css/style.css?v=12">
     <link rel="stylesheet" href="css/login.css?v=6">
     <link rel="stylesheet" href="css/prenotazioni.css?v=11">
 <script src="js/ls-namespace.js?v=1"></script>
-<script src="js/branding-boot.js?v=3"></script>
+<script src="js/branding-boot.js?v=4"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -277,57 +277,18 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.1/dist/umd/supabase.min.js" integrity="sha384-nBSomYN4UWX4we7Pw5GsQDkjtwLh2Wde+3szWl5Lzf0zuN9XncHIZLNoucos4C7f" crossorigin="anonymous"></script>
     <script src="js/egress-debug.js?v=1"></script>
     <script src="js/supabase-client.js?v=11"></script>
-    <script src="js/org-settings.js?v=9"></script>
+    <script src="js/org-settings.js?v=10"></script>
     <script src="js/ui.js?v=4"></script>
     <script src="js/modals.js?v=2"></script>
-    <script src="js/data.js?v=102"></script>
-    <script src="js/auth.js?v=37"></script>
+    <script src="js/data.js?v=103"></script>
+    <script src="js/auth.js?v=38"></script>
     <script src="js/silent-refresh.js?v=5"></script>
     <script src="js/app-watchdog.js?v=1"></script>
-    <script src="js/maintenance.js?v=3"></script>
+    <script src="js/maintenance.js?v=4"></script>
     <script src="js/push.js?v=25"></script>
-    <script src="js/chart-mini.js?v=13"></script>
+    <script src="js/chart-mini.js?v=14"></script>
     <script>
         // ── Guard async: aspetta la sessione Supabase prima di controllare ─
-
-        // ── Rimuovi evento dal calendario (ICS METHOD:CANCEL) ───────────
-        function _buildCalDates(dateStr, timeStr) {
-            const p = _parseSlotTime(timeStr);
-            if (!p) return { start: '', end: '' };
-            const sH = String(p.startH).padStart(2,'0'), sM = String(p.startM).padStart(2,'0');
-            const eH = String(p.endH).padStart(2,'0'), eM = String(p.endM).padStart(2,'0');
-            const d = dateStr.replace(/-/g, '');
-            return { start: `${d}T${sH}${sM}00`, end: `${d}T${eH}${eM}00` };
-        }
-
-        function downloadCancelIcs(booking) {
-            const { start, end } = _buildCalDates(booking.date, booking.time);
-            const uid = `${booking.id}@palestria.app`;
-            const title = `Allenamento – ${SLOT_NAMES[booking.slotType]}`;
-            const ics = [
-                'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//PalestrIA//IT',
-                'METHOD:CANCEL',
-                'BEGIN:VTIMEZONE','TZID:Europe/Rome',
-                'BEGIN:STANDARD','DTSTART:19701025T030000','RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10',
-                'TZOFFSETFROM:+0200','TZOFFSETTO:+0100','TZNAME:CET','END:STANDARD',
-                'BEGIN:DAYLIGHT','DTSTART:19700329T020000','RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3',
-                'TZOFFSETFROM:+0100','TZOFFSETTO:+0200','TZNAME:CEST','END:DAYLIGHT',
-                'END:VTIMEZONE',
-                'BEGIN:VEVENT',`UID:${uid}`,
-                `DTSTART;TZID=Europe/Rome:${start}`,`DTEND;TZID=Europe/Rome:${end}`,
-                `SUMMARY:${title}`,'STATUS:CANCELLED','SEQUENCE:1',
-                'END:VEVENT','END:VCALENDAR'
-            ].join('\r\n');
-            const blob = new Blob([ics], { type: 'text/calendar' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'annulla-allenamento.ics';
-            a.click(); URL.revokeObjectURL(url);
-        }
-
-        function _offerCalendarRemoval(booking) {
-            // no-op: rimozione calendario non automatizzabile senza API OAuth
-        }
 
         // ── Date formatter ───────────────────────────────────────────────
         function formatBookingDate(dateStr) {
@@ -351,7 +312,9 @@
 
             // Fill hero — nome e cognome completi (parità §0.3 con l'app Flutter)
             document.getElementById('prenoUserName').textContent = (user.name || '').trim();
-            document.getElementById('prenoAccessCode').innerHTML = 'Codice accesso: <strong>4729 + &#9650;</strong>';
+            _applyAccessCode();
+            // Ri-applica quando OrgSettings ha finito il fetch (al primo load la cache può essere vuota)
+            if (typeof OrgSettings !== 'undefined') { OrgSettings.load().then(_applyAccessCode).catch(() => {}); }
             document.getElementById('prenoAvatar').textContent = user.name.charAt(0).toUpperCase();
 
             renderPrenoList();
@@ -359,6 +322,23 @@
             renderClientBilling();
             _startPolling();
             _setupRealtime();
+        }
+
+        // Codice accesso per-org (Impostazioni → Dati azienda). Nascosto se non
+        // configurato: niente più codice hardcoded di un altro studio (multi-tenant).
+        function _applyAccessCode() {
+            const el = document.getElementById('prenoAccessCode');
+            if (!el) return;
+            const code = (typeof OrgSettings !== 'undefined') ? OrgSettings.getString('company.access_code', '') : '';
+            if (code) {
+                el.textContent = 'Codice accesso: ';
+                const strong = document.createElement('strong');
+                strong.textContent = code;
+                el.appendChild(strong);
+                el.style.display = '';
+            } else {
+                el.style.display = 'none';
+            }
         }
 
         // Polling 120s — re-render se l'utente ha prenotazioni con cancellation_requested.
@@ -711,7 +691,6 @@
                 }
             }
             if (typeof notifyAdminCancellation === 'function') notifyAdminCancellation(booking);
-            _offerCalendarRemoval(booking);
             renderPrenoList();
         }
 

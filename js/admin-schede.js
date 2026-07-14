@@ -873,41 +873,12 @@ function _schedeActualSlotTypeColor(type) {
     return (typeof getSlotColor === 'function') ? getSlotColor(type) : '';
 }
 
-// hex (#rrggbb) → rgba con alpha. Locale: calendar.js (che ha _hexToRgba) non è
-// caricato su admin.html. Ritorna il colore grezzo se non è un hex a 6 cifre.
-function _schedeActualHexToRgba(hex, alpha) {
-    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
-    if (!m) return hex || '';
-    const n = parseInt(m[1], 16);
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
-
-// Avatar helpers — colore stabile (hash del nome) + iniziali
-function _saAvatarColor(name) {
-    const palette = ['blue', 'green', 'amber', 'purple', 'pink'];
-    const s = String(name || '');
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return palette[Math.abs(h) % palette.length];
-}
-function _saInitials(name) {
-    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return '?';
-    const a = parts[0][0] || '';
-    const b = parts.length > 1 ? (parts[parts.length - 1][0] || '') : '';
-    return (a + b).toUpperCase();
-}
-
 function _renderActualView(container) {
     const now = new Date();
     const todayFormatted = (typeof formatAdminDate === 'function')
         ? formatAdminDate(now)
         : `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const { prevIdx, currentIdx, nextIdx } = _schedeActualPickSlots(now);
-
-    const allUsers = _schedeGetRegisteredUsers();
-    const userById = {};
-    for (const u of allUsers) userById[u.userId] = u;
 
     // Precalcolo: user_ids con almeno una scheda attiva. Chi non e' nel set
     // viene marcato "no-plan" (rosso tenue) → l'admin vede subito chi non
@@ -1013,7 +984,7 @@ function _schedeActualRenderSlot(position, slotIdx, ctx) {
     // Tag colorato col colore del tipo slot org solo per lo slot LIVE: prev/next
     // restano mutati (grigio/viola) tramite le regole CSS per posizione.
     const typeStyle = (position === 'current' && slotColor)
-        ? `style="background:${_schedeActualHexToRgba(slotColor, 0.18)};color:${slotColor};border-color:${_schedeActualHexToRgba(slotColor, 0.4)};"`
+        ? `style="background:${_schedeHexRgba(slotColor, 0.18)};color:${slotColor};border-color:${_schedeHexRgba(slotColor, 0.4)};"`
         : '';
     const startTime = slotTime.split(' - ')[0] || '';
     const endTime   = slotTime.split(' - ')[1] || '';
@@ -1071,8 +1042,9 @@ function _schedeActualRenderSlot(position, slotIdx, ctx) {
             const name = b.name || b.clientName || 'Sconosciuto';
             const hasUid = !!uid;
             const noPlan = hasUid && ctx.usersWithActivePlan && !ctx.usersWithActivePlan.has(uid);
-            const avColor  = _saAvatarColor(name);
-            const initials = _saInitials(name);
+            // Helper avatar condivisi con la lista Clienti: hash → palette Actual
+            const avColor  = ['blue', 'green', 'amber', 'purple', 'pink'][_schedeAvatarHash(name)];
+            const initials = _schedeAvatarInitials(name);
 
             let logBadgeHtml = '';
             let reportBadgeHtml = '';
@@ -1569,19 +1541,22 @@ function _renderClientsList(container) {
     container.innerHTML = html;
 }
 
-// Avatar helpers (Variante B mockup): initials + colored bg per client name.
+// Avatar helpers CONDIVISI (lista Clienti + vista Actual): initials + hash 0-4
+// stabile del nome, mappato alle due convenzioni CSS nei call-site.
 function _schedeAvatarInitials(name) {
     const parts = (name || '').trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return '?';
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
 }
-function _schedeAvatarColorClass(name) {
+function _schedeAvatarHash(name) {
     let h = 0;
     const s = name || '';
     for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-    const idx = Math.abs(h) % 5;
-    return 'c' + (idx + 1);
+    return Math.abs(h) % 5;
+}
+function _schedeAvatarColorClass(name) {
+    return 'c' + (_schedeAvatarHash(name) + 1);
 }
 
 function _schedeFilterClientCards() {
@@ -1591,35 +1566,48 @@ function _schedeFilterClientCards() {
     });
 }
 
-// Quick assign: search any registered client
-var _schedeQuickSearchClient = _debounce(function() {
-    const input = document.getElementById('schedeQuickClientSearch');
-    const dropdown = document.getElementById('schedeQuickClientDropdown');
-    const q = (input?.value || '').toLowerCase();
-    if (!q || q.length < 1) { dropdown.style.display = 'none'; return; }
+// Factory per le ricerche-clienti debounced (Quick assign + editor scheda):
+// stessa logica, cambiano solo gli id degli elementi, il testo "nessun
+// risultato" e il nome (globale) della funzione di selezione nell'onclick.
+function _schedeMakeClientSearch(inputId, dropdownId, selectFnName, emptyText) {
+    return _debounce(function () {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+        const q = (input?.value || '').toLowerCase();
+        if (!q || q.length < 1) { dropdown.style.display = 'none'; return; }
 
-    const matches = _schedeGetRegisteredUsers().filter(u =>
-        (u.name || '').toLowerCase().includes(q) ||
-        (u.email || '').toLowerCase().includes(q)
-    );
+        const matches = _schedeGetRegisteredUsers().filter(u =>
+            (u.name || '').toLowerCase().includes(q) ||
+            (u.email || '').toLowerCase().includes(q)
+        );
 
-    if (matches.length === 0) {
-        dropdown.innerHTML = '<div class="dropdown-no-results">Nessun cliente trovato</div>';
-    } else {
-        dropdown.innerHTML = matches.slice(0, 10).map(u =>
-            `<div class="dropdown-item" onclick="_schedeQuickSelectClient('${_escAttr(u.userId)}', '${_escAttr(u.name || u.email)}')">
-                <span class="dropdown-item-name">${_escHtml(u.name || 'Senza nome')}</span>
-            </div>`
-        ).join('');
-    }
-    dropdown.style.display = 'block';
-}, 150);
+        if (matches.length === 0) {
+            dropdown.innerHTML = `<div class="dropdown-no-results">${emptyText}</div>`;
+        } else {
+            dropdown.innerHTML = matches.slice(0, 10).map(u =>
+                `<div class="dropdown-item" onclick="${selectFnName}('${_escAttr(u.userId)}', '${_escAttr(u.name || u.email)}')">
+                    <span class="dropdown-item-name">${_escHtml(u.name || 'Senza nome')}</span>
+                </div>`
+            ).join('');
+        }
+        dropdown.style.display = 'block';
+    }, 150);
+}
 
-function _schedeQuickSelectClient(userId, name) {
-    const input = document.getElementById('schedeQuickClientSearch');
+// Applica la selezione di un cliente a input+dropdown (condiviso dai due handler)
+function _schedeApplyClientSelection(inputId, dropdownId, userId, name) {
+    const input = document.getElementById(inputId);
     input.value = name;
     input.dataset.userId = userId;
-    document.getElementById('schedeQuickClientDropdown').style.display = 'none';
+    document.getElementById(dropdownId).style.display = 'none';
+}
+
+// Quick assign: search any registered client
+var _schedeQuickSearchClient = _schedeMakeClientSearch(
+    'schedeQuickClientSearch', 'schedeQuickClientDropdown', '_schedeQuickSelectClient', 'Nessun cliente trovato');
+
+function _schedeQuickSelectClient(userId, name) {
+    _schedeApplyClientSelection('schedeQuickClientSearch', 'schedeQuickClientDropdown', userId, name);
 }
 
 async function _schedeQuickAssign() {
@@ -2484,9 +2472,6 @@ function _schedeProgDrawZoomChart(canvas, labels, seriesList) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function _renderSchedeList(container) {
     const plans = WorkoutPlanStorage.getAllPlans();
-    const allUsers = _schedeGetRegisteredUsers();
-    const nameMap = {};
-    for (const u of allUsers) nameMap[u.userId] = u.name || u.email || u.userId;
 
     // Templates (no user_id)
     const templates = plans.filter(p => !p.user_id);
@@ -2596,9 +2581,23 @@ let _admMobActiveEdit = null;
 function _renderPlanEditor(container) {
     if (_isAdmMobile()) {
         _renderPlanEditorMobile(container);
-        return;
+    } else {
+        _renderPlanEditorDesktop(container);
     }
-    return _renderPlanEditorDesktop(container);
+    // Applica il prefill di una nuova scheda creata da "Actual → + Aggiungi".
+    // Qui (dopo il dispatch) vale per ENTRAMBI gli editor: desktop e mobile
+    // usano gli stessi id #schedePlanName/#schedeClientSearch.
+    if (!_editingPlan && _schedePendingNewPlanPrefill) {
+        const pref = _schedePendingNewPlanPrefill;
+        _schedePendingNewPlanPrefill = null;
+        const nameInput = container.querySelector('#schedePlanName');
+        if (nameInput) nameInput.value = pref.planName || '';
+        const clientInput = container.querySelector('#schedeClientSearch');
+        if (clientInput) {
+            clientInput.value = pref.clientName || '';
+            if (pref.userId) clientInput.dataset.userId = pref.userId;
+        }
+    }
 }
 
 function _renderPlanEditorDesktop(container) {
@@ -2683,19 +2682,7 @@ function _renderPlanEditorDesktop(container) {
 
     // Hook autosave su nome/cliente/note/attivo (i listener inline sono nel
     // template HTML qui sopra: oninput → debounced, onblur → flush immediato).
-
-    // Applica prefill di una nuova scheda creata da "Actual → Aggiungi"
-    if (isNew && _schedePendingNewPlanPrefill) {
-        const pref = _schedePendingNewPlanPrefill;
-        _schedePendingNewPlanPrefill = null;
-        const nameInput = container.querySelector('#schedePlanName');
-        if (nameInput) nameInput.value = pref.planName || '';
-        const clientInput = container.querySelector('#schedeClientSearch');
-        if (clientInput) {
-            clientInput.value = pref.clientName || '';
-            if (pref.userId) clientInput.dataset.userId = pref.userId;
-        }
-    }
+    // Il prefill "Actual → + Aggiungi" è applicato dal dispatcher _renderPlanEditor.
 }
 
 function _renderExercisesForDay() {
@@ -2936,34 +2923,11 @@ const _DUMB_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const _CHEV_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
 // ── Client search (only registered users with UUID) ──────────────────────────
-var _schedeSearchClient = _debounce(function() {
-    const input = document.getElementById('schedeClientSearch');
-    const dropdown = document.getElementById('schedeClientDropdown');
-    const q = (input?.value || '').toLowerCase();
-    if (!q || q.length < 1) { dropdown.style.display = 'none'; return; }
-
-    const matches = _schedeGetRegisteredUsers().filter(u =>
-        (u.name || '').toLowerCase().includes(q) ||
-        (u.email || '').toLowerCase().includes(q)
-    );
-
-    if (matches.length === 0) {
-        dropdown.innerHTML = '<div class="dropdown-no-results">Nessun cliente registrato trovato</div>';
-    } else {
-        dropdown.innerHTML = matches.slice(0, 10).map(u =>
-            `<div class="dropdown-item" onclick="_schedeSelectClient('${_escAttr(u.userId)}', '${_escAttr(u.name || u.email)}')">
-                <span class="dropdown-item-name">${_escHtml(u.name || 'Senza nome')}</span>
-            </div>`
-        ).join('');
-    }
-    dropdown.style.display = 'block';
-}, 150);
+var _schedeSearchClient = _schedeMakeClientSearch(
+    'schedeClientSearch', 'schedeClientDropdown', '_schedeSelectClient', 'Nessun cliente registrato trovato');
 
 function _schedeSelectClient(userId, name) {
-    const input = document.getElementById('schedeClientSearch');
-    input.value = name;
-    input.dataset.userId = userId;
-    document.getElementById('schedeClientDropdown').style.display = 'none';
+    _schedeApplyClientSelection('schedeClientSearch', 'schedeClientDropdown', userId, name);
     // Flush autosave subito, prima che l'utente cambi vista o input.
     _schedeAutoSavePlanNow();
 }
@@ -3057,9 +3021,8 @@ async function _schedeRemoveDay() {
     _schedeSyncEditingPlan();
     if (_editingPlan) {
         const toDelete = (_editingPlan.workout_exercises || []).filter(e => e.day_label === _editActiveDay);
-        for (const ex of toDelete) {
-            try { await WorkoutPlanStorage.deleteExercise(ex.id); } catch (e) { console.error('[Schede] deleteExercise failed:', ex.id, e); }
-        }
+        try { await WorkoutPlanStorage.deleteExercises(toDelete.map(e => e.id)); }
+        catch (e) { console.error('[Schede] deleteExercises (giorno) failed:', e); }
     }
     _editDayLabels = _editDayLabels.filter(d => d !== _editActiveDay);
     _editActiveDay = _editDayLabels[0];
@@ -3157,9 +3120,7 @@ async function _schedeDeleteSuperset(groupId) {
     if (!_editingPlan) return;
     const toDelete = (_editingPlan.workout_exercises || []).filter(e => e.superset_group === groupId);
     try {
-        for (const ex of toDelete) {
-            await WorkoutPlanStorage.deleteExercise(ex.id);
-        }
+        await WorkoutPlanStorage.deleteExercises(toDelete.map(e => e.id));
         _schedeRefreshEditor();
     } catch (e) {
         if (typeof showToast === 'function') showToast('Errore eliminazione super serie', 'error');
@@ -3252,9 +3213,7 @@ async function _schedeDeleteCircuit(groupId) {
     if (!await showConfirm('Eliminare questo circuito?')) return;
     const toDelete = (_editingPlan.workout_exercises || []).filter(e => e.circuit_group === groupId);
     try {
-        for (const ex of toDelete) {
-            await WorkoutPlanStorage.deleteExercise(ex.id);
-        }
+        await WorkoutPlanStorage.deleteExercises(toDelete.map(e => e.id));
         _schedeRefreshEditor();
     } catch (e) {
         if (typeof showToast === 'function') showToast('Errore eliminazione circuito', 'error');
@@ -3285,12 +3244,11 @@ async function _schedeUpdateCircuitRounds(groupId, value) {
     if (!sets || sets < 1) return;
     const members = (_editingPlan.workout_exercises || []).filter(e => e.circuit_group === groupId);
     try {
-        for (const ex of members) {
-            if (ex.sets !== sets) {
-                await WorkoutPlanStorage.updateExercise(ex.id, { sets });
-                ex.sets = sets;
-            }
-        }
+        // Update indipendenti → in parallelo (prima N await seriali)
+        await Promise.all(members.filter(ex => ex.sets !== sets).map(async ex => {
+            await WorkoutPlanStorage.updateExercise(ex.id, { sets });
+            ex.sets = sets;
+        }));
         _schedeRefreshEditor();
     } catch (_) {}
 }
@@ -3426,20 +3384,6 @@ async function _schedeBackToList() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PLAN ACTIONS (list view)
 // ═══════════════════════════════════════════════════════════════════════════════
-async function _schedeAssignTemplate(userId) {
-    const sel = document.getElementById('schedeAssignTemplate');
-    const templateId = sel?.value;
-    if (!templateId) { if (typeof showToast === 'function') showToast('Seleziona un template', 'error'); return; }
-    try {
-        await WorkoutPlanStorage.duplicatePlan(templateId, userId);
-        if (typeof showToast === 'function') showToast('Scheda assegnata!', 'success');
-        renderSchedeTab();
-    } catch (e) {
-        console.error('[Schede] assign error:', e);
-        if (typeof showToast === 'function') showToast('Errore assegnazione', 'error');
-    }
-}
-
 async function _schedeDeletePlan(planId) {
     if (!await showConfirm('Eliminare questa scheda e tutti gli esercizi associati?')) return;
     try {
@@ -3473,35 +3417,6 @@ async function _schedeDeletePlanFromDetail(planId) {
         renderSchedeTab();
     } catch (e) {
         if (typeof showToast === 'function') showToast('Errore eliminazione', 'error');
-    }
-}
-
-async function _schedeDuplicatePlan(planId) {
-    const plan = WorkoutPlanStorage.getPlanById(planId);
-    if (!plan) return;
-
-    const allUsers = _schedeGetRegisteredUsers();
-    const nameMap = {};
-    for (const u of allUsers) nameMap[u.userId] = u.name || u.email;
-
-    const targetName = await showPrompt('Duplicare per quale cliente? (nome)', nameMap[plan.user_id] || '', { confirmText: 'Duplica' });
-    if (!targetName) return;
-
-    const targetUser = allUsers.find(u =>
-        (u.name || '').toLowerCase() === targetName.toLowerCase() ||
-        (u.email || '').toLowerCase() === targetName.toLowerCase()
-    );
-    if (!targetUser || !targetUser.userId) {
-        if (typeof showToast === 'function') showToast('Cliente registrato non trovato', 'error');
-        return;
-    }
-
-    try {
-        await WorkoutPlanStorage.duplicatePlan(planId, targetUser.userId);
-        if (typeof showToast === 'function') showToast('Scheda duplicata', 'success');
-        renderSchedeTab();
-    } catch (e) {
-        if (typeof showToast === 'function') showToast('Errore duplicazione', 'error');
     }
 }
 

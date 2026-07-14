@@ -17,8 +17,8 @@
  * - Submit: handleBookingSubmit() applica i gating cert/assicurazione (CertBookingStorage/
  *   AssicBookingStorage) e invia con BookingStorage.saveBooking({..., orgSlug: window._orgSlug}).
  *   NESSUN pre-check capienza lato client: l'autorità è la RPC server-side `book_slot` (data.js).
- * - Conferma e calendario: showConfirmation() (usa _confirmedBooking), downloadIcs()/
- *   downloadCancelIcs() (ICS con VTIMEZONE), googleCalendarUrl(); il fuso è per-org via
+ * - Conferma e calendario: showConfirmation() (usa _confirmedBooking), downloadIcs()
+ *   (ICS con VTIMEZONE), googleCalendarUrl(); il fuso è per-org via
  *   _orgTimezone() (OrgSettings 'locale.timezone'). notificaPrenotazione() invia la notifica.
  *
  * CONNESSIONI
@@ -527,13 +527,26 @@ function buildCalendarDates(dateStr, timeStr) {
     return { start: `${d}T${sH}${sM}00`, end: `${d}T${eH}${eM}00` };
 }
 
+// Indirizzo dello studio dai Dati azienda per-org (OrgSettings 'company.address').
+// '' se non configurato → gli inviti calendario omettono la LOCATION (niente
+// indirizzi demo/di un altro studio negli inviti multi-tenant).
+function _orgAddressText() {
+    try {
+        const addr = (typeof OrgSettings !== 'undefined' && OrgSettings.get('company.address', {})) || {};
+        const via = (addr.via || '').toString().trim();
+        const loc = ((addr.citta || '').toString().trim()) || ((addr.paese || '').toString().trim());
+        return [via, loc].filter(Boolean).join(', ');
+    } catch (_) { return ''; }
+}
+
 function googleCalendarUrl(booking) {
     const { start, end } = buildCalendarDates(booking.date, booking.time);
     const title = encodeURIComponent(`Allenamento – ${getSlotName(booking.slotType)}`);
     const details = encodeURIComponent(`Prenotato da ${booking.name}`);
-    const location = encodeURIComponent('Via Demo 1, Milano BS');
     const ctz = encodeURIComponent(_orgTimezone());
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}&ctz=${ctz}`;
+    const addr = _orgAddressText();
+    const locParam = addr ? `&location=${encodeURIComponent(addr)}` : '';
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}${locParam}&ctz=${ctz}`;
 }
 
 function _bookingUid(booking) {
@@ -572,6 +585,9 @@ function downloadIcs(booking) {
     const title = `Allenamento – ${getSlotName(booking.slotType)}`;
     const uid = _bookingUid(booking);
     const tz = _orgTimezone();
+    // LOCATION per-org, omessa se non configurata (escaping ICS di \ ; ,)
+    const addr = _orgAddressText();
+    const locLine = addr ? [`LOCATION:${addr.replace(/\\/g, '\\\\').replace(/([;,])/g, '\\$1')}`] : [];
     const ics = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -582,7 +598,7 @@ function downloadIcs(booking) {
         `DTSTART;TZID=${tz}:${start}`,
         `DTEND;TZID=${tz}:${end}`,
         `SUMMARY:${title}`,
-        'LOCATION:Via Demo\\, 1\\, Milano BS',
+        ...locLine,
         `DESCRIPTION:Prenotato da ${booking.name}`,
         'END:VEVENT',
         'END:VCALENDAR'
@@ -597,37 +613,6 @@ function downloadIcs(booking) {
     URL.revokeObjectURL(url);
 }
 
-function downloadCancelIcs(booking) {
-    const { start, end } = buildCalendarDates(booking.date, booking.time);
-    const title = `Allenamento – ${getSlotName(booking.slotType)}`;
-    const uid = _bookingUid(booking);
-    const tz = _orgTimezone();
-    const ics = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        'PRODID:-//PalestrIA//IT',
-        'METHOD:CANCEL',
-        ..._vtimezoneLines(tz),
-        'BEGIN:VEVENT',
-        `UID:${uid}`,
-        `DTSTART;TZID=${tz}:${start}`,
-        `DTEND;TZID=${tz}:${end}`,
-        `SUMMARY:${title}`,
-        'STATUS:CANCELLED',
-        'SEQUENCE:1',
-        'END:VEVENT',
-        'END:VCALENDAR'
-    ].join('\r\n');
-
-    const blob = new Blob([ics], { type: 'text/calendar' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'annulla-allenamento.ics';
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
 function showConfirmation(booking) {
     _confirmedBooking = booking;
     // Hide form, show confirmation inside the modal
@@ -635,12 +620,10 @@ function showConfirmation(booking) {
     document.getElementById('modalSlotInfo').style.display = 'none';
 
     const confirmationDiv = document.getElementById('confirmationMessage');
-    const creditNotice = '';
     confirmationDiv.innerHTML = `
         <h3>✓ ${getSlotName(booking.slotType)} Confermata!</h3>
         <p><strong>${_escHtml(booking.name)}</strong></p>
         <p>📅 ${booking.dateDisplay} &nbsp;·&nbsp; 🕐 ${booking.time}</p>
-        ${creditNotice}
         <div class="cal-buttons">
             <a href="${googleCalendarUrl(booking)}" target="_blank" rel="noopener" class="cal-btn cal-btn-google">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/><rect fill="#EA4335" x="7" y="12" width="2" height="2"/><rect fill="#34A853" x="11" y="12" width="2" height="2"/><rect fill="#FBBC04" x="15" y="12" width="2" height="2"/><rect fill="#34A853" x="7" y="16" width="2" height="2"/><rect fill="#4285F4" x="11" y="16" width="2" height="2"/><rect fill="#EA4335" x="15" y="16" width="2" height="2"/></svg>

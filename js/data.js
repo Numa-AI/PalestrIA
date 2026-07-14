@@ -108,7 +108,7 @@ function _lsGetJSON(key, fallback) {
 const _LS_SNAPSHOT_PREFIXES = [
     'gym_bookings_cache_v2:',
     'gym_stats_cache_v1:',
-    'gym_stats',                 // snapshot stats "grezzo" (STATS_KEY)
+    'gym_stats',                 // chiave legacy non più scritta — resta per l'eviction dei residui
     'gym_users_cache_v1',
     'workout_plans_cache_',
     'schede_exercises_db_v1',
@@ -750,7 +750,8 @@ function getWeeklySchedule(dateStr) {
     const orgWeekly = _weeklyScheduleFromOrg(dateStr);
     if (orgWeekly) return orgWeekly;
     // Contesto org ma settimana non attivata (o config non pronta) → griglia vuota:
-    // niente fallback al DEFAULT legacy, che mostrerebbe slot di "un altro studio".
+    // niente fallback al DEFAULT legacy né ai template localStorage, che mostrerebbero
+    // slot di "un altro studio". Tutto il codice sotto gira SOLO senza contesto org.
     if (_hasOrgContext()) return {};
 
     // Try to load from WeekTemplateStorage (active template)
@@ -778,13 +779,6 @@ function getWeeklySchedule(dateStr) {
             if (isCurrentFormat) return parsed;
         } catch { /* corrupted — will reset below */ }
     }
-    // Nessuna config org né template locale valido. In contesto SaaS lo schema reale
-    // arriva da loadOrgScheduleConfig(): mostrare il DEFAULT legacy (lo schema del
-    // gestionale single-tenant originario) farebbe lampeggiare per un istante il
-    // calendario "di un altro studio" ad ogni refresh. Meglio griglia vuota finché la
-    // config org è pronta. Gli anonimi puri (nessun contesto org) restano sul DEFAULT.
-    if (_hasOrgContext()) return {};
-
     // Legacy / single-tenant senza contesto org: fallback storico (reset versione/formato).
     localStorage.removeItem(_schedOverridesLsKey());
     _lsSet('weeklyScheduleTemplate', JSON.stringify(DEFAULT_WEEKLY_SCHEDULE));
@@ -825,12 +819,13 @@ function _schedOverridesLsKey() {
     return `scheduleOverrides_${oid}`;
 }
 
-// Global variable that will be used throughout the app
-let WEEKLY_SCHEDULE_TEMPLATE = getWeeklySchedule();
+// Normalizzazione legacy al boot: senza contesto org ripristina/normalizza il
+// template in localStorage (side-effect). Il valore di ritorno non serve: i
+// consumatori chiamano direttamente getWeeklySchedule(dateStr).
+getWeeklySchedule();
 
 // Storage functions
 class BookingStorage {
-    static STATS_KEY = 'gym_stats';
     static _cache = [];
     static _syncInFlightByKey = {};
     static _adminFetchInFlightByKey = {};
@@ -1476,7 +1471,6 @@ class BookingStorage {
         booking._sbId = data.booking_id || null;
         booking.paid = !!data.paid;
         this._cache.push(booking);
-        this.updateStats(booking);
         this._invalidateAvailabilityCache(); // disponibilità cambiata → niente cache stantia
         console.log('[Supabase] book_slot OK — id:', booking.id, 'paid:', booking.paid);
         return { ok: true, booking };
@@ -1537,7 +1531,6 @@ class BookingStorage {
         booking._sbId = data.booking_id || null;
         booking.paid = !!data.paid;
         this._cache.push(booking);
-        this.updateStats(booking);
         this._invalidateAvailabilityCache(); // disponibilità cambiata → niente cache stantia
         return { ok: true, booking };
     }
@@ -1766,60 +1759,6 @@ class BookingStorage {
         return true;
     }
 
-    // @deprecated — il bonus annullamento giornaliero è stato rimosso col sistema crediti.
-    // Mantenuta per retro-compatibilità dei chiamanti: ora si limita a cancellare la
-    // prenotazione (cambio stato) e a riconvertire un eventuale group-class in small-group.
-    // NESSUN rimborso credito, NESSUN consumo bonus. Da rimuovere una volta aggiornati i call site.
-    static async cancelWithBonus(id) {
-        const all = this.getAllBookings();
-        const booking = all.find(b => b.id === id);
-        if (!booking || booking.status !== 'confirmed') return false;
-        const slotType = booking.slotType;
-        this.replaceAllBookings(this._withBookingPatch(all, id, this._cancelPatch(booking)));
-        // Per group-class: riconverte lo slot in small-group
-        if (slotType === SLOT_TYPES.GROUP_CLASS) {
-            const overrides = this.getScheduleOverrides();
-            const dateSlots = overrides[booking.date];
-            if (dateSlots) {
-                const slot = dateSlots.find(s => s.time === booking.time && s.type === SLOT_TYPES.GROUP_CLASS);
-                if (slot) {
-                    slot.type = SLOT_TYPES.SMALL_GROUP;
-                    delete slot.client;
-                    delete slot.bookingId;
-                    this.saveScheduleOverrides(overrides, [booking.date]);
-                }
-            }
-        }
-        return true;
-    }
-
-    // @deprecated — la mora 50% si appoggiava a credito/debito, ora rimossi.
-    // Mantenuta per retro-compatibilità: ora si limita a cancellare la prenotazione
-    // (cambio stato) e a riconvertire un eventuale group-class in small-group.
-    // NESSUN rimborso credito, NESSUN addebito mora. Da rimuovere una volta aggiornati i call site.
-    static async cancelWithPenalty(id) {
-        const all = this.getAllBookings();
-        const booking = all.find(b => b.id === id);
-        if (!booking || booking.status !== 'confirmed') return false;
-        const slotType = booking.slotType;
-        this.replaceAllBookings(this._withBookingPatch(all, id, this._cancelPatch(booking)));
-        // Per group-class: riconverte lo slot in small-group
-        if (slotType === SLOT_TYPES.GROUP_CLASS) {
-            const overrides = this.getScheduleOverrides();
-            const dateSlots = overrides[booking.date];
-            if (dateSlots) {
-                const slot = dateSlots.find(s => s.time === booking.time && s.type === SLOT_TYPES.GROUP_CLASS);
-                if (slot) {
-                    slot.type = SLOT_TYPES.SMALL_GROUP;
-                    delete slot.client;
-                    delete slot.bookingId;
-                    this.saveScheduleOverrides(overrides, [booking.date]);
-                }
-            }
-        }
-        return true;
-    }
-
     // Marca una prenotazione come "annullamento richiesto" (il posto torna disponibile)
     static requestCancellation(id) {
         const all = this.getAllBookings();
@@ -1875,53 +1814,17 @@ class BookingStorage {
         return changed;
     }
 
-    static updateStats(booking) {
-        const stats = this.getStats();
-        stats.totalBookings = (stats.totalBookings || 0) + 1;
-        stats.totalRevenue = (stats.totalRevenue || 0) + getBookingPrice(booking);
-
-        // Update type distribution
-        if (!stats.typeDistribution) stats.typeDistribution = {};
-        stats.typeDistribution[booking.slotType] = (stats.typeDistribution[booking.slotType] || 0) + 1;
-
-        // Update daily bookings
-        if (!stats.dailyBookings) stats.dailyBookings = {};
-        const dateKey = booking.date;
-        stats.dailyBookings[dateKey] = (stats.dailyBookings[dateKey] || 0) + 1;
-
-        _lsSet(this.STATS_KEY, JSON.stringify(stats));
-    }
-
-    static getStats() {
-        // _lsGetJSON (try/catch) e NON JSON.parse grezzo: se 'gym_stats' è corrotto,
-        // updateStats() è chiamata da saveBooking DOPO che book_slot ha già confermato
-        // la prenotazione → un throw qui farebbe risultare "fallita" una prenotazione
-        // già creata sul server (rischio doppia prenotazione al retry) (code review 2, #4).
-        return _lsGetJSON(this.STATS_KEY, {
-            totalBookings: 0,
-            totalRevenue: 0,
-            typeDistribution: {},
-            dailyBookings: {}
-        });
-    }
-
-    // Teardown logout (H2): rimuove gym_stats da localStorage. Nessuna cache stats in
-    // memoria separata da azzerare (getStats legge sempre da localStorage).
+    // Teardown logout (H2): rimuove 'gym_stats' da localStorage. La chiave non viene
+    // più scritta (mini-ledger stats rimosso: nessuna UI lo leggeva) — la pulizia
+    // resta per i device con residui legacy.
     static clearStats() {
-        try { localStorage.removeItem(this.STATS_KEY); } catch (_) {}
+        try { localStorage.removeItem('gym_stats'); } catch (_) {}
     }
 
     // Teardown logout (H2): azzera la cache availability server-authoritative
     // (capienze/posti residui) per evitare valori stantii cross-org.
     static clearAvailability() {
         this._availabilityByKey = {};
-    }
-
-    static formatDate(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
     }
 
     // ── Helpers per scheduleOverrides ────────────────────────────────────────
@@ -2119,8 +2022,8 @@ class BookingStorage {
                 ? Object.fromEntries(settingsData.map(r => [r.key, r.value]))
                 : (settingsData && typeof settingsData === 'object' ? settingsData : null);
 
-            // 1. Propaga clearAllData: il marker data_cleared_at vive ora su org_settings (ex tabella
-            //    app_settings, rimossa nello schema SaaS), scritto da clearAllData via upsert_org_setting.
+            // 1. Propaga il clear dati: il marker data_cleared_at vive su org_settings (ex tabella
+            //    app_settings), scritto da clearAllOrgData (admin-settings.js) via upsert_org_setting.
             const remoteClearedAt = sMap?.data_cleared_at?.ts || null;
             if (remoteClearedAt) {
                 const localClearedAt = localStorage.getItem('dataLastCleared') || '0';
@@ -2178,17 +2081,15 @@ class BookingStorage {
                 _s(BookingBadgesStorage.KEY_ANAG,  'show_anag_badge');
                 _s(WeekTemplateStorage.KEY,        'week_templates');
                 _s(WeekTemplateStorage.ACTIVE_KEY, 'active_week_template');
-                // Refresh global template after sync
-                WEEKLY_SCHEDULE_TEMPLATE = getWeeklySchedule();
+                // Ri-normalizza il template localStorage dopo il sync (side-effect;
+                // i consumatori chiamano direttamente getWeeklySchedule(dateStr)).
+                getWeeklySchedule();
             }
 
             const count = (overridesData?.length || 0) + (sMap ? Object.keys(sMap).length : 0);
             console.log(`[Supabase] syncAppSettings: ${count} record caricati`);
         } catch (e) { console.error('[Supabase] syncAppSettings exception:', e); }
     }
-
-    // Kept for backward compat — use syncAppSettingsFromSupabase() on page load instead.
-    static async syncScheduleFromSupabase() { await this.syncAppSettingsFromSupabase(); }
 
     // Sostituisce l'intero array di prenotazioni (usato dopo modifiche bulk).
     // Sincronizza su Supabase solo i booking effettivamente cambiati (diff intelligente).
@@ -2383,11 +2284,10 @@ class WeekTemplateStorage {
     static setActiveId(id) {
         _lsSet(this.ACTIVE_KEY, String(id));
         _upsertSetting(this.ACTIVE_KEY, String(id));
-        // Update global template variable
+        // Persisti il template attivo per il fallback legacy di getWeeklySchedule()
         const templates = this.getAll();
         const active = templates.find(t => t.id === id);
         if (active) {
-            WEEKLY_SCHEDULE_TEMPLATE = active.schedule;
             _lsSet('weeklyScheduleTemplate', JSON.stringify(active.schedule));
         }
     }
@@ -2406,9 +2306,8 @@ class WeekTemplateStorage {
         if (data.name !== undefined) tpl.name = data.name;
         if (data.schedule !== undefined) tpl.schedule = data.schedule;
         this.save(templates);
-        // If this is the active template, update global
+        // Se è il template attivo, aggiorna il fallback legacy in localStorage
         if (id === this.getActiveId()) {
-            WEEKLY_SCHEDULE_TEMPLATE = tpl.schedule;
             _lsSet('weeklyScheduleTemplate', JSON.stringify(tpl.schedule));
         }
     }
@@ -2617,7 +2516,6 @@ class UserStorage {
                     geoEnabled: row.geo_enabled ?? existing.geoEnabled ?? false,
                     pushEnabled: row.push_enabled ?? existing.pushEnabled ?? false,
                     archivedAt: row.archived_at ?? existing.archivedAt ?? null,
-                    stripeEnabled: row.stripe_enabled ?? existing.stripeEnabled ?? false,
                 };
             });
 
@@ -2648,20 +2546,6 @@ class UserStorage {
             u.email?.toLowerCase().includes(q) ||
             (u.whatsapp && u.whatsapp.replace(/\s/g, '').includes(q.replace(/\s/g, '')))
         );
-    }
-}
-
-// ── Push-enabled users cache (per icone proximity in admin) ──────────────────
-// Set di user_id che hanno almeno una push subscription attiva
-let _pushEnabledUsers = new Set();
-async function syncPushEnabledUsers() {
-    if (typeof supabaseClient === 'undefined') return;
-    try {
-        const { data, error } = await _rpcWithTimeout(supabaseClient.rpc('get_push_enabled_users'), 12000);
-        if (error) { console.warn('[Push] get_push_enabled_users error:', error.message); return; }
-        _pushEnabledUsers = new Set((data || []).map(id => id));
-    } catch (e) {
-        console.warn('[Push] syncPushEnabledUsers exception:', e);
     }
 }
 
@@ -2923,11 +2807,33 @@ class WorkoutPlanStorage {
         if (!Array.isArray(items) || items.length < 2) {
             throw new Error('addCircuit: servono almeno 2 esercizi');
         }
+        // maxOrder calcolato UNA volta (stesso pattern di addSuperset): senza sort_order
+        // esplicito ogni addExercise farebbe la propria SELECT max → 2N round-trip.
+        let maxOrder = -1;
+        if (items.some(it => it.sort_order == null)) {
+            try {
+                const { data: lastEx } = await _queryWithTimeout(
+                    supabaseClient
+                        .from('workout_exercises')
+                        .select('sort_order')
+                        .eq('plan_id', planId)
+                        .order('sort_order', { ascending: false })
+                        .limit(1)
+                        .maybeSingle(),
+                    15000
+                );
+                maxOrder = lastEx?.sort_order ?? -1;
+            } catch (_) {
+                const plan = this.getPlanById(planId);
+                maxOrder = plan?.workout_exercises?.reduce((m, e) => Math.max(m, e.sort_order ?? -1), -1) ?? -1;
+            }
+        }
         const groupId = crypto.randomUUID();
         const inserted = [];
-        for (const item of items) {
+        for (let i = 0; i < items.length; i++) {
             const row = await this.addExercise(planId, {
-                ...item,
+                ...items[i],
+                sort_order: items[i].sort_order != null ? items[i].sort_order : (maxOrder + 1 + i),
                 circuit_group: groupId,
             });
             inserted.push(row);
@@ -2956,6 +2862,22 @@ class WorkoutPlanStorage {
         if (error) throw error;
         for (const plan of this._cache) {
             plan.workout_exercises = (plan.workout_exercises || []).filter(e => e.id !== exerciseId);
+        }
+    }
+
+    // Cancellazione batch: una sola DELETE .in('id',...) invece di N round-trip
+    // seriali (usata per rimozione giorno/super serie/circuito in admin-schede.js).
+    static async deleteExercises(exerciseIds) {
+        const ids = (exerciseIds || []).filter(Boolean);
+        if (!ids.length) return;
+        const { error } = await _queryWithTimeout(supabaseClient
+            .from('workout_exercises')
+            .delete()
+            .in('id', ids), 15000);
+        if (error) throw error;
+        const idSet = new Set(ids);
+        for (const plan of this._cache) {
+            plan.workout_exercises = (plan.workout_exercises || []).filter(e => !idSet.has(e.id));
         }
     }
 

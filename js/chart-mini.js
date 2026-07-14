@@ -131,10 +131,10 @@ class SimpleChart {
             return;
         }
 
-        const maxVal = Math.max(...data.values.map((v, i) => {
-            const base = Array.isArray(v) ? Math.max(...v) : v;
-            return base + ((data.projected && data.projected[i]) || 0) + ((data.estimated && data.estimated[i]) || 0);
-        }), 1);
+        // data.values: array piatto di numeri (tutti i call-site passano una serie sola)
+        const maxVal = Math.max(...data.values.map((v, i) =>
+            v + ((data.projected && data.projected[i]) || 0) + ((data.estimated && data.estimated[i]) || 0)
+        ), 1);
         const step = Math.ceil(maxVal / 5) || 1;
         const axisMax = step * 5;
 
@@ -151,37 +151,30 @@ class SimpleChart {
         }
 
         const slotW = chartW / n;
-        const seriesCount = Array.isArray(data.values[0]) ? data.values[0].length : 1;
-        const barW = Math.min(slotW * 0.7 / seriesCount, 40);
+        const barW = Math.min(slotW * 0.7, 40);
         const colors = options.colors || ['#3b82f6', '#94a3b8'];
 
-        data.values.forEach((val, i) => {
-            const vals = Array.isArray(val) ? val : [val];
-            const totalBarsW = barW * seriesCount + (seriesCount - 1) * 3;
-            const slotStart = pad.left + i * slotW + (slotW - totalBarsW) / 2;
+        data.values.forEach((v, i) => {
+            const slotStart = pad.left + i * slotW + (slotW - barW) / 2;
 
-            vals.forEach((v, s) => {
-                const barH = (v / axisMax) * chartH;
-                const x = slotStart + s * (barW + 3);
-                const y = pad.top + chartH - barH;
-                ctx.fillStyle = colors[s % colors.length];
-                ctx.beginPath();
-                if (ctx.roundRect) ctx.roundRect(x, y, barW, barH, [3, 3, 0, 0]);
-                else ctx.rect(x, y, barW, barH);
-                ctx.fill();
-                if (v > 0) {
-                    ctx.fillStyle = '#333';
-                    ctx.textAlign = 'center';
-                    ctx.font = 'bold 9px sans-serif';
-                    const label = data.valueLabels?.[i]?.[0] || `${options.prefix ?? '€'}${v}${options.suffix ?? ''}`;
-                    ctx.fillText(label, x + barW / 2, y - 4);
-                }
-            });
+            const barH = (v / axisMax) * chartH;
+            const y = pad.top + chartH - barH;
+            ctx.fillStyle = colors[0];
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(slotStart, y, barW, barH, [3, 3, 0, 0]);
+            else ctx.rect(slotStart, y, barW, barH);
+            ctx.fill();
+            if (v > 0) {
+                ctx.fillStyle = '#333';
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 9px sans-serif';
+                ctx.fillText(`${options.prefix ?? '€'}${v}${options.suffix ?? ''}`, slotStart + barW / 2, y - 4);
+            }
 
-            // Projected extension on top (single-series only)
-            if (data.projected && data.projected[i] > 0 && seriesCount === 1) {
+            // Projected extension on top
+            if (data.projected && data.projected[i] > 0) {
                 const projH  = (data.projected[i] / axisMax) * chartH;
-                const solidH = (vals[0] / axisMax) * chartH;
+                const solidH = (v / axisMax) * chartH;
                 const px = slotStart;
                 const py = pad.top + chartH - solidH - projH;
                 ctx.save();
@@ -203,10 +196,10 @@ class SimpleChart {
                 ctx.restore();
             }
 
-            // Estimated extension on top (green dashed, single-series only)
-            if (data.estimated && data.estimated[i] > 0 && seriesCount === 1) {
+            // Estimated extension on top (green dashed)
+            if (data.estimated && data.estimated[i] > 0) {
                 const estH   = (data.estimated[i] / axisMax) * chartH;
-                const solidH = (vals[0] / axisMax) * chartH;
+                const solidH = (v / axisMax) * chartH;
                 const projH  = data.projected?.[i] ? (data.projected[i] / axisMax) * chartH : 0;
                 const px = slotStart;
                 const py = pad.top + chartH - solidH - projH - estH;
@@ -236,20 +229,6 @@ class SimpleChart {
             const labelX = pad.left + i * slotW + slotW / 2;
             ctx.fillText(data.labels[i], labelX, ch - pad.bottom / 3 + 4);
         });
-
-        // Legend
-        if (options.legend) {
-            let lx = pad.left;
-            options.legend.forEach((l, i) => {
-                ctx.fillStyle = colors[i % colors.length];
-                ctx.fillRect(lx, pad.top - 16, 10, 10);
-                ctx.fillStyle = '#6b7280';
-                ctx.font = '10px sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(l, lx + 14, pad.top - 7);
-                lx += ctx.measureText(l).width + 30;
-            });
-        }
     }
 
     drawForecastChart(data, options = {}) {

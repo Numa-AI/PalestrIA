@@ -313,3 +313,37 @@ Richiesta utente sull'area cliente: (1) togliere la pill-bar *Calendario / Le mi
 ### Follow-up aperti
 - **NON committato/buildato/deployato** (lo fa l'utente): rebuild AAB Flutter + push ramo web → GitHub Pages (cache-bust v585 già applicato).
 - **QA**: Prenotazioni = solo calendario; Profilo = hero nome+cognome, no recap, 3 tab; Prossime/Passate con annulla/richiedi annullo; Transazioni con importo/metodo/data ed empty-state; idem PWA.
+
+---
+
+## Task: Fix bug live — prenotazione impossibile con modello "A entrata" (`book_slot`)
+
+**Data:** 2026-07-10
+**Durata stimata:** ~15 min lavoro Claude + ~2 min prompt utente
+
+### Contesto
+Bug report utente dai log console: `book_slot` rispondeva 400 con `null value in column "paid" of relation "bookings" violates not-null constraint` ad ogni tentativo di prenotazione per un cliente con modello di pagamento "A entrata" (`pay_per_session`).
+
+### Causa radice
+In `book_slot` (introdotta da migration `00000000000042_realtime_and_deferred_package_consumption.sql`), il check di idempotenza su `local_id` riusava la variabile `v_paid`:
+```sql
+select id,paid into v_id,v_paid from bookings where org_id=v_org and local_id=p_local_id order by created_at limit 1;
+```
+In PL/pgSQL, quando una `select ... into` non trova righe (caso normale per una prenotazione nuova, con `local_id` mai visto), i target vengono impostati a **NULL**, non lasciati invariati. Questo sovrascriveva il default `v_paid:=false` con NULL. Più sotto, i modelli `free`/`package`/`monthly` risettavano esplicitamente `v_paid:=true`, mascherando il problema; il ramo `pay_per_session` lo tocca **solo** se c'è una soglia di saldo scoperto configurata (`v_threshold>0`) — altrimenti `v_paid` restava NULL fino all'`insert into bookings(...)`, che fallisce per via del vincolo `NOT NULL` sulla colonna `paid`.
+
+### Modifiche effettuate
+- Nuova migration `supabase/migrations/00000000000045_fix_book_slot_paid_null.sql`: ridefinisce `book_slot` isolando il check di idempotenza in una variabile dedicata `v_existing_paid`, così `v_paid` mantiene il suo default `false` per i booking realmente nuovi. Nessun'altra logica toccata (impatto minimo).
+- **Applicata sul remoto** (`supabase db push --yes`), confermata con `supabase migration list` (Local/Remote/Applied tutti a 45).
+
+### Decisioni prese
+- Fix come **nuova migration** (non editare la 42 in place): la 42 risultava già applicata sul progetto Supabase remoto (`supabase migration list` mostrava fino alla 44 applicata), quindi modificarla non si sarebbe propagata — serviva un `create or replace function` successivo.
+- Deploy in produzione **confermato con l'utente** prima di eseguirlo (modifica DB condivisa, azione difficile da annullare), nonostante la policy generale su bug report autonomi: qui la richiesta di conferma resta giustificata trattandosi di stato condiviso in produzione.
+
+### File toccati
+- **Nuovo**: `supabase/migrations/00000000000045_fix_book_slot_paid_null.sql`.
+- **Tracking**: `todo.md` (sez. "Modello di pagamento predefinito"), memoria `stato-progetto`.
+
+### Follow-up aperti
+- Nessuno lato codice frontend (RPC server-side, nessun cache-bust necessario).
+- Migration non ancora committata su git (in attesa di indicazione utente per il commit).
+- QA consigliata: ripetere una prenotazione reale con un cliente in modello "A entrata" per confermare che il 400 sia sparito.

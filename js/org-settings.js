@@ -18,7 +18,6 @@
     let   _orgId = null;
     let   _loaded = false;
     let   _rtChannel = null;
-    const _listeners = new Set();    // callback(key, value) su cambi realtime/locali
 
     // ── risoluzione org ─────────────────────────────────────────────────────
     function _resolveOrgId() {
@@ -88,6 +87,9 @@
                     .eq('org_id', _orgId);
                 if (!error && Array.isArray(data)) {
                     for (const row of data) { _cache.set(row.key, row.value); _lsSet(row.key, row.value); }
+                    // _loaded SOLO a fetch riuscito: su errore transitorio la prossima
+                    // load() non forzata ritenta invece di restare sui default/cache.
+                    _loaded = true;
                 }
             } else {
                 // anonimo → whitelist pubblica via RPC
@@ -96,13 +98,13 @@
                     const { data, error } = await supabaseClient.rpc('get_public_org_settings', { p_org_slug: slug });
                     if (!error && data && typeof data === 'object') {
                         for (const [k, v] of Object.entries(data)) { _cache.set(k, v); _lsSet(k, v); }
+                        _loaded = true;
                     }
                 }
             }
         } catch (e) {
             console.warn('[OrgSettings] load fallito, uso cache locale:', e && e.message);
         }
-        _loaded = true;
         _subscribeRealtime();
         applyBranding();
     }
@@ -122,7 +124,6 @@
     async function set(key, value) {
         _cache.set(key, value);
         _lsSet(key, value);
-        _emit(key, value);
         const { error } = await supabaseClient.rpc('upsert_org_setting', { p_key: key, p_value: value });
         if (error) { console.error('[OrgSettings] upsert fallito:', error.message); throw error; }
     }
@@ -144,7 +145,6 @@
                         if (!row) return;
                         if (payload.eventType === 'DELETE') { _cache.delete(row.key); }
                         else { _cache.set(row.key, row.value); _lsSet(row.key, row.value); }
-                        _emit(row.key, _cache.get(row.key));
                         if (row.key && row.key.startsWith('branding.')) applyBranding();
                     })
                 .subscribe();
@@ -155,9 +155,6 @@
             else factory();
         } catch (e) { console.warn('[OrgSettings] realtime non disponibile:', e && e.message); }
     }
-
-    function onChange(cb) { _listeners.add(cb); return () => _listeners.delete(cb); }
-    function _emit(key, value) { for (const cb of _listeners) { try { cb(key, value); } catch (_) {} } }
 
     // ── branding helpers ──────────────────────────────────────────────────────
     // Oscura un colore HEX di una percentuale (per derivare --primary-purple-dark)
@@ -205,14 +202,16 @@
                 });
             }
 
-            // 2b) LINK GOOGLE MAPS → ogni <a data-org-maps> (es. home). Solo se
-            //     valorizzato in Dati azienda; se vuoto resta il link statico dell'HTML.
+            // 2b) LINK GOOGLE MAPS → ogni <a data-org-maps> (es. home). L'elemento è
+            //     nascosto di default nell'HTML: compare SOLO se valorizzato in Dati
+            //     azienda (niente link demo di un altro studio per i tenant nuovi).
             // L1: valida lo schema (solo http/https) — il trainer può salvare un URL
             // arbitrario, esposto anche agli anonimi → niente `javascript:` in href.
             const mapsUrl = _safeHttpUrl(getString('company.maps_url', ''));
-            if (mapsUrl) {
-                document.querySelectorAll('a[data-org-maps]').forEach(a => { a.href = mapsUrl; });
-            }
+            document.querySelectorAll('a[data-org-maps]').forEach(a => {
+                if (mapsUrl) { a.href = mapsUrl; a.style.display = ''; }
+                else { a.style.display = 'none'; }
+            });
 
             // 2c) TESTO INDIRIZZO → ogni [data-org-address] (es. "Via X — Brescia" nella
             //     home). Composto da via + città (fallback paese se città vuota), dai Dati
@@ -223,6 +222,9 @@
             const _addrText = [_via, _loc].filter(Boolean).join(' — ');
             if (_addrText) {
                 document.querySelectorAll('[data-org-address]').forEach(el => { el.textContent = _addrText; });
+            } else if (mapsUrl) {
+                // Link Maps configurato ma indirizzo no: etichetta generica, non testo vuoto
+                document.querySelectorAll('a[data-org-maps] [data-org-address]').forEach(el => { el.textContent = 'Indicazioni stradali'; });
             }
 
             // 2d) DURATA SESSIONE (testo home, es. "80 minuti") → ogni [data-org-duration].
@@ -279,10 +281,6 @@
         }
     }
 
-    // helper localizzazione usati altrove (timezone/currency per-org)
-    function timezone() { return getString('locale.timezone', 'Europe/Rome'); }
-    function currency() { return getString('locale.currency', 'EUR'); }
-
     // ── teardown su logout ─────────────────────────────────────────────────────
     // Azzera lo stato per-tenant: cache in memoria, chiavi localStorage namespacing
     // della org corrente (org_<id>_*) e canale Realtime org_settings_<id>. Evita che
@@ -319,8 +317,7 @@
     }
 
     global.OrgSettings = {
-        load, get, getBool, getNumber, getString, set, onChange, applyBranding,
-        timezone, currency, asBool, asNumber, asString, reset,
+        load, get, getBool, getNumber, getString, set, applyBranding, reset,
         get orgId() { return _orgId || _resolveOrgId(); },
     };
 })(window);
